@@ -1,0 +1,49 @@
+# AIBox Configuration
+# Environment variables can be used with ${VAR_NAME} syntax
+
+server:
+  grpc_port: 50051
+  host: "0.0.0.0"
+
+tls:
+  enabled: false
+  cert_file: ""
+  key_file: ""
+
+redis:
+  addr: "localhost:6379"
+  password: "${REDIS_PASSWORD}"
+  db: 0
+
+auth:
+  admin_token: "${AIBOX_ADMIN_TOKEN}"
+
+rate_limits:
+  default_rpm: 60      # Requests per minute
+  default_rpd: 10000   # Requests per day
+  default_tpm: 100000  # Tokens per minute
+
+providers:
+  openai:
+    enabled: true
+    default_model: "gpt-4o"
+    base_url: ""  # Use default OpenAI API
+  gemini:
+    enabled: true
+    default_model: "gemini-2.0-flash"
+    base_url: ""  # Use default Google AI API
+  anthropic:
+    enabled: true
+    default_model: "claude-sonnet-4-20250514"
+    base_url: ""  # Use default Anthropic API
+
+failover:
+  enabled: true
+  default_order:
+    - openai
+    - gemini
+    - anthropic
+
+logging:
+  level: "info"  # debug, info, warn, error
+  format: "json" # json or text

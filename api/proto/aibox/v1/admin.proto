@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package aibox.v1;
+
+option go_package = "github.com/cliffpyles/aibox/gen/go/aibox/v1;aiboxv1";
+
+// AdminService provides health checks and administrative endpoints
+service AdminService {
+  // Health returns basic health status
+  rpc Health(HealthRequest) returns (HealthResponse);
+
+  // Ready returns readiness status with dependency checks
+  rpc Ready(ReadyRequest) returns (ReadyResponse);
+
+  // Version returns version information
+  rpc Version(VersionRequest) returns (VersionResponse);
+}
+
+// HealthRequest is empty (just a ping)
+message HealthRequest {}
+
+// HealthResponse contains basic health info
+message HealthResponse {
+  string status = 1;   // "healthy" or "unhealthy"
+  string version = 2;  // Server version
+  int64 uptime_seconds = 3;
+}
+
+// ReadyRequest is empty
+message ReadyRequest {}
+
+// ReadyResponse contains dependency readiness
+message ReadyResponse {
+  bool ready = 1;
+  map<string, DependencyStatus> dependencies = 2;
+}
+
+// DependencyStatus describes a dependency's health
+message DependencyStatus {
+  bool healthy = 1;
+  string message = 2;
+  int64 latency_ms = 3;  // Last check latency
+}
+
+// VersionRequest is empty
+message VersionRequest {}
+
+// VersionResponse contains detailed version info
+message VersionResponse {
+  string version = 1;
+  string git_commit = 2;
+  string build_time = 3;
+  string go_version = 4;
+}

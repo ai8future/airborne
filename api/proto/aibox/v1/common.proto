@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package aibox.v1;
+
+option go_package = "github.com/cliffpyles/aibox/gen/go/aibox/v1;aiboxv1";
+
+// Provider identifies the AI provider
+enum Provider {
+  PROVIDER_UNSPECIFIED = 0;
+  PROVIDER_OPENAI = 1;
+  PROVIDER_GEMINI = 2;
+  PROVIDER_ANTHROPIC = 3;
+}
+
+// Message represents a conversation turn
+message Message {
+  string role = 1;      // "user", "assistant", "system"
+  string content = 2;
+  int64 timestamp = 3;  // Unix timestamp (optional)
+}
+
+// Usage contains token metrics
+message Usage {
+  int64 input_tokens = 1;
+  int64 output_tokens = 2;
+  int64 total_tokens = 3;
+}
+
+// Citation represents a source reference from file or web search
+message Citation {
+  enum Type {
+    TYPE_UNSPECIFIED = 0;
+    TYPE_URL = 1;
+    TYPE_FILE = 2;
+  }
+  Type type = 1;
+  string provider = 2;      // Which provider generated this citation
+  string url = 3;           // For URL citations
+  string title = 4;         // Page or file title
+  string file_id = 5;       // For file citations
+  string filename = 6;      // Original filename
+  string snippet = 7;       // Relevant text snippet
+  int32 start_index = 8;    // Position in response text
+  int32 end_index = 9;
+  bool broken_link = 10;    // True if URL was detected as broken
+}
+
+// ProviderConfig contains provider-specific settings
+message ProviderConfig {
+  string api_key = 1;
+  string model = 2;
+  optional double temperature = 3;
+  optional double top_p = 4;
+  optional int32 max_output_tokens = 5;
+  string base_url = 6;  // Optional custom endpoint
+
+  // Provider-specific options as key-value pairs
+  // Examples:
+  //   openai: "reasoning_effort" -> "high", "web_search_enabled" -> "true"
+  //   gemini: "safety_threshold" -> "BLOCK_NONE", "thinking_level" -> "MEDIUM"
+  //   anthropic: "max_tokens_to_sample" -> "4096"
+  map<string, string> extra_options = 10;
+}

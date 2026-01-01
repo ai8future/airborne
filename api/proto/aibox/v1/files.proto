@@ -1,0 +1,128 @@
+syntax = "proto3";
+
+package aibox.v1;
+
+import "aibox/v1/common.proto";
+
+option go_package = "github.com/cliffpyles/aibox/gen/go/aibox/v1;aiboxv1";
+
+// FileService handles file uploads and vector/file search stores
+service FileService {
+  // CreateFileStore creates a new vector store (OpenAI) or FileSearchStore (Gemini)
+  rpc CreateFileStore(CreateFileStoreRequest) returns (CreateFileStoreResponse);
+
+  // UploadFile uploads a file to a store (client streaming)
+  rpc UploadFile(stream UploadFileRequest) returns (UploadFileResponse);
+
+  // DeleteFileStore deletes a store and optionally its contents
+  rpc DeleteFileStore(DeleteFileStoreRequest) returns (DeleteFileStoreResponse);
+
+  // GetFileStore retrieves store information
+  rpc GetFileStore(GetFileStoreRequest) returns (GetFileStoreResponse);
+
+  // ListFileStores lists all stores for a client
+  rpc ListFileStores(ListFileStoresRequest) returns (ListFileStoresResponse);
+}
+
+// CreateFileStoreRequest creates a new file store
+message CreateFileStoreRequest {
+  Provider provider = 1;          // Which provider's store to create
+  string name = 2;                // Human-readable name
+  string client_id = 3;           // Client identifier
+  ProviderConfig config = 4;      // Provider configuration (including API key)
+
+  // Store options
+  int32 expiration_days = 5;      // Days until auto-deletion (0 = no expiration)
+}
+
+// CreateFileStoreResponse contains the created store info
+message CreateFileStoreResponse {
+  string store_id = 1;
+  Provider provider = 2;
+  string name = 3;
+  string created_at = 4;          // ISO 8601 timestamp
+}
+
+// UploadFileRequest streams file data to a store
+message UploadFileRequest {
+  oneof data {
+    UploadFileMetadata metadata = 1;  // First message: file metadata
+    bytes chunk = 2;                   // Subsequent messages: file data chunks
+  }
+}
+
+// UploadFileMetadata describes the file being uploaded
+message UploadFileMetadata {
+  string store_id = 1;            // Target store ID
+  string filename = 2;            // Original filename
+  string mime_type = 3;           // MIME type (e.g., "application/pdf")
+  int64 size = 4;                 // File size in bytes
+  Provider provider = 5;          // Provider for this store
+  ProviderConfig config = 6;      // Provider configuration
+}
+
+// UploadFileResponse contains the uploaded file info
+message UploadFileResponse {
+  string file_id = 1;             // Provider's file ID
+  string filename = 2;            // Original filename
+  string store_id = 3;            // Store it was added to
+  string status = 4;              // "processing", "ready", "failed"
+}
+
+// DeleteFileStoreRequest deletes a store
+message DeleteFileStoreRequest {
+  string store_id = 1;
+  Provider provider = 2;
+  ProviderConfig config = 3;
+  bool force = 4;                 // Delete even if files are still being processed
+}
+
+// DeleteFileStoreResponse confirms deletion
+message DeleteFileStoreResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// GetFileStoreRequest retrieves store info
+message GetFileStoreRequest {
+  string store_id = 1;
+  Provider provider = 2;
+  ProviderConfig config = 3;
+}
+
+// GetFileStoreResponse contains store details
+message GetFileStoreResponse {
+  string store_id = 1;
+  string name = 2;
+  Provider provider = 3;
+  int32 file_count = 4;
+  int64 total_bytes = 5;
+  string status = 6;              // "ready", "processing", "expired"
+  string created_at = 7;
+  string expires_at = 8;          // Empty if no expiration
+}
+
+// ListFileStoresRequest lists stores for a client
+message ListFileStoresRequest {
+  string client_id = 1;
+  Provider provider = 2;          // Optional: filter by provider
+  ProviderConfig config = 3;
+  int32 limit = 4;                // Max results (default 100)
+  string page_token = 5;          // Pagination token
+}
+
+// ListFileStoresResponse contains store list
+message ListFileStoresResponse {
+  repeated FileStoreSummary stores = 1;
+  string next_page_token = 2;
+}
+
+// FileStoreSummary is a brief store description
+message FileStoreSummary {
+  string store_id = 1;
+  string name = 2;
+  Provider provider = 3;
+  int32 file_count = 4;
+  string status = 5;
+  string created_at = 6;
+}

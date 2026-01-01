@@ -1,0 +1,139 @@
+syntax = "proto3";
+
+package aibox.v1;
+
+import "aibox/v1/common.proto";
+
+option go_package = "github.com/cliffpyles/aibox/gen/go/aibox/v1;aiboxv1";
+
+// AIBoxService provides unified AI provider access
+service AIBoxService {
+  // GenerateReply generates a completion (unary request/response)
+  rpc GenerateReply(GenerateReplyRequest) returns (GenerateReplyResponse);
+
+  // GenerateReplyStream generates a streaming completion
+  rpc GenerateReplyStream(GenerateReplyRequest) returns (stream GenerateReplyChunk);
+
+  // SelectProvider determines which provider to use based on content and rules
+  rpc SelectProvider(SelectProviderRequest) returns (SelectProviderResponse);
+}
+
+// GenerateReplyRequest contains all parameters for generating a reply
+message GenerateReplyRequest {
+  // Required: System prompt/instructions for the AI
+  string instructions = 1;
+
+  // Required: User input (the message to respond to)
+  string user_input = 2;
+
+  // Optional: Conversation history for context
+  repeated Message conversation_history = 3;
+
+  // Provider selection
+  Provider preferred_provider = 4;  // Which provider to use
+  string model_override = 5;        // Override the default model
+
+  // Feature flags
+  bool enable_file_search = 6;      // Enable RAG with file search
+  bool enable_web_search = 7;       // Enable web search grounding
+
+  // File search configuration
+  string file_store_id = 8;                     // Vector store or FileSearchStore ID
+  map<string, string> file_id_to_filename = 9;  // Map file IDs to original filenames
+
+  // Conversation continuity (OpenAI-specific, but tracked for all)
+  string previous_response_id = 10;
+
+  // Provider configurations (client can override server defaults)
+  // Key is provider name: "openai", "gemini", "anthropic"
+  map<string, ProviderConfig> provider_configs = 11;
+
+  // Failover settings
+  bool enable_failover = 12;        // Enable automatic failover on error
+  Provider fallback_provider = 13;  // Specific fallback provider (or use server default order)
+
+  // Request metadata
+  string client_id = 14;            // Identifies the calling client
+  string request_id = 15;           // Client-provided request ID for tracing
+  map<string, string> metadata = 16; // Additional metadata (e.g., user tier, project code)
+}
+
+// GenerateReplyResponse contains the generated reply
+message GenerateReplyResponse {
+  string text = 1;                  // The generated response text
+  string response_id = 2;           // For conversation continuity (OpenAI)
+  Usage usage = 3;                  // Token usage metrics
+  repeated Citation citations = 4;  // Source citations (from file or web search)
+  string model = 5;                 // Actual model used
+  Provider provider = 6;            // Actual provider used
+
+  // Failover info (if failover occurred)
+  bool failed_over = 7;
+  Provider original_provider = 8;
+  string original_error = 9;
+}
+
+// GenerateReplyChunk is a streaming response chunk
+message GenerateReplyChunk {
+  oneof chunk {
+    TextDelta text_delta = 1;
+    UsageUpdate usage_update = 2;
+    CitationUpdate citation_update = 3;
+    StreamComplete complete = 4;
+    StreamError error = 5;
+  }
+}
+
+// TextDelta contains incremental text
+message TextDelta {
+  string text = 1;
+  int32 index = 2;  // Position in the full response
+}
+
+// UsageUpdate provides intermediate token counts
+message UsageUpdate {
+  Usage usage = 1;
+}
+
+// CitationUpdate adds a citation during streaming
+message CitationUpdate {
+  Citation citation = 1;
+}
+
+// StreamComplete signals successful stream completion
+message StreamComplete {
+  string response_id = 1;
+  string model = 2;
+  Provider provider = 3;
+  Usage final_usage = 4;
+  repeated Citation citations = 5;
+}
+
+// StreamError signals an error during streaming
+message StreamError {
+  string code = 1;
+  string message = 2;
+  bool retryable = 3;
+}
+
+// SelectProviderRequest asks which provider should handle a request
+message SelectProviderRequest {
+  string content = 1;                    // The input content (for trigger phrase detection)
+  string existing_provider = 2;          // Provider from existing thread (for continuity)
+  string user_tier = 3;                  // User tier for tier-based routing
+  repeated ProviderTrigger triggers = 4; // Custom trigger phrases
+}
+
+// ProviderTrigger defines a phrase that triggers a specific provider
+message ProviderTrigger {
+  string phrase = 1;     // Trigger phrase to match
+  Provider provider = 2; // Provider to use when matched
+  string model = 3;      // Optional model override
+}
+
+// SelectProviderResponse contains the provider selection result
+message SelectProviderResponse {
+  Provider provider = 1;
+  string model_override = 2;
+  string reason = 3;  // "trigger", "tier", "continuity", "default"
+}
