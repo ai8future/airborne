@@ -12,6 +12,7 @@ import (
 	"github.com/cliffpyles/aibox/internal/provider/anthropic"
 	"github.com/cliffpyles/aibox/internal/provider/gemini"
 	"github.com/cliffpyles/aibox/internal/provider/openai"
+	"github.com/cliffpyles/aibox/internal/validation"
 	pb "github.com/cliffpyles/aibox/gen/go/aibox/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -42,6 +43,20 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 	// Check permission
 	if err := auth.RequirePermission(ctx, auth.PermissionChat); err != nil {
 		return nil, err
+	}
+
+	// Validate input sizes
+	if err := validation.ValidateGenerateRequest(
+		req.UserInput,
+		req.Instructions,
+		len(req.ConversationHistory),
+	); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	// Validate metadata
+	if err := validation.ValidateMetadata(req.Metadata); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	// Validate request
@@ -123,6 +138,20 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 	// Check permission
 	if err := auth.RequirePermission(ctx, auth.PermissionChatStream); err != nil {
 		return err
+	}
+
+	// Validate input sizes
+	if err := validation.ValidateGenerateRequest(
+		req.UserInput,
+		req.Instructions,
+		len(req.ConversationHistory),
+	); err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	// Validate metadata
+	if err := validation.ValidateMetadata(req.Metadata); err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	// Validate request
