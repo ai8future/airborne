@@ -161,3 +161,61 @@ func makeMetadata(n int) map[string]string {
 	}
 	return m
 }
+
+func TestValidateOrGenerateRequestID(t *testing.T) {
+	tests := []struct {
+		name        string
+		requestID   string
+		wantValid   bool
+		wantChanged bool
+	}{
+		{
+			name:        "empty generates new ID",
+			requestID:   "",
+			wantValid:   true,
+			wantChanged: true,
+		},
+		{
+			name:        "valid UUID passes through",
+			requestID:   "550e8400-e29b-41d4-a716-446655440000",
+			wantValid:   true,
+			wantChanged: false,
+		},
+		{
+			name:        "valid alphanumeric passes through",
+			requestID:   "req-12345-abcdef",
+			wantValid:   true,
+			wantChanged: false,
+		},
+		{
+			name:        "invalid characters rejected",
+			requestID:   "request<script>alert(1)</script>",
+			wantValid:   false,
+			wantChanged: false,
+		},
+		{
+			name:        "too long rejected",
+			requestID:   strings.Repeat("a", 129),
+			wantValid:   false,
+			wantChanged: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := ValidateOrGenerateRequestID(tt.requestID)
+			if tt.wantValid && err != nil {
+				t.Errorf("expected valid, got error: %v", err)
+			}
+			if !tt.wantValid && err == nil {
+				t.Errorf("expected error, got valid result: %s", result)
+			}
+			if tt.wantChanged && result == tt.requestID {
+				t.Error("expected ID to be changed/generated")
+			}
+			if !tt.wantChanged && tt.wantValid && result != tt.requestID {
+				t.Errorf("expected ID to pass through, got %s", result)
+			}
+		})
+	}
+}

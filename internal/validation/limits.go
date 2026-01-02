@@ -1,8 +1,11 @@
 package validation
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"regexp"
 )
 
 const (
@@ -17,6 +20,9 @@ const (
 
 	// MaxMetadataEntries is the maximum number of metadata key-value pairs
 	MaxMetadataEntries = 50
+
+	// MaxRequestIDLength is the maximum length of a request ID
+	MaxRequestIDLength = 128
 )
 
 var (
@@ -24,6 +30,7 @@ var (
 	ErrInstructionsTooLarge = errors.New("instructions exceed maximum size")
 	ErrHistoryTooLong       = errors.New("conversation_history exceeds maximum length")
 	ErrMetadataTooLarge     = errors.New("metadata exceeds maximum entries")
+	ErrInvalidRequestID     = errors.New("invalid request_id format")
 )
 
 // ValidateGenerateRequest validates size limits for a generate request
@@ -49,4 +56,33 @@ func ValidateMetadata(metadata map[string]string) error {
 		return fmt.Errorf("%w: %d entries (max %d)", ErrMetadataTooLarge, len(metadata), MaxMetadataEntries)
 	}
 	return nil
+}
+
+// requestIDPattern allows alphanumeric, hyphens, underscores
+var requestIDPattern = regexp.MustCompile(`^[a-zA-Z0-9\-_]+$`)
+
+// ValidateOrGenerateRequestID validates an existing request ID or generates a new one
+func ValidateOrGenerateRequestID(requestID string) (string, error) {
+	if requestID == "" {
+		return generateRequestID()
+	}
+
+	if len(requestID) > MaxRequestIDLength {
+		return "", fmt.Errorf("%w: exceeds %d characters", ErrInvalidRequestID, MaxRequestIDLength)
+	}
+
+	if !requestIDPattern.MatchString(requestID) {
+		return "", fmt.Errorf("%w: contains invalid characters", ErrInvalidRequestID)
+	}
+
+	return requestID, nil
+}
+
+// generateRequestID generates a new random request ID
+func generateRequestID() (string, error) {
+	bytes := make([]byte, 16)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("failed to generate request ID: %w", err)
+	}
+	return hex.EncodeToString(bytes), nil
 }
