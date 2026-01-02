@@ -47,3 +47,9 @@ failover:
 logging:
   level: "info"  # debug, info, warn, error
   format: "json" # json or text
+
+# Startup mode controls dependency requirements
+# - production: requires all dependencies (Redis, etc.) to be available (default)
+# - development: allows running without optional dependencies
+# Can also be set via AIBOX_STARTUP_MODE environment variable
+startup_mode: "production"
