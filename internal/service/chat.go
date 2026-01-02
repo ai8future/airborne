@@ -244,7 +244,7 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 				Chunk: &pb.GenerateReplyChunk_Error{
 					Error: &pb.StreamError{
 						Code:      "PROVIDER_ERROR",
-						Message:   chunk.Error.Error(),
+						Message:   sanitize.SanitizeForClient(chunk.Error),
 						Retryable: chunk.Retryable,
 					},
 				},
