@@ -343,18 +343,6 @@ func extractText(resp *anthropic.Message) string {
 	return strings.TrimSpace(text.String())
 }
 
-// extractTextFromValue extracts text from a Message value.
-func extractTextFromValue(resp anthropic.Message) string {
-	var text strings.Builder
-	for _, block := range resp.Content {
-		switch v := block.AsAny().(type) {
-		case anthropic.TextBlock:
-			text.WriteString(v.Text)
-		}
-	}
-	return strings.TrimSpace(text.String())
-}
-
 // isRetryableError checks if an error should trigger a retry.
 func isRetryableError(err error) bool {
 	if err == nil {
