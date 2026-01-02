@@ -6,7 +6,11 @@ import (
 	"runtime"
 	"time"
 
+	pb "github.com/cliffpyles/aibox/gen/go/aibox/v1"
+	"github.com/cliffpyles/aibox/internal/auth"
 	"github.com/cliffpyles/aibox/internal/config"
+	"github.com/cliffpyles/aibox/internal/redis"
+	"github.com/cliffpyles/aibox/internal/service"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -23,6 +27,45 @@ type VersionInfo struct {
 
 // NewGRPCServer creates a new gRPC server with all services registered
 func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, error) {
+	// Initialize Redis (optional - graceful degradation if not available)
+	var redisClient *redis.Client
+	var keyStore *auth.KeyStore
+	var rateLimiter *auth.RateLimiter
+	var authenticator *auth.Authenticator
+
+	redisClient, err := redis.NewClient(redis.Config{
+		Addr:     cfg.Redis.Addr,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+	})
+	if err != nil {
+		slog.Warn("Redis not available - auth and rate limiting disabled", "error", err)
+	} else {
+		keyStore = auth.NewKeyStore(redisClient)
+		rateLimiter = auth.NewRateLimiter(redisClient, auth.RateLimits{
+			RequestsPerMinute: cfg.RateLimits.DefaultRPM,
+			RequestsPerDay:    cfg.RateLimits.DefaultRPD,
+			TokensPerMinute:   cfg.RateLimits.DefaultTPM,
+		}, true)
+		authenticator = auth.NewAuthenticator(keyStore, rateLimiter)
+	}
+
+	// Build interceptor chains
+	unaryInterceptors := []grpc.UnaryServerInterceptor{
+		recoveryInterceptor(),
+		loggingInterceptor(),
+	}
+	streamInterceptors := []grpc.StreamServerInterceptor{
+		streamRecoveryInterceptor(),
+		streamLoggingInterceptor(),
+	}
+
+	// Add auth interceptors if Redis is available
+	if authenticator != nil {
+		unaryInterceptors = append(unaryInterceptors, authenticator.UnaryInterceptor())
+		streamInterceptors = append(streamInterceptors, authenticator.StreamInterceptor())
+	}
+
 	// Build server options
 	opts := []grpc.ServerOption{
 		// Keepalive settings
@@ -39,16 +82,8 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, error
 		}),
 
 		// Interceptors
-		grpc.ChainUnaryInterceptor(
-			recoveryInterceptor(),
-			loggingInterceptor(),
-			// TODO: Add auth interceptor
-			// TODO: Add rate limit interceptor
-		),
-		grpc.ChainStreamInterceptor(
-			streamRecoveryInterceptor(),
-			streamLoggingInterceptor(),
-		),
+		grpc.ChainUnaryInterceptor(unaryInterceptors...),
+		grpc.ChainStreamInterceptor(streamInterceptors...),
 
 		// Message size limits (100MB for file uploads)
 		grpc.MaxRecvMsgSize(100 * 1024 * 1024),
@@ -68,12 +103,22 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, error
 	server := grpc.NewServer(opts...)
 
 	// Register services
-	// TODO: Register AIBoxService
+	chatService := service.NewChatService(rateLimiter)
+	pb.RegisterAIBoxServiceServer(server, chatService)
+
+	adminService := service.NewAdminService(redisClient, service.AdminServiceConfig{
+		Version:   version.Version,
+		GitCommit: version.GitCommit,
+		BuildTime: version.BuildTime,
+		GoVersion: runtime.Version(),
+	})
+	pb.RegisterAdminServiceServer(server, adminService)
+
 	// TODO: Register FileService
-	// TODO: Register AdminService
 
 	slog.Info("gRPC server created",
 		"tls_enabled", cfg.TLS.Enabled,
+		"auth_enabled", authenticator != nil,
 		"version", version.Version,
 	)
 
