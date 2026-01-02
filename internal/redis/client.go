@@ -89,6 +89,11 @@ func (c *Client) Expire(ctx context.Context, key string, expiration time.Duratio
 	return c.rdb.Expire(ctx, key, expiration).Err()
 }
 
+// Eval executes a Lua script
+func (c *Client) Eval(ctx context.Context, script string, keys []string, args ...interface{}) (interface{}, error) {
+	return c.rdb.Eval(ctx, script, keys, args...).Result()
+}
+
 // TTL gets the remaining time to live for a key
 func (c *Client) TTL(ctx context.Context, key string) (time.Duration, error) {
 	return c.rdb.TTL(ctx, key).Result()
