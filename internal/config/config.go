@@ -175,6 +175,10 @@ func (c *Config) applyEnvOverrides() {
 	if level := os.Getenv("AIBOX_LOG_LEVEL"); level != "" {
 		c.Logging.Level = level
 	}
+
+	if mode := os.Getenv("AIBOX_STARTUP_MODE"); mode != "" {
+		c.StartupMode = StartupMode(mode)
+	}
 }
 
 // expandEnvVars expands ${VAR} patterns in string fields
@@ -207,6 +211,15 @@ func (c *Config) validate() error {
 		if c.TLS.KeyFile == "" {
 			return fmt.Errorf("tls.key_file required when TLS is enabled")
 		}
+	}
+
+	// Validate startup mode
+	switch c.StartupMode {
+	case StartupModeProduction, StartupModeDevelopment, "":
+		// Valid modes
+	default:
+		// Log warning but treat as production (fail-safe)
+		fmt.Fprintf(os.Stderr, "Warning: unrecognized startup_mode %q, defaulting to production\n", c.StartupMode)
 	}
 
 	return nil

@@ -12,6 +12,7 @@ const (
 )
 
 // IsProduction returns true if running in production mode
+// Unknown/invalid modes default to production for safety
 func (m StartupMode) IsProduction() bool {
-	return m == StartupModeProduction || m == ""
+	return m != StartupModeDevelopment
 }
