@@ -11,14 +11,15 @@ import (
 
 // Config holds all server configuration
 type Config struct {
-	Server     ServerConfig              `yaml:"server"`
-	TLS        TLSConfig                 `yaml:"tls"`
-	Redis      RedisConfig               `yaml:"redis"`
-	Auth       AuthConfig                `yaml:"auth"`
-	RateLimits RateLimitConfig           `yaml:"rate_limits"`
-	Providers  map[string]ProviderConfig `yaml:"providers"`
-	Failover   FailoverConfig            `yaml:"failover"`
-	Logging    LoggingConfig             `yaml:"logging"`
+	Server      ServerConfig              `yaml:"server"`
+	TLS         TLSConfig                 `yaml:"tls"`
+	Redis       RedisConfig               `yaml:"redis"`
+	Auth        AuthConfig                `yaml:"auth"`
+	RateLimits  RateLimitConfig           `yaml:"rate_limits"`
+	Providers   map[string]ProviderConfig `yaml:"providers"`
+	Failover    FailoverConfig            `yaml:"failover"`
+	Logging     LoggingConfig             `yaml:"logging"`
+	StartupMode StartupMode               `yaml:"startup_mode"`
 }
 
 // ServerConfig holds server settings
@@ -143,6 +144,7 @@ func defaultConfig() *Config {
 			Level:  "info",
 			Format: "json",
 		},
+		StartupMode: StartupModeProduction,
 	}
 }
 

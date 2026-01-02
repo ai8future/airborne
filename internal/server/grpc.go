@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"runtime"
 	"time"
@@ -39,7 +40,10 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, error
 		DB:       cfg.Redis.DB,
 	})
 	if err != nil {
-		slog.Warn("Redis not available - auth and rate limiting disabled", "error", err)
+		if cfg.StartupMode.IsProduction() {
+			return nil, fmt.Errorf("redis required in production mode: %w", err)
+		}
+		slog.Warn("Redis not available - auth and rate limiting disabled (development mode)", "error", err)
 	} else {
 		keyStore = auth.NewKeyStore(redisClient)
 		rateLimiter = auth.NewRateLimiter(redisClient, auth.RateLimits{
