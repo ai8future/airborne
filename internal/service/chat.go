@@ -60,6 +60,12 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
+	// Validate or generate request ID
+	requestID, err := validation.ValidateOrGenerateRequestID(req.RequestId)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
 	// Validate request
 	if strings.TrimSpace(req.UserInput) == "" {
 		return nil, status.Error(codes.InvalidArgument, "user_input is required")
@@ -86,14 +92,14 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 		EnableFileSearch:    req.EnableFileSearch,
 		FileIDToFilename:    req.FileIdToFilename,
 		Config:              providerCfg,
-		RequestID:           req.RequestId,
+		RequestID:           requestID,
 		ClientID:            req.ClientId,
 	}
 
 	slog.Info("generating reply",
 		"provider", selectedProvider.Name(),
 		"model", providerCfg.Model,
-		"request_id", req.RequestId,
+		"request_id", requestID,
 		"client_id", req.ClientId,
 	)
 
@@ -121,7 +127,7 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 		slog.Error("provider request failed",
 			"provider", selectedProvider.Name(),
 			"error", err,
-			"request_id", req.RequestId,
+			"request_id", requestID,
 		)
 		return nil, status.Error(codes.Internal, sanitize.SanitizeForClient(err))
 	}
@@ -160,6 +166,12 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
 
+	// Validate or generate request ID
+	requestID, err := validation.ValidateOrGenerateRequestID(req.RequestId)
+	if err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
+
 	// Validate request
 	if strings.TrimSpace(req.UserInput) == "" {
 		return status.Error(codes.InvalidArgument, "user_input is required")
@@ -186,7 +198,7 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 		EnableFileSearch:    req.EnableFileSearch,
 		FileIDToFilename:    req.FileIdToFilename,
 		Config:              providerCfg,
-		RequestID:           req.RequestId,
+		RequestID:           requestID,
 		ClientID:            req.ClientId,
 	}
 
