@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	keyPrefix = "aibox:key:"
+	defaultKeyPrefix = "aibox:key:"
 )
 
 // Permission represents an API key permission
@@ -49,12 +49,28 @@ type ClientKey struct {
 
 // KeyStore manages API keys in Redis
 type KeyStore struct {
-	redis *redis.Client
+	redis     *redis.Client
+	keyPrefix string
 }
 
-// NewKeyStore creates a new key store
+// NewKeyStore creates a new key store with default (global) prefix
 func NewKeyStore(redis *redis.Client) *KeyStore {
-	return &KeyStore{redis: redis}
+	return &KeyStore{
+		redis:     redis,
+		keyPrefix: defaultKeyPrefix,
+	}
+}
+
+// NewTenantKeyStore creates a key store scoped to a specific tenant
+func NewTenantKeyStore(redis *redis.Client, tenantID string) *KeyStore {
+	prefix := defaultKeyPrefix
+	if tenantID != "" {
+		prefix = fmt.Sprintf("aibox:%s:key:", tenantID)
+	}
+	return &KeyStore{
+		redis:     redis,
+		keyPrefix: prefix,
+	}
 }
 
 // GenerateAPIKey generates a new API key
@@ -133,7 +149,7 @@ func (s *KeyStore) GetKey(ctx context.Context, keyID string) (*ClientKey, error)
 
 // DeleteKey deletes an API key
 func (s *KeyStore) DeleteKey(ctx context.Context, keyID string) error {
-	return s.redis.Del(ctx, keyPrefix+keyID)
+	return s.redis.Del(ctx, s.keyPrefix+keyID)
 }
 
 // HasPermission checks if a key has a specific permission
@@ -161,12 +177,12 @@ func (s *KeyStore) saveKey(ctx context.Context, key *ClientKey) error {
 		}
 	}
 
-	return s.redis.Set(ctx, keyPrefix+key.KeyID, string(data), expiration)
+	return s.redis.Set(ctx, s.keyPrefix+key.KeyID, string(data), expiration)
 }
 
 // getKey retrieves a key from Redis
 func (s *KeyStore) getKey(ctx context.Context, keyID string) (*ClientKey, error) {
-	data, err := s.redis.Get(ctx, keyPrefix+keyID)
+	data, err := s.redis.Get(ctx, s.keyPrefix+keyID)
 	if err != nil {
 		if redis.IsNil(err) {
 			return nil, ErrKeyNotFound

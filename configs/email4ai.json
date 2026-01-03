@@ -1,0 +1,33 @@
+{
+  "tenant_id": "email4ai",
+  "display_name": "Email4.ai",
+  "providers": {
+    "openai": {
+      "enabled": true,
+      "api_key": "ENV=EMAIL4AI_OPENAI_API_KEY",
+      "model": "gpt-4o",
+      "extra_options": {
+        "reasoning_effort": "high"
+      }
+    },
+    "gemini": {
+      "enabled": true,
+      "api_key": "ENV=EMAIL4AI_GEMINI_API_KEY",
+      "model": "gemini-2.0-flash"
+    },
+    "anthropic": {
+      "enabled": true,
+      "api_key": "ENV=EMAIL4AI_ANTHROPIC_API_KEY",
+      "model": "claude-sonnet-4-20250514"
+    }
+  },
+  "rate_limits": {
+    "rpm": 100,
+    "rpd": 50000,
+    "tpm": 500000
+  },
+  "failover": {
+    "enabled": true,
+    "order": ["openai", "gemini", "anthropic"]
+  }
+}

@@ -12,6 +12,7 @@ import (
 	"github.com/cliffpyles/aibox/internal/config"
 	"github.com/cliffpyles/aibox/internal/redis"
 	"github.com/cliffpyles/aibox/internal/service"
+	"github.com/cliffpyles/aibox/internal/tenant"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -28,13 +29,27 @@ type VersionInfo struct {
 
 // NewGRPCServer creates a new gRPC server with all services registered
 func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, error) {
+	// Load tenant configurations
+	tenantMgr, err := tenant.Load("")
+	if err != nil {
+		slog.Warn("tenant config not loaded - running in single-tenant legacy mode", "error", err)
+		// Create an empty manager for legacy mode
+		tenantMgr = nil
+	} else {
+		slog.Info("tenant configurations loaded",
+			"tenant_count", tenantMgr.TenantCount(),
+			"tenants", tenantMgr.TenantCodes(),
+		)
+	}
+
 	// Initialize Redis (optional - graceful degradation if not available)
 	var redisClient *redis.Client
 	var keyStore *auth.KeyStore
 	var rateLimiter *auth.RateLimiter
 	var authenticator *auth.Authenticator
+	var tenantInterceptor *auth.TenantInterceptor
 
-	redisClient, err := redis.NewClient(redis.Config{
+	redisClient, err = redis.NewClient(redis.Config{
 		Addr:     cfg.Redis.Addr,
 		Password: cfg.Redis.Password,
 		DB:       cfg.Redis.DB,
@@ -54,6 +69,11 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, error
 		authenticator = auth.NewAuthenticator(keyStore, rateLimiter)
 	}
 
+	// Create tenant interceptor if tenant manager is available
+	if tenantMgr != nil {
+		tenantInterceptor = auth.NewTenantInterceptor(tenantMgr)
+	}
+
 	// Build interceptor chains
 	unaryInterceptors := []grpc.UnaryServerInterceptor{
 		recoveryInterceptor(),
@@ -62,6 +82,12 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, error
 	streamInterceptors := []grpc.StreamServerInterceptor{
 		streamRecoveryInterceptor(),
 		streamLoggingInterceptor(),
+	}
+
+	// Add tenant interceptor first (validates tenant before auth)
+	if tenantInterceptor != nil {
+		unaryInterceptors = append(unaryInterceptors, tenantInterceptor.UnaryInterceptor())
+		streamInterceptors = append(streamInterceptors, tenantInterceptor.StreamInterceptor())
 	}
 
 	// Add auth interceptors if Redis is available
@@ -120,9 +146,15 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, error
 
 	// TODO: Register FileService
 
+	tenantCount := 0
+	if tenantMgr != nil {
+		tenantCount = tenantMgr.TenantCount()
+	}
 	slog.Info("gRPC server created",
 		"tls_enabled", cfg.TLS.Enabled,
 		"auth_enabled", authenticator != nil,
+		"multitenancy_enabled", tenantInterceptor != nil,
+		"tenant_count", tenantCount,
 		"version", version.Version,
 	)
 

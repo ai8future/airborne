@@ -71,14 +71,14 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 		return nil, status.Error(codes.InvalidArgument, "user_input is required")
 	}
 
-	// Select provider
-	selectedProvider, err := s.selectProvider(req)
+	// Select provider (now with tenant awareness)
+	selectedProvider, err := s.selectProviderWithTenant(ctx, req)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid provider: %v", err)
 	}
 
-	// Build provider config
-	providerCfg := s.buildProviderConfig(req, selectedProvider.Name())
+	// Build provider config (from tenant + request overrides)
+	providerCfg := s.buildProviderConfig(ctx, req, selectedProvider.Name())
 
 	// Build params
 	params := provider.GenerateParams{
@@ -116,7 +116,7 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 					"error", err,
 				)
 
-				params.Config = s.buildProviderConfig(req, fallbackProvider.Name())
+				params.Config = s.buildProviderConfig(ctx, req, fallbackProvider.Name())
 				fallbackResult, fallbackErr := fallbackProvider.GenerateReply(ctx, params)
 				if fallbackErr == nil {
 					return s.buildResponse(fallbackResult, fallbackProvider.Name(), true, selectedProvider.Name(), err.Error()), nil
@@ -177,14 +177,14 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 		return status.Error(codes.InvalidArgument, "user_input is required")
 	}
 
-	// Select provider
-	selectedProvider, err := s.selectProvider(req)
+	// Select provider (now with tenant awareness)
+	selectedProvider, err := s.selectProviderWithTenant(ctx, req)
 	if err != nil {
 		return status.Errorf(codes.InvalidArgument, "invalid provider: %v", err)
 	}
 
-	// Build provider config
-	providerCfg := s.buildProviderConfig(req, selectedProvider.Name())
+	// Build provider config (from tenant + request overrides)
+	providerCfg := s.buildProviderConfig(ctx, req, selectedProvider.Name())
 
 	// Build params
 	params := provider.GenerateParams{
@@ -344,13 +344,32 @@ func (s *ChatService) getFallbackProvider(primary string, specified pb.Provider)
 	}
 }
 
-// buildProviderConfig builds provider config from request.
-func (s *ChatService) buildProviderConfig(req *pb.GenerateReplyRequest, providerName string) provider.ProviderConfig {
+// buildProviderConfig builds provider config from tenant config and request overrides.
+func (s *ChatService) buildProviderConfig(ctx context.Context, req *pb.GenerateReplyRequest, providerName string) provider.ProviderConfig {
 	cfg := provider.ProviderConfig{}
 
+	// First, try to get config from tenant
+	tenantCfg := auth.TenantFromContext(ctx)
+	if tenantCfg != nil {
+		if pCfg, ok := tenantCfg.GetProvider(providerName); ok {
+			cfg.APIKey = pCfg.APIKey
+			cfg.Model = pCfg.Model
+			cfg.Temperature = pCfg.Temperature
+			cfg.TopP = pCfg.TopP
+			cfg.MaxOutputTokens = pCfg.MaxOutputTokens
+			cfg.BaseURL = pCfg.BaseURL
+			cfg.ExtraOptions = pCfg.ExtraOptions
+		}
+	}
+
+	// Then, allow request to override
 	if pbCfg, ok := req.ProviderConfigs[providerName]; ok {
-		cfg.APIKey = pbCfg.ApiKey
-		cfg.Model = pbCfg.Model
+		if pbCfg.ApiKey != "" {
+			cfg.APIKey = pbCfg.ApiKey
+		}
+		if pbCfg.Model != "" {
+			cfg.Model = pbCfg.Model
+		}
 		if pbCfg.Temperature != nil {
 			temp := *pbCfg.Temperature
 			cfg.Temperature = &temp
@@ -363,11 +382,77 @@ func (s *ChatService) buildProviderConfig(req *pb.GenerateReplyRequest, provider
 			maxTokens := int(*pbCfg.MaxOutputTokens)
 			cfg.MaxOutputTokens = &maxTokens
 		}
-		cfg.BaseURL = pbCfg.BaseUrl
-		cfg.ExtraOptions = pbCfg.ExtraOptions
+		if pbCfg.BaseUrl != "" {
+			cfg.BaseURL = pbCfg.BaseUrl
+		}
+		if len(pbCfg.ExtraOptions) > 0 {
+			if cfg.ExtraOptions == nil {
+				cfg.ExtraOptions = make(map[string]string)
+			}
+			for k, v := range pbCfg.ExtraOptions {
+				cfg.ExtraOptions[k] = v
+			}
+		}
 	}
 
 	return cfg
+}
+
+// selectProviderWithTenant selects provider using tenant config for validation.
+func (s *ChatService) selectProviderWithTenant(ctx context.Context, req *pb.GenerateReplyRequest) (provider.Provider, error) {
+	tenantCfg := auth.TenantFromContext(ctx)
+
+	// Determine which provider to use
+	var providerName string
+	switch req.PreferredProvider {
+	case pb.Provider_PROVIDER_OPENAI:
+		providerName = "openai"
+	case pb.Provider_PROVIDER_GEMINI:
+		providerName = "gemini"
+	case pb.Provider_PROVIDER_ANTHROPIC:
+		providerName = "anthropic"
+	case pb.Provider_PROVIDER_UNSPECIFIED:
+		// Try to get default from tenant config
+		if tenantCfg != nil {
+			if name, _, ok := tenantCfg.DefaultProvider(); ok {
+				providerName = name
+			}
+		}
+		if providerName == "" {
+			providerName = "openai" // Default
+		}
+	default:
+		return nil, fmt.Errorf("unknown provider: %v", req.PreferredProvider)
+	}
+
+	// Validate provider is enabled for tenant (if tenant exists)
+	if tenantCfg != nil {
+		if _, ok := tenantCfg.GetProvider(providerName); !ok {
+			// Check if request has API key override
+			if pbCfg, ok := req.ProviderConfigs[providerName]; !ok || pbCfg.ApiKey == "" {
+				return nil, fmt.Errorf("provider %s not enabled for tenant", providerName)
+			}
+		}
+	}
+
+	switch providerName {
+	case "openai":
+		return s.openaiProvider, nil
+	case "gemini":
+		return s.geminiProvider, nil
+	case "anthropic":
+		return s.anthropicProvider, nil
+	default:
+		return nil, fmt.Errorf("unknown provider: %s", providerName)
+	}
+}
+
+// getTenantID returns the tenant ID from context or empty string.
+func getTenantID(ctx context.Context) string {
+	if cfg := auth.TenantFromContext(ctx); cfg != nil {
+		return cfg.TenantID
+	}
+	return ""
 }
 
 // buildResponse builds a gRPC response from provider result.

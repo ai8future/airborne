@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-01-03
+
+### Added
+- **Multitenancy support**: AIBox can now serve multiple tenants with isolated configurations
+- New `internal/tenant` package with TenantManager for per-tenant configuration
+- Per-tenant provider API keys and settings via `configs/{tenant_id}.json`
+- `tenant_id` field in `GenerateReplyRequest` and `SelectProviderRequest` proto messages
+- TenantInterceptor for validating and injecting tenant config into gRPC context
+- Secret resolution with `ENV=` and `FILE=` prefixes for API keys
+- Hot-reload support for tenant configurations (SIGHUP)
+- Tenant-scoped Redis key prefixes for data isolation
+- Backwards-compatible single-tenant mode when only one tenant is configured
+
+### Changed
+- ChatService now uses tenant config for provider selection and credentials
+- KeyStore supports tenant-scoped key prefixes via `NewTenantKeyStore()`
+- gRPC server logs tenant count on startup
+
 ## [0.2.0] - 2026-01-02
 
 ### Security

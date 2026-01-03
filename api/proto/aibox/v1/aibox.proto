@@ -20,6 +20,10 @@ service AIBoxService {
 
 // GenerateReplyRequest contains all parameters for generating a reply
 message GenerateReplyRequest {
+  // Tenant identification (required for multitenant mode, optional for single-tenant)
+  // If empty and only one tenant is configured, that tenant is used automatically.
+  string tenant_id = 17;
+
   // Required: System prompt/instructions for the AI
   string instructions = 1;
 
@@ -118,6 +122,9 @@ message StreamError {
 
 // SelectProviderRequest asks which provider should handle a request
 message SelectProviderRequest {
+  // Tenant identification (required for multitenant mode, optional for single-tenant)
+  string tenant_id = 5;
+
   string content = 1;                    // The input content (for trigger phrase detection)
   string existing_provider = 2;          // Provider from existing thread (for continuity)
   string user_tier = 3;                  // User tier for tier-based routing
