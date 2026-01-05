@@ -51,7 +51,7 @@ func NewService(
 	if opts.ChunkSize <= 0 {
 		opts.ChunkSize = 2000
 	}
-	if opts.ChunkOverlap < 0 {
+	if opts.ChunkOverlap <= 0 {
 		opts.ChunkOverlap = 200
 	}
 	if opts.RetrievalTopK <= 0 {

@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.1] - 2026-01-05
+
+### Added
+- Comprehensive unit test suite for RAG package:
+  - `chunker_test.go`: 20+ test cases for text chunking (97.9% coverage)
+  - `ollama_test.go`: HTTP mocking tests for Ollama embedder (95.1% coverage)
+  - `qdrant_test.go`: HTTP mocking tests for Qdrant vector store (88.7% coverage)
+  - `docbox_test.go`: HTTP mocking tests for Docbox extractor (85.7% coverage)
+  - `service_test.go`: RAG service orchestration tests (93.2% coverage)
+  - `testutil/mocks.go`: Configurable mocks for Embedder, Store, and Extractor interfaces
+- FileService gRPC unit tests with streaming upload support
+
+### Fixed
+- MockEmbedder field/method name conflict (Model -> ModelName)
+- ServiceOptions default handling for ChunkOverlap
+
 ## [0.4.0] - 2026-01-05
 
 ### Added

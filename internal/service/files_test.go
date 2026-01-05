@@ -1,0 +1,552 @@
+package service
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"testing"
+
+	pb "github.com/cliffpyles/aibox/gen/go/aibox/v1"
+	"github.com/cliffpyles/aibox/internal/rag"
+	"github.com/cliffpyles/aibox/internal/rag/extractor"
+	"github.com/cliffpyles/aibox/internal/rag/testutil"
+	"github.com/cliffpyles/aibox/internal/rag/vectorstore"
+)
+
+func TestNewFileService(t *testing.T) {
+	mockRAG := createMockRAGService()
+	svc := NewFileService(mockRAG)
+
+	if svc == nil {
+		t.Fatal("expected non-nil FileService")
+	}
+	if svc.ragService != mockRAG {
+		t.Error("expected ragService to be set")
+	}
+}
+
+func TestFileService_CreateFileStore_Success(t *testing.T) {
+	mockStore := testutil.NewMockStore()
+	mockRAG := createRAGServiceWithMocks(mockStore, nil, nil)
+	svc := NewFileService(mockRAG)
+
+	req := &pb.CreateFileStoreRequest{
+		ClientId: "tenant1",
+		Name:     "test-store",
+	}
+
+	resp, err := svc.CreateFileStore(context.Background(), req)
+
+	if err != nil {
+		t.Fatalf("CreateFileStore failed: %v", err)
+	}
+	if resp.StoreId != "test-store" {
+		t.Errorf("expected StoreId=test-store, got %s", resp.StoreId)
+	}
+	if resp.Name != "test-store" {
+		t.Errorf("expected Name=test-store, got %s", resp.Name)
+	}
+	if resp.CreatedAt == "" {
+		t.Error("expected CreatedAt to be set")
+	}
+
+	// Verify collection was created
+	if len(mockStore.CreateCollectionCalls) != 1 {
+		t.Errorf("expected 1 CreateCollection call, got %d", len(mockStore.CreateCollectionCalls))
+	}
+}
+
+func TestFileService_CreateFileStore_GeneratedName(t *testing.T) {
+	mockStore := testutil.NewMockStore()
+	mockRAG := createRAGServiceWithMocks(mockStore, nil, nil)
+	svc := NewFileService(mockRAG)
+
+	req := &pb.CreateFileStoreRequest{
+		ClientId: "tenant1",
+		// Name not provided
+	}
+
+	resp, err := svc.CreateFileStore(context.Background(), req)
+
+	if err != nil {
+		t.Fatalf("CreateFileStore failed: %v", err)
+	}
+	if resp.StoreId == "" {
+		t.Error("expected generated StoreId")
+	}
+	if resp.StoreId[:6] != "store_" {
+		t.Errorf("expected StoreId to start with store_, got %s", resp.StoreId)
+	}
+}
+
+func TestFileService_CreateFileStore_MissingClientID(t *testing.T) {
+	mockRAG := createMockRAGService()
+	svc := NewFileService(mockRAG)
+
+	req := &pb.CreateFileStoreRequest{
+		Name: "test-store",
+		// ClientId missing
+	}
+
+	_, err := svc.CreateFileStore(context.Background(), req)
+
+	if err == nil {
+		t.Fatal("expected error for missing client_id")
+	}
+}
+
+func TestFileService_CreateFileStore_StoreError(t *testing.T) {
+	mockStore := testutil.NewMockStore()
+	mockStore.CreateCollectionFunc = func(ctx context.Context, name string, dims int) error {
+		return fmt.Errorf("collection creation failed")
+	}
+	mockRAG := createRAGServiceWithMocks(mockStore, nil, nil)
+	svc := NewFileService(mockRAG)
+
+	req := &pb.CreateFileStoreRequest{
+		ClientId: "tenant1",
+		Name:     "test-store",
+	}
+
+	_, err := svc.CreateFileStore(context.Background(), req)
+
+	if err == nil {
+		t.Fatal("expected error from store")
+	}
+}
+
+func TestFileService_DeleteFileStore_Success(t *testing.T) {
+	mockStore := testutil.NewMockStore()
+	// Pre-create the collection
+	mockStore.CreateCollection(context.Background(), "default_test-store", 768)
+
+	mockRAG := createRAGServiceWithMocks(mockStore, nil, nil)
+	svc := NewFileService(mockRAG)
+
+	req := &pb.DeleteFileStoreRequest{
+		StoreId: "test-store",
+	}
+
+	resp, err := svc.DeleteFileStore(context.Background(), req)
+
+	if err != nil {
+		t.Fatalf("DeleteFileStore failed: %v", err)
+	}
+	if !resp.Success {
+		t.Errorf("expected Success=true, got false: %s", resp.Message)
+	}
+}
+
+func TestFileService_DeleteFileStore_MissingStoreID(t *testing.T) {
+	mockRAG := createMockRAGService()
+	svc := NewFileService(mockRAG)
+
+	req := &pb.DeleteFileStoreRequest{
+		// StoreId missing
+	}
+
+	_, err := svc.DeleteFileStore(context.Background(), req)
+
+	if err == nil {
+		t.Fatal("expected error for missing store_id")
+	}
+}
+
+func TestFileService_DeleteFileStore_Error(t *testing.T) {
+	mockStore := testutil.NewMockStore()
+	mockStore.DeleteCollectionFunc = func(ctx context.Context, name string) error {
+		return fmt.Errorf("delete failed")
+	}
+	mockRAG := createRAGServiceWithMocks(mockStore, nil, nil)
+	svc := NewFileService(mockRAG)
+
+	req := &pb.DeleteFileStoreRequest{
+		StoreId: "test-store",
+	}
+
+	resp, err := svc.DeleteFileStore(context.Background(), req)
+
+	// Should not return error but Success=false
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Success {
+		t.Error("expected Success=false on error")
+	}
+}
+
+func TestFileService_GetFileStore_Success(t *testing.T) {
+	mockStore := testutil.NewMockStore()
+	// Pre-create collection with some points
+	mockStore.CreateCollection(context.Background(), "default_test-store", 768)
+	mockStore.Upsert(context.Background(), "default_test-store", []vectorstore.Point{
+		{ID: "1", Vector: make([]float32, 768), Payload: map[string]any{}},
+		{ID: "2", Vector: make([]float32, 768), Payload: map[string]any{}},
+	})
+
+	mockRAG := createRAGServiceWithMocks(mockStore, nil, nil)
+	svc := NewFileService(mockRAG)
+
+	req := &pb.GetFileStoreRequest{
+		StoreId: "test-store",
+	}
+
+	resp, err := svc.GetFileStore(context.Background(), req)
+
+	if err != nil {
+		t.Fatalf("GetFileStore failed: %v", err)
+	}
+	if resp.StoreId != "test-store" {
+		t.Errorf("expected StoreId=test-store, got %s", resp.StoreId)
+	}
+	if resp.FileCount != 2 {
+		t.Errorf("expected FileCount=2, got %d", resp.FileCount)
+	}
+	if resp.Status != "ready" {
+		t.Errorf("expected Status=ready, got %s", resp.Status)
+	}
+}
+
+func TestFileService_GetFileStore_MissingStoreID(t *testing.T) {
+	mockRAG := createMockRAGService()
+	svc := NewFileService(mockRAG)
+
+	req := &pb.GetFileStoreRequest{
+		// StoreId missing
+	}
+
+	_, err := svc.GetFileStore(context.Background(), req)
+
+	if err == nil {
+		t.Fatal("expected error for missing store_id")
+	}
+}
+
+func TestFileService_GetFileStore_NotFound(t *testing.T) {
+	mockStore := testutil.NewMockStore()
+	mockStore.CollectionInfoFunc = func(ctx context.Context, name string) (*vectorstore.CollectionInfo, error) {
+		return nil, fmt.Errorf("collection not found")
+	}
+	mockRAG := createRAGServiceWithMocks(mockStore, nil, nil)
+	svc := NewFileService(mockRAG)
+
+	req := &pb.GetFileStoreRequest{
+		StoreId: "nonexistent",
+	}
+
+	_, err := svc.GetFileStore(context.Background(), req)
+
+	if err == nil {
+		t.Fatal("expected error for nonexistent store")
+	}
+}
+
+func TestFileService_ListFileStores(t *testing.T) {
+	mockRAG := createMockRAGService()
+	svc := NewFileService(mockRAG)
+
+	req := &pb.ListFileStoresRequest{
+		ClientId: "tenant1",
+	}
+
+	resp, err := svc.ListFileStores(context.Background(), req)
+
+	if err != nil {
+		t.Fatalf("ListFileStores failed: %v", err)
+	}
+	// Currently returns empty list
+	if resp.Stores == nil {
+		t.Error("expected Stores to be initialized")
+	}
+}
+
+// Mock stream for UploadFile testing
+type mockUploadFileServer struct {
+	pb.FileService_UploadFileServer
+	ctx      context.Context
+	messages []*pb.UploadFileRequest
+	index    int
+	response *pb.UploadFileResponse
+}
+
+func (m *mockUploadFileServer) Context() context.Context {
+	return m.ctx
+}
+
+func (m *mockUploadFileServer) Recv() (*pb.UploadFileRequest, error) {
+	if m.index >= len(m.messages) {
+		return nil, io.EOF
+	}
+	msg := m.messages[m.index]
+	m.index++
+	return msg, nil
+}
+
+func (m *mockUploadFileServer) SendAndClose(resp *pb.UploadFileResponse) error {
+	m.response = resp
+	return nil
+}
+
+func TestFileService_UploadFile_Success(t *testing.T) {
+	mockStore := testutil.NewMockStore()
+	mockEmbedder := testutil.NewMockEmbedder(768)
+	mockExtractor := testutil.NewMockExtractor()
+	mockExtractor.DefaultText = "This is extracted text from the document."
+
+	// Pre-create the collection
+	mockStore.CreateCollection(context.Background(), "default_test-store", 768)
+
+	mockRAG := createRAGServiceWithMocks(mockStore, mockEmbedder, mockExtractor)
+	svc := NewFileService(mockRAG)
+
+	stream := &mockUploadFileServer{
+		ctx: context.Background(),
+		messages: []*pb.UploadFileRequest{
+			{
+				Data: &pb.UploadFileRequest_Metadata{
+					Metadata: &pb.UploadFileMetadata{
+						StoreId:  "test-store",
+						Filename: "document.pdf",
+						MimeType: "application/pdf",
+						Size:     1024,
+					},
+				},
+			},
+			{
+				Data: &pb.UploadFileRequest_Chunk{
+					Chunk: []byte("fake pdf content"),
+				},
+			},
+		},
+	}
+
+	err := svc.UploadFile(stream)
+
+	if err != nil {
+		t.Fatalf("UploadFile failed: %v", err)
+	}
+	if stream.response == nil {
+		t.Fatal("expected response")
+	}
+	if stream.response.Status != "ready" {
+		t.Errorf("expected Status=ready, got %s", stream.response.Status)
+	}
+	if stream.response.FileId == "" {
+		t.Error("expected FileId to be set")
+	}
+	if stream.response.Filename != "document.pdf" {
+		t.Errorf("expected Filename=document.pdf, got %s", stream.response.Filename)
+	}
+}
+
+func TestFileService_UploadFile_MissingMetadata(t *testing.T) {
+	mockRAG := createMockRAGService()
+	svc := NewFileService(mockRAG)
+
+	stream := &mockUploadFileServer{
+		ctx: context.Background(),
+		messages: []*pb.UploadFileRequest{
+			{
+				// No metadata, just a chunk
+				Data: &pb.UploadFileRequest_Chunk{
+					Chunk: []byte("data"),
+				},
+			},
+		},
+	}
+
+	err := svc.UploadFile(stream)
+
+	if err == nil {
+		t.Fatal("expected error for missing metadata")
+	}
+}
+
+func TestFileService_UploadFile_MissingStoreID(t *testing.T) {
+	mockRAG := createMockRAGService()
+	svc := NewFileService(mockRAG)
+
+	stream := &mockUploadFileServer{
+		ctx: context.Background(),
+		messages: []*pb.UploadFileRequest{
+			{
+				Data: &pb.UploadFileRequest_Metadata{
+					Metadata: &pb.UploadFileMetadata{
+						// StoreId missing
+						Filename: "test.pdf",
+					},
+				},
+			},
+		},
+	}
+
+	err := svc.UploadFile(stream)
+
+	if err == nil {
+		t.Fatal("expected error for missing store_id")
+	}
+}
+
+func TestFileService_UploadFile_MissingFilename(t *testing.T) {
+	mockRAG := createMockRAGService()
+	svc := NewFileService(mockRAG)
+
+	stream := &mockUploadFileServer{
+		ctx: context.Background(),
+		messages: []*pb.UploadFileRequest{
+			{
+				Data: &pb.UploadFileRequest_Metadata{
+					Metadata: &pb.UploadFileMetadata{
+						StoreId: "test-store",
+						// Filename missing
+					},
+				},
+			},
+		},
+	}
+
+	err := svc.UploadFile(stream)
+
+	if err == nil {
+		t.Fatal("expected error for missing filename")
+	}
+}
+
+func TestFileService_UploadFile_MultipleChunks(t *testing.T) {
+	mockStore := testutil.NewMockStore()
+	mockEmbedder := testutil.NewMockEmbedder(768)
+	mockExtractor := testutil.NewMockExtractor()
+
+	// Pre-create the collection
+	mockStore.CreateCollection(context.Background(), "default_test-store", 768)
+
+	mockRAG := createRAGServiceWithMocks(mockStore, mockEmbedder, mockExtractor)
+	svc := NewFileService(mockRAG)
+
+	stream := &mockUploadFileServer{
+		ctx: context.Background(),
+		messages: []*pb.UploadFileRequest{
+			{
+				Data: &pb.UploadFileRequest_Metadata{
+					Metadata: &pb.UploadFileMetadata{
+						StoreId:  "test-store",
+						Filename: "document.pdf",
+						MimeType: "application/pdf",
+					},
+				},
+			},
+			{
+				Data: &pb.UploadFileRequest_Chunk{
+					Chunk: []byte("chunk1-"),
+				},
+			},
+			{
+				Data: &pb.UploadFileRequest_Chunk{
+					Chunk: []byte("chunk2-"),
+				},
+			},
+			{
+				Data: &pb.UploadFileRequest_Chunk{
+					Chunk: []byte("chunk3"),
+				},
+			},
+		},
+	}
+
+	err := svc.UploadFile(stream)
+
+	if err != nil {
+		t.Fatalf("UploadFile failed: %v", err)
+	}
+	if stream.response.Status != "ready" {
+		t.Errorf("expected Status=ready, got %s", stream.response.Status)
+	}
+}
+
+func TestFileService_UploadFile_IngestError(t *testing.T) {
+	mockStore := testutil.NewMockStore()
+	mockEmbedder := testutil.NewMockEmbedder(768)
+	mockExtractor := testutil.NewMockExtractor()
+	mockExtractor.ExtractFunc = func(ctx context.Context, file io.Reader, filename, mimeType string) (*extractor.ExtractionResult, error) {
+		return nil, fmt.Errorf("extraction failed")
+	}
+
+	// Pre-create the collection
+	mockStore.CreateCollection(context.Background(), "default_test-store", 768)
+
+	mockRAG := createRAGServiceWithMocks(mockStore, mockEmbedder, mockExtractor)
+	svc := NewFileService(mockRAG)
+
+	stream := &mockUploadFileServer{
+		ctx: context.Background(),
+		messages: []*pb.UploadFileRequest{
+			{
+				Data: &pb.UploadFileRequest_Metadata{
+					Metadata: &pb.UploadFileMetadata{
+						StoreId:  "test-store",
+						Filename: "document.pdf",
+					},
+				},
+			},
+			{
+				Data: &pb.UploadFileRequest_Chunk{
+					Chunk: []byte("content"),
+				},
+			},
+		},
+	}
+
+	err := svc.UploadFile(stream)
+
+	// Should return response with "failed" status, not error
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stream.response.Status != "failed" {
+		t.Errorf("expected Status=failed, got %s", stream.response.Status)
+	}
+}
+
+func TestFileService_UploadFile_EmptyStream(t *testing.T) {
+	mockRAG := createMockRAGService()
+	svc := NewFileService(mockRAG)
+
+	stream := &mockUploadFileServer{
+		ctx:      context.Background(),
+		messages: []*pb.UploadFileRequest{},
+	}
+
+	err := svc.UploadFile(stream)
+
+	if err == nil {
+		t.Fatal("expected error for empty stream")
+	}
+}
+
+// Helper functions to create mock RAG services
+
+func createMockRAGService() *rag.Service {
+	mockEmbedder := testutil.NewMockEmbedder(768)
+	mockStore := testutil.NewMockStore()
+	mockExtractor := testutil.NewMockExtractor()
+
+	return rag.NewService(mockEmbedder, mockStore, mockExtractor, rag.DefaultServiceOptions())
+}
+
+func createRAGServiceWithMocks(
+	store *testutil.MockStore,
+	embedder *testutil.MockEmbedder,
+	extractor *testutil.MockExtractor,
+) *rag.Service {
+	if embedder == nil {
+		embedder = testutil.NewMockEmbedder(768)
+	}
+	if store == nil {
+		store = testutil.NewMockStore()
+	}
+	if extractor == nil {
+		extractor = testutil.NewMockExtractor()
+	}
+
+	return rag.NewService(embedder, store, extractor, rag.DefaultServiceOptions())
+}
