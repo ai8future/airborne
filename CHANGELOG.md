@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.2] - 2026-01-05
+
+### Added
+- **RAG integration into GenerateReply**: Non-OpenAI providers (Gemini, Anthropic) now use self-hosted RAG for file search
+  - RAG context retrieved from Qdrant and injected into system prompt for Gemini/Anthropic
+  - OpenAI continues to use native `file_search` tool
+  - RAG citations automatically included in response for non-OpenAI providers
+- RAG support for GenerateReplyStream endpoint with citation streaming
+
+### Changed
+- ChatService now accepts optional RAG service in constructor
+- Server initialization reordered to create RAG service before ChatService
+- RAG retrieval fails gracefully with warning log (continues without context)
+
 ## [0.4.1] - 2026-01-05
 
 ### Added

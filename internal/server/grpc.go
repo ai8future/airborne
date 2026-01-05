@@ -136,19 +136,7 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, error
 	// Create server
 	server := grpc.NewServer(opts...)
 
-	// Register services
-	chatService := service.NewChatService(rateLimiter)
-	pb.RegisterAIBoxServiceServer(server, chatService)
-
-	adminService := service.NewAdminService(redisClient, service.AdminServiceConfig{
-		Version:   version.Version,
-		GitCommit: version.GitCommit,
-		BuildTime: version.BuildTime,
-		GoVersion: runtime.Version(),
-	})
-	pb.RegisterAdminServiceServer(server, adminService)
-
-	// Register FileService with RAG if enabled
+	// Initialize RAG service if enabled (before ChatService so it can use it)
 	var ragService *rag.Service
 	if cfg.RAG.Enabled {
 		// Initialize RAG components
@@ -171,15 +159,30 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, error
 			RetrievalTopK: cfg.RAG.RetrievalTopK,
 		})
 
-		fileService := service.NewFileService(ragService)
-		pb.RegisterFileServiceServer(server, fileService)
-
 		slog.Info("RAG enabled",
 			"ollama_url", cfg.RAG.OllamaURL,
 			"embedding_model", cfg.RAG.EmbeddingModel,
 			"qdrant_url", cfg.RAG.QdrantURL,
 			"docbox_url", cfg.RAG.DocboxURL,
 		)
+	}
+
+	// Register services
+	chatService := service.NewChatService(rateLimiter, ragService)
+	pb.RegisterAIBoxServiceServer(server, chatService)
+
+	adminService := service.NewAdminService(redisClient, service.AdminServiceConfig{
+		Version:   version.Version,
+		GitCommit: version.GitCommit,
+		BuildTime: version.BuildTime,
+		GoVersion: runtime.Version(),
+	})
+	pb.RegisterAdminServiceServer(server, adminService)
+
+	// Register FileService if RAG is enabled
+	if ragService != nil {
+		fileService := service.NewFileService(ragService)
+		pb.RegisterFileServiceServer(server, fileService)
 	}
 
 	tenantCount := 0

@@ -13,6 +13,7 @@ import (
 	"github.com/cliffpyles/aibox/internal/provider/anthropic"
 	"github.com/cliffpyles/aibox/internal/provider/gemini"
 	"github.com/cliffpyles/aibox/internal/provider/openai"
+	"github.com/cliffpyles/aibox/internal/rag"
 	"github.com/cliffpyles/aibox/internal/validation"
 	pb "github.com/cliffpyles/aibox/gen/go/aibox/v1"
 	"google.golang.org/grpc/codes"
@@ -27,15 +28,18 @@ type ChatService struct {
 	geminiProvider    provider.Provider
 	anthropicProvider provider.Provider
 	rateLimiter       *auth.RateLimiter
+	ragService        *rag.Service
 }
 
 // NewChatService creates a new chat service.
-func NewChatService(rateLimiter *auth.RateLimiter) *ChatService {
+// The ragService parameter is optional - pass nil to disable self-hosted RAG.
+func NewChatService(rateLimiter *auth.RateLimiter, ragService *rag.Service) *ChatService {
 	return &ChatService{
 		openaiProvider:    openai.NewClient(),
 		geminiProvider:    gemini.NewClient(),
 		anthropicProvider: anthropic.NewClient(),
 		rateLimiter:       rateLimiter,
+		ragService:        ragService,
 	}
 }
 
@@ -80,9 +84,30 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 	// Build provider config (from tenant + request overrides)
 	providerCfg := s.buildProviderConfig(ctx, req, selectedProvider.Name())
 
+	// Retrieve RAG context for non-OpenAI providers
+	var ragChunks []rag.RetrieveResult
+	instructions := req.Instructions
+	if req.EnableFileSearch && strings.TrimSpace(req.FileStoreId) != "" && selectedProvider.Name() != "openai" {
+		chunks, err := s.retrieveRAGContext(ctx, req.FileStoreId, req.UserInput)
+		if err != nil {
+			slog.Warn("RAG retrieval failed, continuing without context",
+				"error", err,
+				"store_id", req.FileStoreId,
+			)
+		} else if len(chunks) > 0 {
+			ragChunks = chunks
+			ragContext := formatRAGContext(chunks)
+			instructions = instructions + ragContext
+			slog.Info("injected RAG context",
+				"store_id", req.FileStoreId,
+				"chunks", len(chunks),
+			)
+		}
+	}
+
 	// Build params
 	params := provider.GenerateParams{
-		Instructions:        req.Instructions,
+		Instructions:        instructions, // May include RAG context for non-OpenAI
 		UserInput:           req.UserInput,
 		ConversationHistory: convertHistory(req.ConversationHistory),
 		FileStoreID:         req.FileStoreId,
@@ -140,6 +165,11 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 		}
 	}
 
+	// Add RAG citations to result if we used self-hosted RAG
+	if len(ragChunks) > 0 {
+		result.Citations = append(result.Citations, ragChunksToCitations(ragChunks)...)
+	}
+
 	return s.buildResponse(result, selectedProvider.Name(), false, "", ""), nil
 }
 
@@ -186,9 +216,30 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 	// Build provider config (from tenant + request overrides)
 	providerCfg := s.buildProviderConfig(ctx, req, selectedProvider.Name())
 
+	// Retrieve RAG context for non-OpenAI providers
+	var ragChunks []rag.RetrieveResult
+	instructions := req.Instructions
+	if req.EnableFileSearch && strings.TrimSpace(req.FileStoreId) != "" && selectedProvider.Name() != "openai" {
+		chunks, err := s.retrieveRAGContext(ctx, req.FileStoreId, req.UserInput)
+		if err != nil {
+			slog.Warn("RAG retrieval failed, continuing without context",
+				"error", err,
+				"store_id", req.FileStoreId,
+			)
+		} else if len(chunks) > 0 {
+			ragChunks = chunks
+			ragContext := formatRAGContext(chunks)
+			instructions = instructions + ragContext
+			slog.Info("injected RAG context for stream",
+				"store_id", req.FileStoreId,
+				"chunks", len(chunks),
+			)
+		}
+	}
+
 	// Build params
 	params := provider.GenerateParams{
-		Instructions:        req.Instructions,
+		Instructions:        instructions, // May include RAG context for non-OpenAI
 		UserInput:           req.UserInput,
 		ConversationHistory: convertHistory(req.ConversationHistory),
 		FileStoreID:         req.FileStoreId,
@@ -203,13 +254,37 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 	}
 
 	// Generate streaming reply
-	chunks, err := selectedProvider.GenerateReplyStream(ctx, params)
+	streamChunks, err := selectedProvider.GenerateReplyStream(ctx, params)
 	if err != nil {
 		return status.Error(codes.Internal, sanitize.SanitizeForClient(err))
 	}
 
-	// Forward chunks
-	for chunk := range chunks {
+	// Send RAG citations first if we have them
+	for _, chunk := range ragChunks {
+		snippet := chunk.Text
+		if len(snippet) > 200 {
+			snippet = snippet[:200] + "..."
+		}
+		citation := provider.Citation{
+			Type:     provider.CitationTypeFile,
+			Provider: "qdrant",
+			Filename: chunk.Filename,
+			Snippet:  snippet,
+		}
+		pbChunk := &pb.GenerateReplyChunk{
+			Chunk: &pb.GenerateReplyChunk_CitationUpdate{
+				CitationUpdate: &pb.CitationUpdate{
+					Citation: convertCitation(citation),
+				},
+			},
+		}
+		if err := stream.Send(pbChunk); err != nil {
+			return err
+		}
+	}
+
+	// Forward chunks from provider
+	for chunk := range streamChunks {
 		var pbChunk *pb.GenerateReplyChunk
 
 		switch chunk.Type {
@@ -453,6 +528,64 @@ func getTenantID(ctx context.Context) string {
 		return cfg.TenantID
 	}
 	return ""
+}
+
+// retrieveRAGContext retrieves relevant document chunks for non-OpenAI providers.
+// Returns nil if RAG is disabled, not configured, or provider is OpenAI.
+func (s *ChatService) retrieveRAGContext(ctx context.Context, storeID, query string) ([]rag.RetrieveResult, error) {
+	if s.ragService == nil {
+		return nil, nil
+	}
+	if strings.TrimSpace(storeID) == "" {
+		return nil, nil
+	}
+
+	tenantID := getTenantID(ctx)
+	if tenantID == "" {
+		tenantID = "default"
+	}
+
+	return s.ragService.Retrieve(ctx, rag.RetrieveParams{
+		StoreID:  storeID,
+		TenantID: tenantID,
+		Query:    query,
+		TopK:     5,
+	})
+}
+
+// formatRAGContext formats retrieved chunks for injection into the system prompt.
+func formatRAGContext(chunks []rag.RetrieveResult) string {
+	if len(chunks) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\n\n---\nRelevant context from uploaded documents:\n\n")
+
+	for i, chunk := range chunks {
+		sb.WriteString(fmt.Sprintf("[%d] From %s:\n%s\n\n", i+1, chunk.Filename, chunk.Text))
+	}
+
+	sb.WriteString("---\n\nUse the above context to help answer the user's question when relevant.\n")
+	return sb.String()
+}
+
+// ragChunksToCitations converts RAG retrieval results to provider citations.
+func ragChunksToCitations(chunks []rag.RetrieveResult) []provider.Citation {
+	citations := make([]provider.Citation, len(chunks))
+	for i, chunk := range chunks {
+		snippet := chunk.Text
+		if len(snippet) > 200 {
+			snippet = snippet[:200] + "..."
+		}
+		citations[i] = provider.Citation{
+			Type:     provider.CitationTypeFile,
+			Provider: "qdrant",
+			Filename: chunk.Filename,
+			Snippet:  snippet,
+		}
+	}
+	return citations
 }
 
 // buildResponse builds a gRPC response from provider result.
