@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.13] - 2026-01-08
+
+### Fixed
+- **Add unique FileID to prevent RAG point collisions**: File uploads now generate a unique FileID for each upload
+  - Previously, point IDs were generated from `filename_storeID_chunkIndex` which caused collisions when uploading multiple files with the same filename to the same store
+  - Now generates a cryptographically random FileID (e.g., `file_<32hex>`) per upload
+  - FileID is stored in vector point payloads and used to construct unique point IDs
+  - Maintains backward compatibility: if FileID is not provided, falls back to old naming scheme
+  - Agent: Claude:Opus 4.5
+
 ## [0.5.12] - 2026-01-08
 
 ### Fixed

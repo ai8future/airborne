@@ -22,6 +22,7 @@ const (
 	payloadThreadID   = "thread_id"
 	payloadStoreID    = "store_id"
 	payloadFilename   = "filename"
+	payloadFileID     = "file_id"
 	payloadChunkIndex = "chunk_index"
 	payloadText       = "text"
 	payloadCharStart  = "char_start"
@@ -128,6 +129,10 @@ type IngestParams struct {
 
 	// MIMEType is the file's MIME type.
 	MIMEType string
+
+	// FileID is an optional unique identifier for the file.
+	// If empty, defaults to filename_storeID for backwards compatibility.
+	FileID string
 }
 
 // IngestResult contains the result of file ingestion.
@@ -198,17 +203,24 @@ func (s *Service) Ingest(ctx context.Context, params IngestParams) (*IngestResul
 		return nil, fmt.Errorf("generate embeddings: %w", err)
 	}
 
+	// Generate fileID for unique point IDs
+	fileID := strings.TrimSpace(params.FileID)
+	if fileID == "" {
+		fileID = fmt.Sprintf("%s_%s", params.Filename, params.StoreID)
+	}
+
 	// Create points for vector store
 	points := make([]vectorstore.Point, len(chunks))
 	for i, chunk := range chunks {
 		points[i] = vectorstore.Point{
-			ID:     fmt.Sprintf("%s_%s_%d", params.Filename, params.StoreID, chunk.Index),
+			ID:     fmt.Sprintf("%s_%d", fileID, chunk.Index),
 			Vector: embeddings[i],
 			Payload: map[string]any{
 				payloadTenantID:   params.TenantID,
 				payloadThreadID:   params.ThreadID,
 				payloadStoreID:    params.StoreID,
 				payloadFilename:   params.Filename,
+				payloadFileID:     fileID,
 				payloadChunkIndex: chunk.Index,
 				payloadText:       chunk.Text,
 				payloadCharStart:  chunk.Start,

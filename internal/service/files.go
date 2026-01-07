@@ -3,6 +3,8 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,6 +17,15 @@ import (
 
 // maxUploadBytes is the maximum allowed file upload size (100MB).
 const maxUploadBytes int64 = 100 * 1024 * 1024
+
+// generateFileID creates a unique file identifier.
+func generateFileID() (string, error) {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return "file_" + hex.EncodeToString(buf), nil
+}
 
 // FileService implements the FileService gRPC service for RAG file management.
 type FileService struct {
@@ -136,6 +147,12 @@ func (s *FileService) UploadFile(stream pb.FileService_UploadFileServer) error {
 	// Get tenant ID from auth context
 	tenantID := auth.TenantIDFromContext(ctx)
 
+	// Generate unique file ID
+	fileID, err := generateFileID()
+	if err != nil {
+		return fmt.Errorf("generate file id: %w", err)
+	}
+
 	// Ingest the file via RAG service
 	result, err := s.ragService.Ingest(ctx, rag.IngestParams{
 		StoreID:  metadata.StoreId,
@@ -143,6 +160,7 @@ func (s *FileService) UploadFile(stream pb.FileService_UploadFileServer) error {
 		File:     &buf,
 		Filename: metadata.Filename,
 		MIMEType: metadata.MimeType,
+		FileID:   fileID,
 	})
 	if err != nil {
 		slog.Error("failed to ingest file",
@@ -161,11 +179,12 @@ func (s *FileService) UploadFile(stream pb.FileService_UploadFileServer) error {
 	slog.Info("file uploaded and indexed",
 		"store_id", metadata.StoreId,
 		"filename", metadata.Filename,
+		"file_id", fileID,
 		"chunks", result.ChunkCount,
 	)
 
 	return stream.SendAndClose(&pb.UploadFileResponse{
-		FileId:   fmt.Sprintf("%s_%s", metadata.StoreId, metadata.Filename),
+		FileId:   fileID,
 		Filename: metadata.Filename,
 		StoreId:  metadata.StoreId,
 		Status:   "ready",
