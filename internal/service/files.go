@@ -9,8 +9,23 @@ import (
 	"time"
 
 	pb "github.com/cliffpyles/aibox/gen/go/aibox/v1"
+	"github.com/cliffpyles/aibox/internal/auth"
 	"github.com/cliffpyles/aibox/internal/rag"
 )
+
+// maxUploadBytes is the maximum allowed file upload size (100MB).
+const maxUploadBytes int64 = 100 * 1024 * 1024
+
+// tenantIDFromContext extracts tenant ID from context, with fallback to client ID or "default".
+func tenantIDFromContext(ctx context.Context) string {
+	if cfg := auth.TenantFromContext(ctx); cfg != nil && cfg.TenantID != "" {
+		return cfg.TenantID
+	}
+	if client := auth.ClientFromContext(ctx); client != nil && client.ClientID != "" {
+		return client.ClientID
+	}
+	return "default"
+}
 
 // FileService implements the FileService gRPC service for RAG file management.
 type FileService struct {
@@ -28,8 +43,9 @@ func NewFileService(ragService *rag.Service) *FileService {
 
 // CreateFileStore creates a new vector store (Qdrant collection).
 func (s *FileService) CreateFileStore(ctx context.Context, req *pb.CreateFileStoreRequest) (*pb.CreateFileStoreResponse, error) {
-	if req.ClientId == "" {
-		return nil, fmt.Errorf("client_id is required")
+	// Check permission
+	if err := auth.RequirePermission(ctx, auth.PermissionFiles); err != nil {
+		return nil, err
 	}
 
 	// Generate store ID if name is provided, otherwise use a UUID-like ID
@@ -38,10 +54,13 @@ func (s *FileService) CreateFileStore(ctx context.Context, req *pb.CreateFileSto
 		storeID = fmt.Sprintf("store_%d", time.Now().UnixNano())
 	}
 
+	// Get tenant ID from auth context
+	tenantID := tenantIDFromContext(ctx)
+
 	// Create the Qdrant collection via RAG service
-	if err := s.ragService.CreateStore(ctx, req.ClientId, storeID); err != nil {
+	if err := s.ragService.CreateStore(ctx, tenantID, storeID); err != nil {
 		slog.Error("failed to create file store",
-			"client_id", req.ClientId,
+			"tenant_id", tenantID,
 			"store_id", storeID,
 			"error", err,
 		)
@@ -49,7 +68,7 @@ func (s *FileService) CreateFileStore(ctx context.Context, req *pb.CreateFileSto
 	}
 
 	slog.Info("file store created",
-		"client_id", req.ClientId,
+		"tenant_id", tenantID,
 		"store_id", storeID,
 	)
 
@@ -64,6 +83,11 @@ func (s *FileService) CreateFileStore(ctx context.Context, req *pb.CreateFileSto
 // UploadFile uploads a file to a store using client streaming.
 func (s *FileService) UploadFile(stream pb.FileService_UploadFileServer) error {
 	ctx := stream.Context()
+
+	// Check permission
+	if err := auth.RequirePermission(ctx, auth.PermissionFiles); err != nil {
+		return err
+	}
 
 	// First message should be metadata
 	firstMsg, err := stream.Recv()
@@ -83,14 +107,20 @@ func (s *FileService) UploadFile(stream pb.FileService_UploadFileServer) error {
 		return fmt.Errorf("filename is required")
 	}
 
+	// Validate declared size if provided
+	if metadata.Size > 0 && metadata.Size > maxUploadBytes {
+		return fmt.Errorf("file size %d exceeds maximum allowed size %d bytes", metadata.Size, maxUploadBytes)
+	}
+
 	slog.Info("starting file upload",
 		"store_id", metadata.StoreId,
 		"filename", metadata.Filename,
 		"size", metadata.Size,
 	)
 
-	// Collect file chunks
+	// Collect file chunks with size limit enforcement
 	var buf bytes.Buffer
+	var totalBytes int64
 	for {
 		msg, err := stream.Recv()
 		if err == io.EOF {
@@ -104,12 +134,18 @@ func (s *FileService) UploadFile(stream pb.FileService_UploadFileServer) error {
 		if chunk == nil {
 			continue
 		}
+
+		// Enforce size limit
+		totalBytes += int64(len(chunk))
+		if totalBytes > maxUploadBytes {
+			return fmt.Errorf("file exceeds maximum allowed size %d bytes", maxUploadBytes)
+		}
+
 		buf.Write(chunk)
 	}
 
-	// Extract tenant ID from context or use a default
-	// In a real implementation, this would come from the auth interceptor
-	tenantID := "default"
+	// Get tenant ID from auth context
+	tenantID := tenantIDFromContext(ctx)
 
 	// Ingest the file via RAG service
 	result, err := s.ragService.Ingest(ctx, rag.IngestParams{
@@ -149,12 +185,17 @@ func (s *FileService) UploadFile(stream pb.FileService_UploadFileServer) error {
 
 // DeleteFileStore deletes a store and all its contents.
 func (s *FileService) DeleteFileStore(ctx context.Context, req *pb.DeleteFileStoreRequest) (*pb.DeleteFileStoreResponse, error) {
+	// Check permission
+	if err := auth.RequirePermission(ctx, auth.PermissionFiles); err != nil {
+		return nil, err
+	}
+
 	if req.StoreId == "" {
 		return nil, fmt.Errorf("store_id is required")
 	}
 
-	// Extract tenant ID from context
-	tenantID := "default"
+	// Get tenant ID from auth context
+	tenantID := tenantIDFromContext(ctx)
 
 	if err := s.ragService.DeleteStore(ctx, tenantID, req.StoreId); err != nil {
 		slog.Error("failed to delete file store",
@@ -177,12 +218,17 @@ func (s *FileService) DeleteFileStore(ctx context.Context, req *pb.DeleteFileSto
 
 // GetFileStore retrieves store information.
 func (s *FileService) GetFileStore(ctx context.Context, req *pb.GetFileStoreRequest) (*pb.GetFileStoreResponse, error) {
+	// Check permission
+	if err := auth.RequirePermission(ctx, auth.PermissionFiles); err != nil {
+		return nil, err
+	}
+
 	if req.StoreId == "" {
 		return nil, fmt.Errorf("store_id is required")
 	}
 
-	// Extract tenant ID from context
-	tenantID := "default"
+	// Get tenant ID from auth context
+	tenantID := tenantIDFromContext(ctx)
 
 	info, err := s.ragService.StoreInfo(ctx, tenantID, req.StoreId)
 	if err != nil {
@@ -205,6 +251,11 @@ func (s *FileService) GetFileStore(ctx context.Context, req *pb.GetFileStoreRequ
 
 // ListFileStores lists all stores for a client.
 func (s *FileService) ListFileStores(ctx context.Context, req *pb.ListFileStoresRequest) (*pb.ListFileStoresResponse, error) {
+	// Check permission
+	if err := auth.RequirePermission(ctx, auth.PermissionFiles); err != nil {
+		return nil, err
+	}
+
 	// For now, return empty list - would need to implement collection listing in Qdrant
 	// This would require storing metadata about stores separately
 	return &pb.ListFileStoresResponse{

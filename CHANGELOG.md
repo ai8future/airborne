@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.5] - 2026-01-07
+
+### Security
+- **FileService authorization**: Added `auth.RequirePermission(PermissionFiles)` check to all FileService endpoints
+- **FileService tenant isolation**: Fixed tenant isolation by using `tenantIDFromContext()` instead of hardcoded "default"
+- **File upload size limits**: Added 100MB upload limit with validation at both metadata and chunk levels
+
+### Changed
+- FileService now properly derives tenant ID from authenticated client context
+- Tests updated to use auth context with file permissions
+
 ## [0.4.4] - 2026-01-07
 
 ### Added

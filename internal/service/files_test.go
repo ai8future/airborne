@@ -7,11 +7,20 @@ import (
 	"testing"
 
 	pb "github.com/cliffpyles/aibox/gen/go/aibox/v1"
+	"github.com/cliffpyles/aibox/internal/auth"
 	"github.com/cliffpyles/aibox/internal/rag"
 	"github.com/cliffpyles/aibox/internal/rag/extractor"
 	"github.com/cliffpyles/aibox/internal/rag/testutil"
 	"github.com/cliffpyles/aibox/internal/rag/vectorstore"
 )
+
+// ctxWithFilePermission creates a context with file permission for testing.
+func ctxWithFilePermission(clientID string) context.Context {
+	return context.WithValue(context.Background(), auth.ClientContextKey, &auth.ClientKey{
+		ClientID:    clientID,
+		Permissions: []auth.Permission{auth.PermissionFiles},
+	})
+}
 
 func TestNewFileService(t *testing.T) {
 	mockRAG := createMockRAGService()
@@ -35,7 +44,7 @@ func TestFileService_CreateFileStore_Success(t *testing.T) {
 		Name:     "test-store",
 	}
 
-	resp, err := svc.CreateFileStore(context.Background(), req)
+	resp, err := svc.CreateFileStore(ctxWithFilePermission("tenant1"), req)
 
 	if err != nil {
 		t.Fatalf("CreateFileStore failed: %v", err)
@@ -66,7 +75,7 @@ func TestFileService_CreateFileStore_GeneratedName(t *testing.T) {
 		// Name not provided
 	}
 
-	resp, err := svc.CreateFileStore(context.Background(), req)
+	resp, err := svc.CreateFileStore(ctxWithFilePermission("tenant1"), req)
 
 	if err != nil {
 		t.Fatalf("CreateFileStore failed: %v", err)
@@ -85,13 +94,16 @@ func TestFileService_CreateFileStore_MissingClientID(t *testing.T) {
 
 	req := &pb.CreateFileStoreRequest{
 		Name: "test-store",
-		// ClientId missing
+		// ClientId missing - but now we get tenant from auth context
 	}
 
-	_, err := svc.CreateFileStore(context.Background(), req)
-
-	if err == nil {
-		t.Fatal("expected error for missing client_id")
+	// With auth context, this should succeed (tenant from context)
+	resp, err := svc.CreateFileStore(ctxWithFilePermission("tenant1"), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.StoreId == "" {
+		t.Error("expected StoreId to be set")
 	}
 }
 
@@ -108,7 +120,7 @@ func TestFileService_CreateFileStore_StoreError(t *testing.T) {
 		Name:     "test-store",
 	}
 
-	_, err := svc.CreateFileStore(context.Background(), req)
+	_, err := svc.CreateFileStore(ctxWithFilePermission("tenant1"), req)
 
 	if err == nil {
 		t.Fatal("expected error from store")
@@ -117,8 +129,8 @@ func TestFileService_CreateFileStore_StoreError(t *testing.T) {
 
 func TestFileService_DeleteFileStore_Success(t *testing.T) {
 	mockStore := testutil.NewMockStore()
-	// Pre-create the collection
-	mockStore.CreateCollection(context.Background(), "default_test-store", 768)
+	// Pre-create the collection - using tenant1 since that's what ctxWithFilePermission provides
+	mockStore.CreateCollection(context.Background(), "tenant1_test-store", 768)
 
 	mockRAG := createRAGServiceWithMocks(mockStore, nil, nil)
 	svc := NewFileService(mockRAG)
@@ -127,7 +139,7 @@ func TestFileService_DeleteFileStore_Success(t *testing.T) {
 		StoreId: "test-store",
 	}
 
-	resp, err := svc.DeleteFileStore(context.Background(), req)
+	resp, err := svc.DeleteFileStore(ctxWithFilePermission("tenant1"), req)
 
 	if err != nil {
 		t.Fatalf("DeleteFileStore failed: %v", err)
@@ -145,7 +157,7 @@ func TestFileService_DeleteFileStore_MissingStoreID(t *testing.T) {
 		// StoreId missing
 	}
 
-	_, err := svc.DeleteFileStore(context.Background(), req)
+	_, err := svc.DeleteFileStore(ctxWithFilePermission("tenant1"), req)
 
 	if err == nil {
 		t.Fatal("expected error for missing store_id")
@@ -164,7 +176,7 @@ func TestFileService_DeleteFileStore_Error(t *testing.T) {
 		StoreId: "test-store",
 	}
 
-	resp, err := svc.DeleteFileStore(context.Background(), req)
+	resp, err := svc.DeleteFileStore(ctxWithFilePermission("tenant1"), req)
 
 	// Should not return error but Success=false
 	if err != nil {
@@ -177,9 +189,9 @@ func TestFileService_DeleteFileStore_Error(t *testing.T) {
 
 func TestFileService_GetFileStore_Success(t *testing.T) {
 	mockStore := testutil.NewMockStore()
-	// Pre-create collection with some points
-	mockStore.CreateCollection(context.Background(), "default_test-store", 768)
-	mockStore.Upsert(context.Background(), "default_test-store", []vectorstore.Point{
+	// Pre-create collection with some points - using tenant1 since that's what ctxWithFilePermission provides
+	mockStore.CreateCollection(context.Background(), "tenant1_test-store", 768)
+	mockStore.Upsert(context.Background(), "tenant1_test-store", []vectorstore.Point{
 		{ID: "1", Vector: make([]float32, 768), Payload: map[string]any{}},
 		{ID: "2", Vector: make([]float32, 768), Payload: map[string]any{}},
 	})
@@ -191,7 +203,7 @@ func TestFileService_GetFileStore_Success(t *testing.T) {
 		StoreId: "test-store",
 	}
 
-	resp, err := svc.GetFileStore(context.Background(), req)
+	resp, err := svc.GetFileStore(ctxWithFilePermission("tenant1"), req)
 
 	if err != nil {
 		t.Fatalf("GetFileStore failed: %v", err)
@@ -215,7 +227,7 @@ func TestFileService_GetFileStore_MissingStoreID(t *testing.T) {
 		// StoreId missing
 	}
 
-	_, err := svc.GetFileStore(context.Background(), req)
+	_, err := svc.GetFileStore(ctxWithFilePermission("tenant1"), req)
 
 	if err == nil {
 		t.Fatal("expected error for missing store_id")
@@ -234,7 +246,7 @@ func TestFileService_GetFileStore_NotFound(t *testing.T) {
 		StoreId: "nonexistent",
 	}
 
-	_, err := svc.GetFileStore(context.Background(), req)
+	_, err := svc.GetFileStore(ctxWithFilePermission("tenant1"), req)
 
 	if err == nil {
 		t.Fatal("expected error for nonexistent store")
@@ -249,7 +261,7 @@ func TestFileService_ListFileStores(t *testing.T) {
 		ClientId: "tenant1",
 	}
 
-	resp, err := svc.ListFileStores(context.Background(), req)
+	resp, err := svc.ListFileStores(ctxWithFilePermission("tenant1"), req)
 
 	if err != nil {
 		t.Fatalf("ListFileStores failed: %v", err)
@@ -293,14 +305,14 @@ func TestFileService_UploadFile_Success(t *testing.T) {
 	mockExtractor := testutil.NewMockExtractor()
 	mockExtractor.DefaultText = "This is extracted text from the document."
 
-	// Pre-create the collection
-	mockStore.CreateCollection(context.Background(), "default_test-store", 768)
+	// Pre-create the collection - using tenant1 since that's what ctxWithFilePermission provides
+	mockStore.CreateCollection(context.Background(), "tenant1_test-store", 768)
 
 	mockRAG := createRAGServiceWithMocks(mockStore, mockEmbedder, mockExtractor)
 	svc := NewFileService(mockRAG)
 
 	stream := &mockUploadFileServer{
-		ctx: context.Background(),
+		ctx: ctxWithFilePermission("tenant1"),
 		messages: []*pb.UploadFileRequest{
 			{
 				Data: &pb.UploadFileRequest_Metadata{
@@ -344,7 +356,7 @@ func TestFileService_UploadFile_MissingMetadata(t *testing.T) {
 	svc := NewFileService(mockRAG)
 
 	stream := &mockUploadFileServer{
-		ctx: context.Background(),
+		ctx: ctxWithFilePermission("tenant1"),
 		messages: []*pb.UploadFileRequest{
 			{
 				// No metadata, just a chunk
@@ -367,7 +379,7 @@ func TestFileService_UploadFile_MissingStoreID(t *testing.T) {
 	svc := NewFileService(mockRAG)
 
 	stream := &mockUploadFileServer{
-		ctx: context.Background(),
+		ctx: ctxWithFilePermission("tenant1"),
 		messages: []*pb.UploadFileRequest{
 			{
 				Data: &pb.UploadFileRequest_Metadata{
@@ -392,7 +404,7 @@ func TestFileService_UploadFile_MissingFilename(t *testing.T) {
 	svc := NewFileService(mockRAG)
 
 	stream := &mockUploadFileServer{
-		ctx: context.Background(),
+		ctx: ctxWithFilePermission("tenant1"),
 		messages: []*pb.UploadFileRequest{
 			{
 				Data: &pb.UploadFileRequest_Metadata{
@@ -417,14 +429,14 @@ func TestFileService_UploadFile_MultipleChunks(t *testing.T) {
 	mockEmbedder := testutil.NewMockEmbedder(768)
 	mockExtractor := testutil.NewMockExtractor()
 
-	// Pre-create the collection
-	mockStore.CreateCollection(context.Background(), "default_test-store", 768)
+	// Pre-create the collection - using tenant1 since that's what ctxWithFilePermission provides
+	mockStore.CreateCollection(context.Background(), "tenant1_test-store", 768)
 
 	mockRAG := createRAGServiceWithMocks(mockStore, mockEmbedder, mockExtractor)
 	svc := NewFileService(mockRAG)
 
 	stream := &mockUploadFileServer{
-		ctx: context.Background(),
+		ctx: ctxWithFilePermission("tenant1"),
 		messages: []*pb.UploadFileRequest{
 			{
 				Data: &pb.UploadFileRequest_Metadata{
@@ -471,14 +483,14 @@ func TestFileService_UploadFile_IngestError(t *testing.T) {
 		return nil, fmt.Errorf("extraction failed")
 	}
 
-	// Pre-create the collection
-	mockStore.CreateCollection(context.Background(), "default_test-store", 768)
+	// Pre-create the collection - using tenant1 since that's what ctxWithFilePermission provides
+	mockStore.CreateCollection(context.Background(), "tenant1_test-store", 768)
 
 	mockRAG := createRAGServiceWithMocks(mockStore, mockEmbedder, mockExtractor)
 	svc := NewFileService(mockRAG)
 
 	stream := &mockUploadFileServer{
-		ctx: context.Background(),
+		ctx: ctxWithFilePermission("tenant1"),
 		messages: []*pb.UploadFileRequest{
 			{
 				Data: &pb.UploadFileRequest_Metadata{
@@ -512,7 +524,7 @@ func TestFileService_UploadFile_EmptyStream(t *testing.T) {
 	svc := NewFileService(mockRAG)
 
 	stream := &mockUploadFileServer{
-		ctx:      context.Background(),
+		ctx:      ctxWithFilePermission("tenant1"),
 		messages: []*pb.UploadFileRequest{},
 	}
 
