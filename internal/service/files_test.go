@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"testing"
 
 	pb "github.com/cliffpyles/aibox/gen/go/aibox/v1"
@@ -532,6 +533,152 @@ func TestFileService_UploadFile_EmptyStream(t *testing.T) {
 
 	if err == nil {
 		t.Fatal("expected error for empty stream")
+	}
+}
+
+func TestFileService_UploadFile_MetadataSizeExceedsLimit(t *testing.T) {
+	mockRAG := createMockRAGService()
+	svc := NewFileService(mockRAG)
+
+	stream := &mockUploadFileServer{
+		ctx: ctxWithFilePermission("tenant1"),
+		messages: []*pb.UploadFileRequest{
+			{
+				Data: &pb.UploadFileRequest_Metadata{
+					Metadata: &pb.UploadFileMetadata{
+						StoreId:  "test-store",
+						Filename: "huge-file.bin",
+						Size:     200 * 1024 * 1024, // 200MB, exceeds 100MB limit
+					},
+				},
+			},
+		},
+	}
+
+	err := svc.UploadFile(stream)
+
+	if err == nil {
+		t.Fatal("expected error for file size exceeding limit")
+	}
+	if !strings.Contains(err.Error(), "exceeds maximum") {
+		t.Errorf("expected error about size limit, got: %v", err)
+	}
+}
+
+func TestFileService_UploadFile_StreamingSizeExceedsLimit(t *testing.T) {
+	mockStore := testutil.NewMockStore()
+	mockStore.CreateCollection(context.Background(), "tenant1_test-store", 768)
+	mockRAG := createRAGServiceWithMocks(mockStore, nil, nil)
+	svc := NewFileService(mockRAG)
+
+	// Create chunks that exceed the limit (100MB)
+	// We'll send enough 10MB chunks to exceed the limit
+	largeChunk := make([]byte, 20*1024*1024) // 20MB per chunk
+	for i := range largeChunk {
+		largeChunk[i] = byte(i % 256)
+	}
+
+	stream := &mockUploadFileServer{
+		ctx: ctxWithFilePermission("tenant1"),
+		messages: []*pb.UploadFileRequest{
+			{
+				Data: &pb.UploadFileRequest_Metadata{
+					Metadata: &pb.UploadFileMetadata{
+						StoreId:  "test-store",
+						Filename: "streaming-large.bin",
+						// Size not declared, so must check during streaming
+					},
+				},
+			},
+			{Data: &pb.UploadFileRequest_Chunk{Chunk: largeChunk}}, // 20MB
+			{Data: &pb.UploadFileRequest_Chunk{Chunk: largeChunk}}, // 40MB
+			{Data: &pb.UploadFileRequest_Chunk{Chunk: largeChunk}}, // 60MB
+			{Data: &pb.UploadFileRequest_Chunk{Chunk: largeChunk}}, // 80MB
+			{Data: &pb.UploadFileRequest_Chunk{Chunk: largeChunk}}, // 100MB
+			{Data: &pb.UploadFileRequest_Chunk{Chunk: largeChunk}}, // 120MB - exceeds limit
+		},
+	}
+
+	err := svc.UploadFile(stream)
+
+	if err == nil {
+		t.Fatal("expected error for streaming size exceeding limit")
+	}
+	if !strings.Contains(err.Error(), "exceeds maximum") {
+		t.Errorf("expected error about size limit, got: %v", err)
+	}
+}
+
+func TestFileService_UploadFile_ExactlyAtLimit(t *testing.T) {
+	mockStore := testutil.NewMockStore()
+	mockEmbedder := testutil.NewMockEmbedder(768)
+	mockExtractor := testutil.NewMockExtractor()
+	mockStore.CreateCollection(context.Background(), "tenant1_test-store", 768)
+	mockRAG := createRAGServiceWithMocks(mockStore, mockEmbedder, mockExtractor)
+	svc := NewFileService(mockRAG)
+
+	// Create a chunk exactly at the limit (100MB)
+	// This should succeed
+	exactLimitChunk := make([]byte, 1024) // 1KB per chunk
+
+	stream := &mockUploadFileServer{
+		ctx: ctxWithFilePermission("tenant1"),
+		messages: []*pb.UploadFileRequest{
+			{
+				Data: &pb.UploadFileRequest_Metadata{
+					Metadata: &pb.UploadFileMetadata{
+						StoreId:  "test-store",
+						Filename: "at-limit.bin",
+						Size:     int64(len(exactLimitChunk)),
+					},
+				},
+			},
+			{Data: &pb.UploadFileRequest_Chunk{Chunk: exactLimitChunk}},
+		},
+	}
+
+	err := svc.UploadFile(stream)
+
+	if err != nil {
+		t.Fatalf("unexpected error for file at limit: %v", err)
+	}
+	if stream.response.Status != "ready" {
+		t.Errorf("expected Status=ready, got %s", stream.response.Status)
+	}
+}
+
+func TestFileService_AuthRequired(t *testing.T) {
+	mockRAG := createMockRAGService()
+	svc := NewFileService(mockRAG)
+
+	// Test CreateFileStore without auth
+	_, err := svc.CreateFileStore(context.Background(), &pb.CreateFileStoreRequest{
+		Name: "test-store",
+	})
+	if err == nil {
+		t.Error("CreateFileStore: expected auth error")
+	}
+
+	// Test GetFileStore without auth
+	_, err = svc.GetFileStore(context.Background(), &pb.GetFileStoreRequest{
+		StoreId: "test-store",
+	})
+	if err == nil {
+		t.Error("GetFileStore: expected auth error")
+	}
+
+	// Test DeleteFileStore without auth
+	_, err = svc.DeleteFileStore(context.Background(), &pb.DeleteFileStoreRequest{
+		StoreId: "test-store",
+	})
+	if err == nil {
+		t.Error("DeleteFileStore: expected auth error")
+	}
+
+	// Test ListFileStores without auth
+	_, err = svc.ListFileStores(context.Background(), &pb.ListFileStoresRequest{})
+	if err == nil {
+		t.Error("ListFileStores: expected auth error")
 	}
 }
 

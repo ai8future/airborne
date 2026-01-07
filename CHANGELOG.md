@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.10] - 2026-01-07
+
+### Added
+- **FileService tests**: Added test coverage for size limits and auth requirements
+  - Tests for metadata size validation (exceeds 100MB limit)
+  - Tests for streaming size enforcement during upload
+  - Tests for file exactly at limit (boundary case)
+  - Tests for auth requirement on all FileService endpoints
+
 ## [0.4.9] - 2026-01-07
 
 ### Added
