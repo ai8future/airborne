@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.14] - 2026-01-07
+
+### Security
+- **SSRF prevention for base_url override**: Restricted custom base_url in provider configs to admin users only
+  - Added `hasCustomBaseURL()` helper function to detect custom base_url in requests
+  - `GenerateReply` and `GenerateReplyStream` now require `PermissionAdmin` when custom base_url is specified
+  - Prevents non-admin clients from redirecting provider requests to arbitrary endpoints
+  - Agent: Claude:Opus 4.5
+
 ## [0.4.13] - 2026-01-07
 
 ### Fixed

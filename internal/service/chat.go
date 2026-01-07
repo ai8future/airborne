@@ -43,11 +43,29 @@ func NewChatService(rateLimiter *auth.RateLimiter, ragService *rag.Service) *Cha
 	}
 }
 
+// hasCustomBaseURL checks if any provider config in the request has a custom base_url.
+// This is used to restrict SSRF risk - only admins can redirect requests to custom endpoints.
+func hasCustomBaseURL(req *pb.GenerateReplyRequest) bool {
+	for _, cfg := range req.ProviderConfigs {
+		if cfg != nil && strings.TrimSpace(cfg.GetBaseUrl()) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // GenerateReply generates a completion.
 func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRequest) (*pb.GenerateReplyResponse, error) {
 	// Check permission
 	if err := auth.RequirePermission(ctx, auth.PermissionChat); err != nil {
 		return nil, err
+	}
+
+	// SECURITY: Custom base_url requires admin permission to prevent SSRF attacks
+	if hasCustomBaseURL(req) {
+		if err := auth.RequirePermission(ctx, auth.PermissionAdmin); err != nil {
+			return nil, status.Error(codes.PermissionDenied, "custom base_url requires admin permission")
+		}
 	}
 
 	// Validate input sizes
@@ -180,6 +198,13 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 	// Check permission
 	if err := auth.RequirePermission(ctx, auth.PermissionChatStream); err != nil {
 		return err
+	}
+
+	// SECURITY: Custom base_url requires admin permission to prevent SSRF attacks
+	if hasCustomBaseURL(req) {
+		if err := auth.RequirePermission(ctx, auth.PermissionAdmin); err != nil {
+			return status.Error(codes.PermissionDenied, "custom base_url requires admin permission")
+		}
 	}
 
 	// Validate input sizes
