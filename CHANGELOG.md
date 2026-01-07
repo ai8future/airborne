@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.4] - 2026-01-07
+
+### Added
+- Patch-ready diffs for all 15 security issues in audit report
+  - Each finding now includes copy-paste ready unified diff format
+  - Appendix B with instructions for applying patches via `git apply`
+  - Proposed design for key rotation mechanism (issue #13)
+
 ## [0.4.3] - 2026-01-07
 
 ### Added
