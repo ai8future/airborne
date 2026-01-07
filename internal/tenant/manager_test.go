@@ -134,7 +134,7 @@ func TestManagerReload(t *testing.T) {
 		t.Fatalf("loadTenants failed: %v", err)
 	}
 
-	mgr := &Manager{Env: EnvConfig{ConfigsDir: dir}, Tenants: initial}
+	mgr := &Manager{Env: EnvConfig{ConfigsDir: dir}, Tenants: initial, configDir: dir}
 
 	// Remove t1 and add t3
 	if err := os.Remove(filepath.Join(dir, "t1.json")); err != nil {
@@ -167,7 +167,7 @@ func TestManagerReload(t *testing.T) {
 }
 
 func TestManagerReload_Error(t *testing.T) {
-	mgr := &Manager{Env: EnvConfig{ConfigsDir: "/nonexistent/path"}, Tenants: make(map[string]TenantConfig)}
+	mgr := &Manager{Env: EnvConfig{ConfigsDir: "/nonexistent/path"}, Tenants: make(map[string]TenantConfig), configDir: "/nonexistent/path"}
 
 	_, err := mgr.Reload()
 	if err == nil {

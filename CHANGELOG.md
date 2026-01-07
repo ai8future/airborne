@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.6] - 2026-01-08
+
+### Changed
+- **Refactored chat service**: Extracted shared request preparation pipeline into `prepareRequest()` helper
+  - Reduced ~70 lines of code duplication between `GenerateReply` and `GenerateReplyStream`
+  - Single point of truth for validation, provider selection, RAG retrieval, and params building
+  - Agent: Claude:Opus 4.5
+
+### Fixed
+- **Streaming capability honesty**: Changed `SupportsStreaming()` to return `false` for OpenAI and Gemini providers
+  - These providers currently fall back to non-streaming (call GenerateReply and send result as single chunk)
+  - Anthropic correctly returns `true` as it has real streaming implementation
+  - Agent: Claude:Opus 4.5
+
+- **Tenant config reload path bug**: Fixed `Reload()` to use the effective config directory set during `Load()`
+  - Previously `Reload()` would ignore any `configDir` override passed to `Load()`
+  - Added `configDir` field to Manager to track the effective directory
+  - Agent: Claude:Opus 4.5
+
+### Removed
+- **Dead code cleanup**:
+  - Removed unused `selectProvider()` function from chat service (superseded by `selectProviderWithTenant()`)
+  - Removed unused `debug` field and `WithDebugLogging()` option from all three provider clients
+  - Removed unused `ProviderKeys` field from `ClientKey` struct
+  - Agent: Claude:Opus 4.5
+
+### Improved
+- **RAG payload keys**: Added constants for RAG payload field names (`payloadTenantID`, `payloadText`, etc.)
+  - Reduces typo risk and makes schema evolution easier
+  - Agent: Claude:Opus 4.5
+
 ## [0.5.5] - 2026-01-07
 
 ### Added

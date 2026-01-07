@@ -8,9 +8,10 @@ import (
 
 // Manager holds environment-level config and indexed tenant configs.
 type Manager struct {
-	Env     EnvConfig
-	Tenants map[string]TenantConfig
-	mu      sync.RWMutex
+	Env       EnvConfig
+	Tenants   map[string]TenantConfig
+	configDir string // effective config directory (may differ from Env.ConfigsDir if overridden)
+	mu        sync.RWMutex
 }
 
 // ReloadDiff describes what changed during a config reload.
@@ -29,18 +30,20 @@ func Load(configDir string) (*Manager, error) {
 	}
 
 	// Use configDir if provided, otherwise use env config
-	if configDir == "" {
-		configDir = envCfg.ConfigsDir
+	effectiveDir := configDir
+	if effectiveDir == "" {
+		effectiveDir = envCfg.ConfigsDir
 	}
 
-	tenantCfgs, err := loadTenants(configDir)
+	tenantCfgs, err := loadTenants(effectiveDir)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Manager{
-		Env:     envCfg,
-		Tenants: tenantCfgs,
+		Env:       envCfg,
+		Tenants:   tenantCfgs,
+		configDir: effectiveDir, // store effective dir for Reload()
 	}, nil
 }
 
@@ -90,7 +93,8 @@ func (m *Manager) DefaultTenant() (TenantConfig, bool) {
 // Returns a diff of what changed. Thread-safe.
 func (m *Manager) Reload() (ReloadDiff, error) {
 	// Load new configs (this validates them)
-	newTenants, err := loadTenants(m.Env.ConfigsDir)
+	// Use m.configDir which preserves any override from initial Load()
+	newTenants, err := loadTenants(m.configDir)
 	if err != nil {
 		return ReloadDiff{}, fmt.Errorf("reload failed: %w", err)
 	}

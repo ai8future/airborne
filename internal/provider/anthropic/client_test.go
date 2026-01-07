@@ -107,27 +107,10 @@ func TestIsRetryableError(t *testing.T) {
 }
 
 func TestNewClient(t *testing.T) {
-	t.Run("default options", func(t *testing.T) {
+	t.Run("creates client", func(t *testing.T) {
 		client := NewClient()
 		if client == nil {
 			t.Fatal("NewClient() returned nil")
-		}
-		if client.debug {
-			t.Error("debug should be false by default")
-		}
-	})
-
-	t.Run("with debug logging", func(t *testing.T) {
-		client := NewClient(WithDebugLogging(true))
-		if !client.debug {
-			t.Error("debug should be true")
-		}
-	})
-
-	t.Run("nil options ignored", func(t *testing.T) {
-		client := NewClient(nil, WithDebugLogging(true), nil)
-		if !client.debug {
-			t.Error("debug should be true")
 		}
 	})
 }

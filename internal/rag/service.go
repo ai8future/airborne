@@ -16,6 +16,18 @@ import (
 
 const maxCollectionPartLen = 128
 
+// Payload field keys for vector store points.
+const (
+	payloadTenantID   = "tenant_id"
+	payloadThreadID   = "thread_id"
+	payloadStoreID    = "store_id"
+	payloadFilename   = "filename"
+	payloadChunkIndex = "chunk_index"
+	payloadText       = "text"
+	payloadCharStart  = "char_start"
+	payloadCharEnd    = "char_end"
+)
+
 var collectionPartPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
 
 func validateCollectionParts(tenantID, storeID string) error {
@@ -193,14 +205,14 @@ func (s *Service) Ingest(ctx context.Context, params IngestParams) (*IngestResul
 			ID:     fmt.Sprintf("%s_%s_%d", params.Filename, params.StoreID, chunk.Index),
 			Vector: embeddings[i],
 			Payload: map[string]any{
-				"tenant_id":   params.TenantID,
-				"thread_id":   params.ThreadID,
-				"store_id":    params.StoreID,
-				"filename":    params.Filename,
-				"chunk_index": chunk.Index,
-				"text":        chunk.Text,
-				"char_start":  chunk.Start,
-				"char_end":    chunk.End,
+				payloadTenantID:   params.TenantID,
+				payloadThreadID:   params.ThreadID,
+				payloadStoreID:    params.StoreID,
+				payloadFilename:   params.Filename,
+				payloadChunkIndex: chunk.Index,
+				payloadText:       chunk.Text,
+				payloadCharStart:  chunk.Start,
+				payloadCharEnd:    chunk.End,
 			},
 		}
 	}
@@ -283,7 +295,7 @@ func (s *Service) Retrieve(ctx context.Context, params RetrieveParams) ([]Retrie
 	if params.ThreadID != "" {
 		filter = &vectorstore.Filter{
 			Must: []vectorstore.Condition{
-				{Field: "thread_id", Match: params.ThreadID},
+				{Field: payloadThreadID, Match: params.ThreadID},
 			},
 		}
 	}
@@ -303,9 +315,9 @@ func (s *Service) Retrieve(ctx context.Context, params RetrieveParams) ([]Retrie
 	retrieved := make([]RetrieveResult, len(results))
 	for i, r := range results {
 		retrieved[i] = RetrieveResult{
-			Text:       getString(r.Payload, "text"),
-			Filename:   getString(r.Payload, "filename"),
-			ChunkIndex: getInt(r.Payload, "chunk_index"),
+			Text:       getString(r.Payload, payloadText),
+			Filename:   getString(r.Payload, payloadFilename),
+			ChunkIndex: getInt(r.Payload, payloadChunkIndex),
 			Score:      r.Score,
 		}
 	}

@@ -43,24 +43,19 @@ func NewChatService(rateLimiter *auth.RateLimiter, ragService *rag.Service) *Cha
 	}
 }
 
-// hasCustomBaseURL checks if any provider config in the request has a custom base_url.
-// This is used to restrict SSRF risk - only admins can redirect requests to custom endpoints.
-func hasCustomBaseURL(req *pb.GenerateReplyRequest) bool {
-	for _, cfg := range req.ProviderConfigs {
-		if cfg != nil && strings.TrimSpace(cfg.GetBaseUrl()) != "" {
-			return true
-		}
-	}
-	return false
+// preparedRequest holds the result of request preparation shared by both
+// GenerateReply and GenerateReplyStream.
+type preparedRequest struct {
+	provider   provider.Provider
+	params     provider.GenerateParams
+	ragChunks  []rag.RetrieveResult
+	requestID  string
+	providerCfg provider.ProviderConfig
 }
 
-// GenerateReply generates a completion.
-func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRequest) (*pb.GenerateReplyResponse, error) {
-	// Check permission
-	if err := auth.RequirePermission(ctx, auth.PermissionChat); err != nil {
-		return nil, err
-	}
-
+// prepareRequest validates the request and prepares all data needed for generation.
+// This extracts the duplicated logic from GenerateReply and GenerateReplyStream.
+func (s *ChatService) prepareRequest(ctx context.Context, req *pb.GenerateReplyRequest) (*preparedRequest, error) {
 	// SECURITY: Custom base_url requires admin permission to prevent SSRF attacks
 	if hasCustomBaseURL(req) {
 		if err := auth.RequirePermission(ctx, auth.PermissionAdmin); err != nil {
@@ -93,7 +88,7 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 		return nil, status.Error(codes.InvalidArgument, "user_input is required")
 	}
 
-	// Select provider (now with tenant awareness)
+	// Select provider (with tenant awareness)
 	selectedProvider, err := s.selectProviderWithTenant(ctx, req)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid provider: %v", err)
@@ -139,38 +134,71 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 		ClientID:            req.ClientId,
 	}
 
+	return &preparedRequest{
+		provider:    selectedProvider,
+		params:      params,
+		ragChunks:   ragChunks,
+		requestID:   requestID,
+		providerCfg: providerCfg,
+	}, nil
+}
+
+// hasCustomBaseURL checks if any provider config in the request has a custom base_url.
+// This is used to restrict SSRF risk - only admins can redirect requests to custom endpoints.
+func hasCustomBaseURL(req *pb.GenerateReplyRequest) bool {
+	for _, cfg := range req.ProviderConfigs {
+		if cfg != nil && strings.TrimSpace(cfg.GetBaseUrl()) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// GenerateReply generates a completion.
+func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRequest) (*pb.GenerateReplyResponse, error) {
+	// Check permission
+	if err := auth.RequirePermission(ctx, auth.PermissionChat); err != nil {
+		return nil, err
+	}
+
+	// Prepare request (validation, provider selection, RAG retrieval, params building)
+	prepared, err := s.prepareRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
 	slog.Info("generating reply",
-		"provider", selectedProvider.Name(),
-		"model", providerCfg.Model,
-		"request_id", requestID,
+		"provider", prepared.provider.Name(),
+		"model", prepared.providerCfg.Model,
+		"request_id", prepared.requestID,
 		"client_id", req.ClientId,
 	)
 
 	// Generate reply
-	result, err := selectedProvider.GenerateReply(ctx, params)
+	result, err := prepared.provider.GenerateReply(ctx, prepared.params)
 	if err != nil {
 		// Try failover if enabled
 		if req.EnableFailover {
-			fallbackProvider := s.getFallbackProvider(selectedProvider.Name(), req.FallbackProvider)
+			fallbackProvider := s.getFallbackProvider(prepared.provider.Name(), req.FallbackProvider)
 			if fallbackProvider != nil {
 				slog.Warn("primary provider failed, trying fallback",
-					"primary", selectedProvider.Name(),
+					"primary", prepared.provider.Name(),
 					"fallback", fallbackProvider.Name(),
 					"error", err,
 				)
 
-				params.Config = s.buildProviderConfig(ctx, req, fallbackProvider.Name())
-				fallbackResult, fallbackErr := fallbackProvider.GenerateReply(ctx, params)
+				prepared.params.Config = s.buildProviderConfig(ctx, req, fallbackProvider.Name())
+				fallbackResult, fallbackErr := fallbackProvider.GenerateReply(ctx, prepared.params)
 				if fallbackErr == nil {
-					return s.buildResponse(fallbackResult, fallbackProvider.Name(), true, selectedProvider.Name(), err.Error()), nil
+					return s.buildResponse(fallbackResult, fallbackProvider.Name(), true, prepared.provider.Name(), err.Error()), nil
 				}
 				// Return original error if fallback also fails
 			}
 		}
 		slog.Error("provider request failed",
-			"provider", selectedProvider.Name(),
+			"provider", prepared.provider.Name(),
 			"error", err,
-			"request_id", requestID,
+			"request_id", prepared.requestID,
 		)
 		return nil, status.Error(codes.Internal, sanitize.SanitizeForClient(err))
 	}
@@ -184,11 +212,11 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 	}
 
 	// Add RAG citations to result if we used self-hosted RAG
-	if len(ragChunks) > 0 {
-		result.Citations = append(result.Citations, ragChunksToCitations(ragChunks)...)
+	if len(prepared.ragChunks) > 0 {
+		result.Citations = append(result.Citations, ragChunksToCitations(prepared.ragChunks)...)
 	}
 
-	return s.buildResponse(result, selectedProvider.Name(), false, "", ""), nil
+	return s.buildResponse(result, prepared.provider.Name(), false, "", ""), nil
 }
 
 // GenerateReplyStream generates a streaming completion.
@@ -200,92 +228,20 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 		return err
 	}
 
-	// SECURITY: Custom base_url requires admin permission to prevent SSRF attacks
-	if hasCustomBaseURL(req) {
-		if err := auth.RequirePermission(ctx, auth.PermissionAdmin); err != nil {
-			return status.Error(codes.PermissionDenied, "custom base_url requires admin permission")
-		}
-	}
-
-	// Validate input sizes
-	if err := validation.ValidateGenerateRequest(
-		req.UserInput,
-		req.Instructions,
-		len(req.ConversationHistory),
-	); err != nil {
-		return status.Error(codes.InvalidArgument, err.Error())
-	}
-
-	// Validate metadata
-	if err := validation.ValidateMetadata(req.Metadata); err != nil {
-		return status.Error(codes.InvalidArgument, err.Error())
-	}
-
-	// Validate or generate request ID
-	requestID, err := validation.ValidateOrGenerateRequestID(req.RequestId)
+	// Prepare request (validation, provider selection, RAG retrieval, params building)
+	prepared, err := s.prepareRequest(ctx, req)
 	if err != nil {
-		return status.Error(codes.InvalidArgument, err.Error())
-	}
-
-	// Validate request
-	if strings.TrimSpace(req.UserInput) == "" {
-		return status.Error(codes.InvalidArgument, "user_input is required")
-	}
-
-	// Select provider (now with tenant awareness)
-	selectedProvider, err := s.selectProviderWithTenant(ctx, req)
-	if err != nil {
-		return status.Errorf(codes.InvalidArgument, "invalid provider: %v", err)
-	}
-
-	// Build provider config (from tenant + request overrides)
-	providerCfg := s.buildProviderConfig(ctx, req, selectedProvider.Name())
-
-	// Retrieve RAG context for non-OpenAI providers
-	var ragChunks []rag.RetrieveResult
-	instructions := req.Instructions
-	if req.EnableFileSearch && strings.TrimSpace(req.FileStoreId) != "" && selectedProvider.Name() != "openai" {
-		chunks, err := s.retrieveRAGContext(ctx, req.FileStoreId, req.UserInput)
-		if err != nil {
-			slog.Warn("RAG retrieval failed, continuing without context",
-				"error", err,
-				"store_id", req.FileStoreId,
-			)
-		} else if len(chunks) > 0 {
-			ragChunks = chunks
-			ragContext := formatRAGContext(chunks)
-			instructions = instructions + ragContext
-			slog.Info("injected RAG context for stream",
-				"store_id", req.FileStoreId,
-				"chunks", len(chunks),
-			)
-		}
-	}
-
-	// Build params
-	params := provider.GenerateParams{
-		Instructions:        instructions, // May include RAG context for non-OpenAI
-		UserInput:           req.UserInput,
-		ConversationHistory: convertHistory(req.ConversationHistory),
-		FileStoreID:         req.FileStoreId,
-		PreviousResponseID:  req.PreviousResponseId,
-		OverrideModel:       req.ModelOverride,
-		EnableWebSearch:     req.EnableWebSearch,
-		EnableFileSearch:    req.EnableFileSearch,
-		FileIDToFilename:    req.FileIdToFilename,
-		Config:              providerCfg,
-		RequestID:           requestID,
-		ClientID:            req.ClientId,
+		return err
 	}
 
 	// Generate streaming reply
-	streamChunks, err := selectedProvider.GenerateReplyStream(ctx, params)
+	streamChunks, err := prepared.provider.GenerateReplyStream(ctx, prepared.params)
 	if err != nil {
 		return status.Error(codes.Internal, sanitize.SanitizeForClient(err))
 	}
 
 	// Send RAG citations first if we have them
-	for _, chunk := range ragChunks {
+	for _, chunk := range prepared.ragChunks {
 		snippet := chunk.Text
 		if len(snippet) > 200 {
 			snippet = snippet[:200] + "..."
@@ -353,7 +309,7 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 					Complete: &pb.StreamComplete{
 						ResponseId: chunk.ResponseID,
 						Model:      chunk.Model,
-						Provider:   mapProviderToProto(selectedProvider.Name()),
+						Provider:   mapProviderToProto(prepared.provider.Name()),
 						FinalUsage: convertUsage(chunk.Usage),
 					},
 				},
@@ -407,22 +363,6 @@ func (s *ChatService) SelectProvider(ctx context.Context, req *pb.SelectProvider
 		Provider: pb.Provider_PROVIDER_OPENAI,
 		Reason:   "default",
 	}, nil
-}
-
-// selectProvider selects the appropriate provider.
-func (s *ChatService) selectProvider(req *pb.GenerateReplyRequest) (provider.Provider, error) {
-	switch req.PreferredProvider {
-	case pb.Provider_PROVIDER_OPENAI:
-		return s.openaiProvider, nil
-	case pb.Provider_PROVIDER_GEMINI:
-		return s.geminiProvider, nil
-	case pb.Provider_PROVIDER_ANTHROPIC:
-		return s.anthropicProvider, nil
-	case pb.Provider_PROVIDER_UNSPECIFIED:
-		return s.openaiProvider, nil // Default
-	default:
-		return nil, fmt.Errorf("unknown provider: %v", req.PreferredProvider)
-	}
 }
 
 // getFallbackProvider returns a fallback provider.

@@ -35,16 +35,15 @@ type RateLimits struct {
 
 // ClientKey represents an API key and its metadata
 type ClientKey struct {
-	KeyID        string            `json:"key_id"`
-	ClientID     string            `json:"client_id"`
-	ClientName   string            `json:"client_name"`
-	SecretHash   string            `json:"secret_hash"`
-	Permissions  []Permission      `json:"permissions"`
-	RateLimits   RateLimits        `json:"rate_limits"`
-	ProviderKeys map[string]string `json:"provider_keys,omitempty"` // Encrypted provider API keys
-	CreatedAt    time.Time         `json:"created_at"`
-	ExpiresAt    *time.Time        `json:"expires_at,omitempty"`
-	Metadata     map[string]string `json:"metadata,omitempty"`
+	KeyID       string            `json:"key_id"`
+	ClientID    string            `json:"client_id"`
+	ClientName  string            `json:"client_name"`
+	SecretHash  string            `json:"secret_hash"`
+	Permissions []Permission      `json:"permissions"`
+	RateLimits  RateLimits        `json:"rate_limits"`
+	CreatedAt   time.Time         `json:"created_at"`
+	ExpiresAt   *time.Time        `json:"expires_at,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
 }
 
 // KeyStore manages API keys in Redis

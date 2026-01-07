@@ -21,29 +21,11 @@ const (
 )
 
 // Client implements the provider.Provider interface using Google's Gemini API.
-type Client struct {
-	debug bool
-}
-
-// ClientOption configures a Client.
-type ClientOption func(*Client)
-
-// WithDebugLogging enables verbose logging.
-func WithDebugLogging(enabled bool) ClientOption {
-	return func(c *Client) {
-		c.debug = enabled
-	}
-}
+type Client struct{}
 
 // NewClient creates a new Gemini provider client.
-func NewClient(opts ...ClientOption) *Client {
-	c := &Client{}
-	for _, opt := range opts {
-		if opt != nil {
-			opt(c)
-		}
-	}
-	return c
+func NewClient() *Client {
+	return &Client{}
 }
 
 // Name returns the provider identifier.
@@ -66,9 +48,11 @@ func (c *Client) SupportsNativeContinuity() bool {
 	return false
 }
 
-// SupportsStreaming returns true as Gemini supports streaming.
+// SupportsStreaming returns false because the current implementation falls back to
+// non-streaming (calls GenerateReply and returns result as single chunk).
+// Set to true once true streaming is implemented.
 func (c *Client) SupportsStreaming() bool {
-	return true
+	return false
 }
 
 // GenerateReply implements provider.Provider using Google's Gemini API.

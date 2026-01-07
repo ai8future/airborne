@@ -23,29 +23,11 @@ const (
 )
 
 // Client implements the provider.Provider interface using Anthropic's Messages API.
-type Client struct {
-	debug bool
-}
-
-// ClientOption configures a Client.
-type ClientOption func(*Client)
-
-// WithDebugLogging enables verbose logging.
-func WithDebugLogging(enabled bool) ClientOption {
-	return func(c *Client) {
-		c.debug = enabled
-	}
-}
+type Client struct{}
 
 // NewClient creates a new Anthropic provider client.
-func NewClient(opts ...ClientOption) *Client {
-	c := &Client{}
-	for _, opt := range opts {
-		if opt != nil {
-			opt(c)
-		}
-	}
-	return c
+func NewClient() *Client {
+	return &Client{}
 }
 
 // Name returns the provider identifier.
