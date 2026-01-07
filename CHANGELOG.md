@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.9] - 2026-01-07
+
+### Added
+- **Auth unit tests**: Added comprehensive test coverage for auth package
+  - `keys_test.go`: Tests for parseAPIKey, generateRandomString, HasPermission
+  - `interceptor_test.go`: Tests for extractAPIKey, RequirePermission, ClientFromContext
+
 ## [0.4.8] - 2026-01-07
 
 ### Security
