@@ -76,7 +76,17 @@ func (r *RateLimiter) Allow(ctx context.Context, client *ClientKey) error {
 
 // RecordTokens records token usage for TPM limiting
 func (r *RateLimiter) RecordTokens(ctx context.Context, clientID string, tokens int64, limit int) error {
-	if !r.enabled || limit == 0 {
+	if !r.enabled {
+		return nil
+	}
+
+	// Apply default TPM limit if client-specific limit is 0
+	if limit == 0 {
+		limit = r.defaultLimits.TokensPerMinute
+	}
+
+	// Only skip if both client limit and default are 0 (unlimited)
+	if limit == 0 {
 		return nil
 	}
 

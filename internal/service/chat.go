@@ -316,6 +316,13 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 				}
 			}
 		case provider.ChunkTypeComplete:
+			// Record token usage for rate limiting on stream completion
+			if s.rateLimiter != nil && chunk.Usage != nil {
+				client := auth.ClientFromContext(ctx)
+				if client != nil {
+					_ = s.rateLimiter.RecordTokens(ctx, client.ClientID, chunk.Usage.TotalTokens, client.RateLimits.TokensPerMinute)
+				}
+			}
 			pbChunk = &pb.GenerateReplyChunk{
 				Chunk: &pb.GenerateReplyChunk_Complete{
 					Complete: &pb.StreamComplete{

@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.12] - 2026-01-07
+
+### Security
+- **Fixed TPM rate limiting bypass**: Fixed two bypass vectors in token-per-minute (TPM) rate limiting
+  - `RecordTokens` now applies default TPM limit when client-specific limit is 0 (was early-returning without checking defaults)
+  - Streaming responses (`GenerateReplyStream`) now record token usage on completion (was not recording at all)
+  - Added comprehensive unit tests for rate limiter default TPM behavior
+
 ## [0.4.11] - 2026-01-07
 
 ### Changed
