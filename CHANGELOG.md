@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.15] - 2026-01-07
+
+### Security
+- **Validate tenant/store IDs before Qdrant operations**: Added input validation to prevent path manipulation attacks
+  - Added `validateCollectionParts()` function with regex-based validation
+  - Enforces alphanumeric characters plus underscore/hyphen only
+  - Blocks path traversal attacks (e.g., `../admin`) and special characters
+  - Maximum length of 128 characters for tenant_id and store_id
+  - Validation added to: Ingest, Retrieve, CreateStore, DeleteStore, StoreInfo
+  - Added comprehensive unit tests for validation logic
+  - Agent: Claude:Opus 4.5
+
 ## [0.4.14] - 2026-01-07
 
 ### Security

@@ -5,12 +5,43 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"regexp"
+	"strings"
 
 	"github.com/cliffpyles/aibox/internal/rag/chunker"
 	"github.com/cliffpyles/aibox/internal/rag/embedder"
 	"github.com/cliffpyles/aibox/internal/rag/extractor"
 	"github.com/cliffpyles/aibox/internal/rag/vectorstore"
 )
+
+const maxCollectionPartLen = 128
+
+var collectionPartPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
+
+func validateCollectionParts(tenantID, storeID string) error {
+	tenantID = strings.TrimSpace(tenantID)
+	storeID = strings.TrimSpace(storeID)
+
+	if tenantID == "" {
+		return fmt.Errorf("tenant_id is required")
+	}
+	if storeID == "" {
+		return fmt.Errorf("store_id is required")
+	}
+	if len(tenantID) > maxCollectionPartLen {
+		return fmt.Errorf("tenant_id exceeds %d characters", maxCollectionPartLen)
+	}
+	if len(storeID) > maxCollectionPartLen {
+		return fmt.Errorf("store_id exceeds %d characters", maxCollectionPartLen)
+	}
+	if !collectionPartPattern.MatchString(tenantID) {
+		return fmt.Errorf("tenant_id contains invalid characters")
+	}
+	if !collectionPartPattern.MatchString(storeID) {
+		return fmt.Errorf("store_id contains invalid characters")
+	}
+	return nil
+}
 
 // Service orchestrates RAG operations: ingest files and retrieve relevant chunks.
 type Service struct {
@@ -98,6 +129,10 @@ type IngestResult struct {
 
 // Ingest extracts text from a file, chunks it, embeds the chunks, and stores them.
 func (s *Service) Ingest(ctx context.Context, params IngestParams) (*IngestResult, error) {
+	if err := validateCollectionParts(params.TenantID, params.StoreID); err != nil {
+		return nil, err
+	}
+
 	// Generate collection name
 	collectionName := s.collectionName(params.TenantID, params.StoreID)
 
@@ -216,6 +251,10 @@ type RetrieveResult struct {
 
 // Retrieve finds chunks similar to the query text.
 func (s *Service) Retrieve(ctx context.Context, params RetrieveParams) ([]RetrieveResult, error) {
+	if err := validateCollectionParts(params.TenantID, params.StoreID); err != nil {
+		return nil, err
+	}
+
 	collectionName := s.collectionName(params.TenantID, params.StoreID)
 
 	// Check if collection exists
@@ -276,18 +315,27 @@ func (s *Service) Retrieve(ctx context.Context, params RetrieveParams) ([]Retrie
 
 // CreateStore creates a new file store (Qdrant collection).
 func (s *Service) CreateStore(ctx context.Context, tenantID, storeID string) error {
+	if err := validateCollectionParts(tenantID, storeID); err != nil {
+		return err
+	}
 	collectionName := s.collectionName(tenantID, storeID)
 	return s.store.CreateCollection(ctx, collectionName, s.embedder.Dimensions())
 }
 
 // DeleteStore removes a file store and all its contents.
 func (s *Service) DeleteStore(ctx context.Context, tenantID, storeID string) error {
+	if err := validateCollectionParts(tenantID, storeID); err != nil {
+		return err
+	}
 	collectionName := s.collectionName(tenantID, storeID)
 	return s.store.DeleteCollection(ctx, collectionName)
 }
 
 // StoreInfo returns information about a file store.
 func (s *Service) StoreInfo(ctx context.Context, tenantID, storeID string) (*vectorstore.CollectionInfo, error) {
+	if err := validateCollectionParts(tenantID, storeID); err != nil {
+		return nil, err
+	}
 	collectionName := s.collectionName(tenantID, storeID)
 	return s.store.CollectionInfo(ctx, collectionName)
 }
