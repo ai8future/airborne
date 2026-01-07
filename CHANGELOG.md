@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.11] - 2026-01-08
+
+### Fixed
+- **SelectProvider permission check**: Added `auth.RequirePermission(ctx, auth.PermissionChat)` to `SelectProvider` RPC
+  - Previously any authenticated client could call this endpoint regardless of permissions
+  - Now requires chat permission like `GenerateReply`
+  - Agent: Claude:Opus 4.5
+
 ## [0.5.10] - 2026-01-08
 
 ### Fixed

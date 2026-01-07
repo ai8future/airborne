@@ -338,6 +338,10 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 
 // SelectProvider determines which provider to use.
 func (s *ChatService) SelectProvider(ctx context.Context, req *pb.SelectProviderRequest) (*pb.SelectProviderResponse, error) {
+	if err := auth.RequirePermission(ctx, auth.PermissionChat); err != nil {
+		return nil, err
+	}
+
 	// Check for trigger phrases
 	content := strings.ToLower(req.Content)
 	for _, trigger := range req.Triggers {

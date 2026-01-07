@@ -51,6 +51,9 @@ func loadTenants(dir string) (map[string]TenantConfig, error) {
 			}
 		}
 
+		// Normalize tenant ID to lowercase
+		cfg.TenantID = strings.ToLower(strings.TrimSpace(cfg.TenantID))
+
 		// Skip files without tenant_id (e.g., shared config files)
 		if cfg.TenantID == "" {
 			continue
