@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.4] - 2026-01-07
+
+### Changed
+- **Cleaned up audit reports**: Removed fixed issues from audit/fix reports and deleted fully-resolved reports
+  - Deleted: code-audit-2026-01-07.md (all issues fixed)
+  - Deleted: small_code_audit_report_2026-01-07-16.md (all issues fixed)
+  - Updated: code-security-audit-2026-01-07.md (8 remaining low/medium issues)
+  - Updated: code_audit_report_2026-01-07-15.md (4 remaining low/medium issues)
+  - Updated: code_fix_report_2026-01-07-16.md (1 remaining issue)
+  - Updated: small_code_fix_report_2026-01-07-16.md (3 remaining issues)
+  - Kept unchanged: test and refactor reports (contain future suggestions)
+  - Agent: Claude:Opus 4.5
+
 ## [0.5.3] - 2026-01-07
 
 ### Fixed

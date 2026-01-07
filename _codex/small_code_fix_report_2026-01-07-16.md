@@ -1,80 +1,11 @@
-# AIBox Bug and Code Smell Fix Report (2026-01-07-16)
+# AIBox Bug and Code Smell Fix Report (2026-01-07-16) - Remaining Issues
 
-## Fixes
-### F-1 Development mode becomes unusable when Redis is down
-- Impact: in development mode with Redis unavailable, `auth.RequirePermission` always fails because no client is injected, so ChatService is effectively locked out.
-- Fix: inject a development client when `authenticator` is nil and `StartupMode` is not production.
+## Last Updated
+- 2026-01-07: Removed issues fixed in versions 0.4.5 through 0.5.3
 
-Patch-ready diff:
-```diff
-diff --git a/internal/server/grpc.go b/internal/server/grpc.go
-index 7d9a7f5..a4b0b0a 100644
---- a/internal/server/grpc.go
-+++ b/internal/server/grpc.go
-@@ -102,6 +102,12 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, error
- 		unaryInterceptors = append(unaryInterceptors, tenantInterceptor.UnaryInterceptor())
- 		streamInterceptors = append(streamInterceptors, tenantInterceptor.StreamInterceptor())
- 	}
-+
-+	// Inject a dev client when auth is disabled in development mode.
-+	if authenticator == nil && !cfg.StartupMode.IsProduction() {
-+		unaryInterceptors = append(unaryInterceptors, developmentAuthInterceptor())
-+		streamInterceptors = append(streamInterceptors, developmentAuthStreamInterceptor())
-+	}
- 
- 	// Add auth interceptors if Redis is available
- 	if authenticator != nil {
- 		unaryInterceptors = append(unaryInterceptors, authenticator.UnaryInterceptor())
-@@ -323,6 +329,48 @@ func streamLoggingInterceptor() grpc.StreamServerInterceptor {
- 	}
- }
-+
-+func developmentAuthInterceptor() grpc.UnaryServerInterceptor {
-+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-+		client := &auth.ClientKey{
-+			ClientID:   "dev",
-+			ClientName: "development",
-+			Permissions: []auth.Permission{
-+				auth.PermissionAdmin,
-+				auth.PermissionChat,
-+				auth.PermissionChatStream,
-+				auth.PermissionFiles,
-+			},
-+			RateLimits: auth.RateLimits{},
-+		}
-+		ctx = context.WithValue(ctx, auth.ClientContextKey, client)
-+		return handler(ctx, req)
-+	}
-+}
-+
-+func developmentAuthStreamInterceptor() grpc.StreamServerInterceptor {
-+	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-+		client := &auth.ClientKey{
-+			ClientID:   "dev",
-+			ClientName: "development",
-+			Permissions: []auth.Permission{
-+				auth.PermissionAdmin,
-+				auth.PermissionChat,
-+				auth.PermissionChatStream,
-+				auth.PermissionFiles,
-+			},
-+			RateLimits: auth.RateLimits{},
-+		}
-+		ctx := context.WithValue(ss.Context(), auth.ClientContextKey, client)
-+		wrapped := &authenticatedStream{ServerStream: ss, ctx: ctx}
-+		return handler(srv, wrapped)
-+	}
-+}
-+
-+type authenticatedStream struct {
-+	grpc.ServerStream
-+	ctx context.Context
-+}
-+
-+func (s *authenticatedStream) Context() context.Context {
-+	return s.ctx
-+}
-```
+---
+
+## Remaining Fixes
 
 ### F-2 Tenant ID normalization mismatch breaks lookups
 - Impact: tenant IDs are lowercased in the interceptor but stored as-is at load time, so `Tenant("Acme")` can never be found when the request passes `acme`.
@@ -94,7 +25,7 @@ index 7c58c52..8b20d51 100644
  		}
 +
 +		cfg.TenantID = strings.ToLower(strings.TrimSpace(cfg.TenantID))
- 
+
  		// Skip files without tenant_id (e.g., shared config files)
  		if cfg.TenantID == "" {
  			continue
@@ -113,39 +44,15 @@ index 9a6317b..63c1747 100644
 +++ b/internal/tenant/manager.go
 @@ -31,8 +31,10 @@ func Load(configDir string) (*Manager, error) {
  	}
- 
+
  	// Use configDir if provided, otherwise use env config
  	if configDir == "" {
  		configDir = envCfg.ConfigsDir
 +	} else {
 +		envCfg.ConfigsDir = configDir
  	}
- 
+
  	tenantCfgs, err := loadTenants(configDir)
-```
-
-### F-4 Streaming replies never record token usage
-- Impact: TPM accounting is skipped for streaming responses, so token-based limits are ineffective.
-- Fix: record tokens on stream completion.
-
-Patch-ready diff:
-```diff
-diff --git a/internal/service/chat.go b/internal/service/chat.go
-index 706e220..6c5b1d0 100644
---- a/internal/service/chat.go
-+++ b/internal/service/chat.go
-@@ -338,6 +338,13 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
- 		case provider.ChunkTypeComplete:
-+			if s.rateLimiter != nil && chunk.Usage != nil {
-+				client := auth.ClientFromContext(ctx)
-+				if client != nil {
-+					_ = s.rateLimiter.RecordTokens(ctx, client.ClientID, chunk.Usage.TotalTokens, client.RateLimits.TokensPerMinute)
-+				}
-+			}
- 			pbChunk = &pb.GenerateReplyChunk{
- 				Chunk: &pb.GenerateReplyChunk_Complete{
- 					Complete: &pb.StreamComplete{
- 						ResponseId: chunk.ResponseID,
 ```
 
 ### F-5 RAG ingestion can silently overwrite chunk IDs and accepts malformed embeddings
@@ -165,7 +72,7 @@ index 0f9096b..9a13ab9 100644
  	"fmt"
  	"io"
 +	"time"
- 
+
  	"github.com/cliffpyles/aibox/internal/rag/chunker"
  	"github.com/cliffpyles/aibox/internal/rag/embedder"
 @@ -134,6 +137,15 @@ func (s *Service) Ingest(ctx context.Context, params IngestParams) (*IngestResul
@@ -203,3 +110,10 @@ index 0f9096b..9a13ab9 100644
 +	return fmt.Sprintf("%s_%s_%d_%s", filename, storeID, index, hex.EncodeToString(buf))
 +}
 ```
+
+---
+
+## Fixed Issues (removed from this report)
+The following issues have been fixed and removed from this report:
+- F-1: Development mode without Redis - Fixed in v0.5.2
+- F-4: Streaming token recording - Fixed in v0.4.12
