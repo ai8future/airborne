@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.7] - 2026-01-07
+
+### Security
+- **AdminService authorization**: Added `auth.RequirePermission(PermissionAdmin)` check to Ready and Version endpoints
+- Removed `/aibox.v1.AdminService/Version` from auth skip list - now requires authentication
+
 ## [0.4.6] - 2026-01-07
 
 ### Security

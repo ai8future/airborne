@@ -4,8 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/cliffpyles/aibox/internal/redis"
 	pb "github.com/cliffpyles/aibox/gen/go/aibox/v1"
+	"github.com/cliffpyles/aibox/internal/auth"
+	"github.com/cliffpyles/aibox/internal/redis"
 )
 
 // AdminService implements the AdminService gRPC service.
@@ -53,6 +54,11 @@ func (s *AdminService) Health(ctx context.Context, req *pb.HealthRequest) (*pb.H
 
 // Ready returns readiness status with dependency checks.
 func (s *AdminService) Ready(ctx context.Context, req *pb.ReadyRequest) (*pb.ReadyResponse, error) {
+	// Check permission - Ready exposes internal state
+	if err := auth.RequirePermission(ctx, auth.PermissionAdmin); err != nil {
+		return nil, err
+	}
+
 	dependencies := make(map[string]*pb.DependencyStatus)
 
 	// Check Redis
@@ -88,6 +94,11 @@ func (s *AdminService) Ready(ctx context.Context, req *pb.ReadyRequest) (*pb.Rea
 
 // Version returns detailed version information.
 func (s *AdminService) Version(ctx context.Context, req *pb.VersionRequest) (*pb.VersionResponse, error) {
+	// Check permission - Version exposes build details
+	if err := auth.RequirePermission(ctx, auth.PermissionAdmin); err != nil {
+		return nil, err
+	}
+
 	return &pb.VersionResponse{
 		Version:   s.version,
 		GitCommit: s.gitCommit,

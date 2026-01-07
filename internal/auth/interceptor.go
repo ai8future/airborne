@@ -32,8 +32,8 @@ func NewAuthenticator(keyStore *KeyStore, rateLimiter *RateLimiter) *Authenticat
 		keyStore:    keyStore,
 		rateLimiter: rateLimiter,
 		skipMethods: map[string]bool{
-			"/aibox.v1.AdminService/Health":  true,
-			"/aibox.v1.AdminService/Version": true,
+			"/aibox.v1.AdminService/Health": true,
+			// Version removed - requires authentication with PermissionAdmin
 		},
 	}
 }
