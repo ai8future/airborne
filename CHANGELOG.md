@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.3] - 2026-01-07
+
+### Added
+- Comprehensive security audit report in `_codex/security-audit-2026-01-07.md`
+  - Identified 15 security issues (3 critical, 2 high, 5 medium, 5 low)
+  - Critical: FileService missing auth checks, arbitrary file read via FILE= prefix, dev mode auth bypass
+  - High: Hardcoded tenant ID in FileService, API keys accepted in request body
+  - Full remediation priority list with timelines
+  - Positive security observations documented
+
 ## [0.4.2] - 2026-01-05
 
 ### Added
