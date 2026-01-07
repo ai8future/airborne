@@ -27,9 +27,14 @@ func NewTenantInterceptor(mgr *tenant.Manager) *TenantInterceptor {
 	return &TenantInterceptor{
 		manager: mgr,
 		skipMethods: map[string]bool{
-			"/aibox.v1.AdminService/Health":  true,
-			"/aibox.v1.AdminService/Ready":   true,
-			"/aibox.v1.AdminService/Version": true,
+			"/aibox.v1.AdminService/Health":         true,
+			"/aibox.v1.AdminService/Ready":          true,
+			"/aibox.v1.AdminService/Version":        true,
+			"/aibox.v1.FileService/CreateFileStore": true,
+			"/aibox.v1.FileService/UploadFile":      true,
+			"/aibox.v1.FileService/DeleteFileStore": true,
+			"/aibox.v1.FileService/GetFileStore":    true,
+			"/aibox.v1.FileService/ListFileStores":  true,
 		},
 	}
 }

@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.10] - 2026-01-08
+
+### Fixed
+- **Skip tenant interception for FileService RPCs**: Added FileService methods to skipMethods map in tenant interceptor
+  - FileService RPCs (CreateFileStore, UploadFile, DeleteFileStore, GetFileStore, ListFileStores) don't include tenant_id in request body
+  - These methods already use auth.TenantIDFromContext for tenant scoping
+  - Agent: Claude:Opus 4.5
+
 ## [0.5.9] - 2026-01-08
 
 ### Fixed
