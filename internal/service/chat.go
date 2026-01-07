@@ -568,7 +568,7 @@ func (s *ChatService) retrieveRAGContext(ctx context.Context, storeID, query str
 		StoreID:  storeID,
 		TenantID: auth.TenantIDFromContext(ctx),
 		Query:    query,
-		TopK:     5,
+		TopK:     0, // Use service default (RetrievalTopK from ServiceOptions)
 	})
 }
 

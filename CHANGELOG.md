@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-01-07
+
+### Fixed
+- **Use configured RAG TopK instead of hardcoded 5**: Changed `retrieveRAGContext()` to pass `TopK: 0` to the RAG service
+  - The RAG service's `Retrieve()` method handles `TopK <= 0` by using the configured `RetrievalTopK` from `ServiceOptions`
+  - This allows TopK to be configured at the service level rather than hardcoded in the chat service
+  - Agent: Claude:Opus 4.5
+
 ## [0.4.15] - 2026-01-07
 
 ### Security
