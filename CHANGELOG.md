@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.1] - 2026-01-07
+
+### Fixed
+- **Prevent chunker panic on small text**: Added guard to check if chunks slice is non-empty before accessing
+  - Fixed potential panic in `ChunkText` when accessing `chunks[len(chunks)-1]` with empty slice
+  - Edge case occurred when first chunk didn't meet MinChunkSize requirement and no chunk was appended
+  - Added `TestChunk_SmallTextNoPanic` test to verify the fix
+  - Agent: Claude:Opus 4.5
+
 ## [0.5.0] - 2026-01-07
 
 ### Fixed

@@ -102,7 +102,7 @@ func ChunkText(text string, opts Options) []Chunk {
 
 		// Move start forward, accounting for overlap
 		start = end - opts.Overlap
-		if start <= chunks[len(chunks)-1].Start {
+		if len(chunks) > 0 && start <= chunks[len(chunks)-1].Start {
 			// Prevent infinite loop if overlap is too large
 			start = end
 		}

@@ -368,3 +368,16 @@ func BenchmarkChunkText_Large(b *testing.B) {
 		ChunkText(text, opts)
 	}
 }
+
+func TestChunk_SmallTextNoPanic(t *testing.T) {
+	// Text smaller than MinChunkSize should not panic
+	// This tests the edge case where chunks slice might be empty
+	result := ChunkText("hi", Options{
+		ChunkSize:    100,
+		MinChunkSize: 50,
+		Overlap:      10,
+	})
+	if len(result) == 0 {
+		t.Fatal("expected at least one chunk")
+	}
+}
