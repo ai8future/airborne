@@ -98,6 +98,10 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, error
 	if authenticator != nil {
 		unaryInterceptors = append(unaryInterceptors, authenticator.UnaryInterceptor())
 		streamInterceptors = append(streamInterceptors, authenticator.StreamInterceptor())
+	} else if !cfg.StartupMode.IsProduction() {
+		// Inject a dev client when auth is disabled in development mode
+		unaryInterceptors = append(unaryInterceptors, developmentAuthInterceptor())
+		streamInterceptors = append(streamInterceptors, developmentAuthStreamInterceptor())
 	}
 
 	// Build server options
@@ -294,4 +298,50 @@ func streamLoggingInterceptor() grpc.StreamServerInterceptor {
 
 		return err
 	}
+}
+
+// developmentAuthInterceptor injects a dev client in non-production mode when Redis is unavailable
+func developmentAuthInterceptor() grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		client := &auth.ClientKey{
+			ClientID:   "dev",
+			ClientName: "development",
+			Permissions: []auth.Permission{
+				auth.PermissionAdmin,
+				auth.PermissionChat,
+				auth.PermissionChatStream,
+				auth.PermissionFiles,
+			},
+		}
+		ctx = context.WithValue(ctx, auth.ClientContextKey, client)
+		return handler(ctx, req)
+	}
+}
+
+// developmentAuthStreamInterceptor injects a dev client for streams in non-production mode
+func developmentAuthStreamInterceptor() grpc.StreamServerInterceptor {
+	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		client := &auth.ClientKey{
+			ClientID:   "dev",
+			ClientName: "development",
+			Permissions: []auth.Permission{
+				auth.PermissionAdmin,
+				auth.PermissionChat,
+				auth.PermissionChatStream,
+				auth.PermissionFiles,
+			},
+		}
+		ctx := context.WithValue(ss.Context(), auth.ClientContextKey, client)
+		wrapped := &devWrappedStream{ServerStream: ss, ctx: ctx}
+		return handler(srv, wrapped)
+	}
+}
+
+type devWrappedStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (s *devWrappedStream) Context() context.Context {
+	return s.ctx
 }

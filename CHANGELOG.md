@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.2] - 2026-01-07
+
+### Fixed
+- **Dev mode auth without Redis**: Injected dev client when Redis is unavailable in non-production mode
+  - Added `developmentAuthInterceptor()` for unary requests
+  - Added `developmentAuthStreamInterceptor()` for streaming requests
+  - Dev client gets all permissions: Admin, Chat, ChatStream, Files
+  - Prevents "not authenticated" errors when developing without Redis
+  - Agent: Claude:Opus 4.5
+
 ## [0.5.1] - 2026-01-07
 
 ### Fixed
