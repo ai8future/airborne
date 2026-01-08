@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.1] - 2026-01-08
+
+### Added
+- **Admin service unit tests**: Added comprehensive test coverage for `internal/service/admin.go`
+  - Tests for `Health()` endpoint: returns proper status, no auth required, uptime tracking
+  - Tests for `Ready()` endpoint: admin permission required, dependency status reporting, Redis status handling
+  - Tests for `Version()` endpoint: admin permission required, all config fields returned correctly
+  - Tests for permission handling: admin permission grants access, non-admin permissions denied
+  - Tests for edge cases: empty config, nil requests, context cancellation, error types
+  - Agent: Claude:Opus 4.5
+
 ## [0.6.0] - 2026-01-08
 
 ### Added
