@@ -13,10 +13,15 @@ import (
 	pb "github.com/cliffpyles/aibox/gen/go/aibox/v1"
 	"github.com/cliffpyles/aibox/internal/auth"
 	"github.com/cliffpyles/aibox/internal/rag"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // maxUploadBytes is the maximum allowed file upload size (100MB).
 const maxUploadBytes int64 = 100 * 1024 * 1024
+
+// uploadTimeout is the maximum duration allowed for a file upload stream.
+const uploadTimeout = 5 * time.Minute
 
 // generateFileID creates a unique file identifier.
 func generateFileID() (string, error) {
@@ -84,6 +89,13 @@ func (s *FileService) CreateFileStore(ctx context.Context, req *pb.CreateFileSto
 func (s *FileService) UploadFile(stream pb.FileService_UploadFileServer) error {
 	ctx := stream.Context()
 
+	// Add upload timeout if context doesn't already have a deadline
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, uploadTimeout)
+		defer cancel()
+	}
+
 	// Check permission
 	if err := auth.RequirePermission(ctx, auth.PermissionFiles); err != nil {
 		return err
@@ -122,6 +134,13 @@ func (s *FileService) UploadFile(stream pb.FileService_UploadFileServer) error {
 	var buf bytes.Buffer
 	var totalBytes int64
 	for {
+		// Check for context cancellation (timeout)
+		select {
+		case <-ctx.Done():
+			return status.Error(codes.DeadlineExceeded, "upload timeout exceeded")
+		default:
+		}
+
 		msg, err := stream.Recv()
 		if err == io.EOF {
 			break
