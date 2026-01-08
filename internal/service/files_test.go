@@ -13,6 +13,8 @@ import (
 	"github.com/cliffpyles/aibox/internal/rag/extractor"
 	"github.com/cliffpyles/aibox/internal/rag/testutil"
 	"github.com/cliffpyles/aibox/internal/rag/vectorstore"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // ctxWithFilePermission creates a context with file permission for testing.
@@ -254,7 +256,33 @@ func TestFileService_GetFileStore_NotFound(t *testing.T) {
 	}
 }
 
-func TestFileService_ListFileStores(t *testing.T) {
+func TestFileService_GetFileStore_NilInfo_ReturnsNotFound(t *testing.T) {
+	mockStore := testutil.NewMockStore()
+	mockStore.CollectionInfoFunc = func(ctx context.Context, name string) (*vectorstore.CollectionInfo, error) {
+		return nil, nil // Store exists but returns nil info
+	}
+	mockRAG := createRAGServiceWithMocks(mockStore, nil, nil)
+	svc := NewFileService(mockRAG)
+
+	req := &pb.GetFileStoreRequest{
+		StoreId: "nonexistent",
+	}
+
+	_, err := svc.GetFileStore(ctxWithFilePermission("tenant1"), req)
+
+	if err == nil {
+		t.Fatal("expected error when store info is nil")
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got: %v", err)
+	}
+	if st.Code() != codes.NotFound {
+		t.Errorf("expected NotFound code, got: %v", st.Code())
+	}
+}
+
+func TestFileService_ListFileStores_Unimplemented(t *testing.T) {
 	mockRAG := createMockRAGService()
 	svc := NewFileService(mockRAG)
 
@@ -264,12 +292,18 @@ func TestFileService_ListFileStores(t *testing.T) {
 
 	resp, err := svc.ListFileStores(ctxWithFilePermission("tenant1"), req)
 
-	if err != nil {
-		t.Fatalf("ListFileStores failed: %v", err)
+	if resp != nil {
+		t.Error("expected nil response for unimplemented method")
 	}
-	// Currently returns empty list
-	if resp.Stores == nil {
-		t.Error("expected Stores to be initialized")
+	if err == nil {
+		t.Fatal("expected error for unimplemented method")
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got: %v", err)
+	}
+	if st.Code() != codes.Unimplemented {
+		t.Errorf("expected Unimplemented code, got: %v", st.Code())
 	}
 }
 

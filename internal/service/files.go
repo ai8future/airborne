@@ -263,7 +263,7 @@ func (s *FileService) GetFileStore(ctx context.Context, req *pb.GetFileStoreRequ
 	}
 
 	if info == nil {
-		return nil, fmt.Errorf("store not found")
+		return nil, status.Error(codes.NotFound, "store not found")
 	}
 
 	return &pb.GetFileStoreResponse{
@@ -283,9 +283,5 @@ func (s *FileService) ListFileStores(ctx context.Context, req *pb.ListFileStores
 		return nil, err
 	}
 
-	// For now, return empty list - would need to implement collection listing in Qdrant
-	// This would require storing metadata about stores separately
-	return &pb.ListFileStoresResponse{
-		Stores: []*pb.FileStoreSummary{},
-	}, nil
+	return nil, status.Error(codes.Unimplemented, "ListFileStores not yet implemented")
 }
