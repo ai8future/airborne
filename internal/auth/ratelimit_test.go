@@ -3,6 +3,10 @@ package auth
 import (
 	"context"
 	"testing"
+	"time"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/cliffpyles/aibox/internal/redis"
 )
 
 func TestRateLimiter_AtomicIncrement(t *testing.T) {
@@ -151,3 +155,169 @@ func TestNewRateLimiter(t *testing.T) {
 		}
 	})
 }
+
+func TestGetUsage_MalformedValue(t *testing.T) {
+	s := miniredis.RunT(t)
+	defer s.Close()
+
+	client, err := redis.NewClient(redis.Config{Addr: s.Addr()})
+	if err != nil {
+		t.Fatalf("Failed to create redis client: %v", err)
+	}
+	defer client.Close()
+
+	rl := NewRateLimiter(client, RateLimits{
+		RequestsPerMinute: 100,
+		RequestsPerDay:    1000,
+		TokensPerMinute:   50000,
+	}, true)
+
+	ctx := context.Background()
+	clientID := "test-client"
+
+	// Inject malformed (non-numeric) values directly into Redis
+	s.Set("aibox:ratelimit:"+clientID+":rpm", "not-a-number")
+	s.Set("aibox:ratelimit:"+clientID+":rpd", "garbage")
+	s.Set("aibox:ratelimit:"+clientID+":tpm", "xyz123")
+
+	usage, err := rl.GetUsage(ctx, clientID)
+	if err != nil {
+		t.Fatalf("GetUsage should not return error on malformed data: %v", err)
+	}
+
+	// Malformed values should be treated as 0 to avoid blocking legitimate requests
+	if usage["rpm"] != 0 {
+		t.Errorf("rpm = %d, want 0 for malformed data", usage["rpm"])
+	}
+	if usage["rpd"] != 0 {
+		t.Errorf("rpd = %d, want 0 for malformed data", usage["rpd"])
+	}
+	if usage["tpm"] != 0 {
+		t.Errorf("tpm = %d, want 0 for malformed data", usage["tpm"])
+	}
+}
+
+func TestGetUsage_ValidValues(t *testing.T) {
+	s := miniredis.RunT(t)
+	defer s.Close()
+
+	client, err := redis.NewClient(redis.Config{Addr: s.Addr()})
+	if err != nil {
+		t.Fatalf("Failed to create redis client: %v", err)
+	}
+	defer client.Close()
+
+	rl := NewRateLimiter(client, RateLimits{
+		RequestsPerMinute: 100,
+		RequestsPerDay:    1000,
+		TokensPerMinute:   50000,
+	}, true)
+
+	ctx := context.Background()
+	clientID := "test-client"
+
+	// Inject valid numeric values directly into Redis
+	s.Set("aibox:ratelimit:"+clientID+":rpm", "42")
+	s.Set("aibox:ratelimit:"+clientID+":rpd", "123")
+	s.Set("aibox:ratelimit:"+clientID+":tpm", "9999")
+
+	usage, err := rl.GetUsage(ctx, clientID)
+	if err != nil {
+		t.Fatalf("GetUsage failed: %v", err)
+	}
+
+	if usage["rpm"] != 42 {
+		t.Errorf("rpm = %d, want 42", usage["rpm"])
+	}
+	if usage["rpd"] != 123 {
+		t.Errorf("rpd = %d, want 123", usage["rpd"])
+	}
+	if usage["tpm"] != 9999 {
+		t.Errorf("tpm = %d, want 9999", usage["tpm"])
+	}
+}
+
+func TestCheckLimit_TypeCoercion(t *testing.T) {
+	s := miniredis.RunT(t)
+	defer s.Close()
+
+	client, err := redis.NewClient(redis.Config{Addr: s.Addr()})
+	if err != nil {
+		t.Fatalf("Failed to create redis client: %v", err)
+	}
+	defer client.Close()
+
+	rl := NewRateLimiter(client, RateLimits{
+		RequestsPerMinute: 100,
+		RequestsPerDay:    1000,
+		TokensPerMinute:   50000,
+	}, true)
+
+	ctx := context.Background()
+	clientKey := &ClientKey{
+		ClientID: "test-client",
+		RateLimits: RateLimits{
+			RequestsPerMinute: 10,
+			RequestsPerDay:    100,
+		},
+	}
+
+	// First request should be allowed (count = 1)
+	err = rl.Allow(ctx, clientKey)
+	if err != nil {
+		t.Errorf("First request should be allowed: %v", err)
+	}
+
+	// Make requests up to the limit
+	for i := 0; i < 9; i++ {
+		err = rl.Allow(ctx, clientKey)
+		if err != nil {
+			t.Errorf("Request %d should be allowed: %v", i+2, err)
+		}
+	}
+
+	// 11th request should be rate limited
+	err = rl.Allow(ctx, clientKey)
+	if err != ErrRateLimitExceeded {
+		t.Errorf("Expected ErrRateLimitExceeded, got: %v", err)
+	}
+}
+
+func TestRecordTokens_WithMiniredis(t *testing.T) {
+	s := miniredis.RunT(t)
+	defer s.Close()
+
+	client, err := redis.NewClient(redis.Config{Addr: s.Addr()})
+	if err != nil {
+		t.Fatalf("Failed to create redis client: %v", err)
+	}
+	defer client.Close()
+
+	rl := NewRateLimiter(client, RateLimits{
+		TokensPerMinute: 1000,
+	}, true)
+
+	ctx := context.Background()
+	clientID := "test-client"
+
+	// First token recording should succeed
+	err = rl.RecordTokens(ctx, clientID, 500, 1000)
+	if err != nil {
+		t.Errorf("First RecordTokens should succeed: %v", err)
+	}
+
+	// Second recording that stays within limit should succeed
+	err = rl.RecordTokens(ctx, clientID, 400, 1000)
+	if err != nil {
+		t.Errorf("Second RecordTokens should succeed: %v", err)
+	}
+
+	// Recording that exceeds limit should return ErrRateLimitExceeded
+	err = rl.RecordTokens(ctx, clientID, 200, 1000)
+	if err != ErrRateLimitExceeded {
+		t.Errorf("Expected ErrRateLimitExceeded, got: %v", err)
+	}
+}
+
+// Unused import guard for time package
+var _ = time.Second

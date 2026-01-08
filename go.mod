@@ -3,6 +3,7 @@ module github.com/cliffpyles/aibox
 go 1.25.5
 
 require (
+	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/anthropics/anthropic-sdk-go v1.19.0
 	github.com/openai/openai-go v1.12.0
 	github.com/redis/go-redis/v9 v9.17.2
@@ -28,6 +29,7 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
+	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect

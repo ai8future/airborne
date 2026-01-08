@@ -3,6 +3,8 @@ package auth
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"strconv"
 	"time"
 
 	"github.com/cliffpyles/aibox/internal/redis"
@@ -125,9 +127,34 @@ func (r *RateLimiter) checkLimit(ctx context.Context, clientID, limitType string
 		return fmt.Errorf("failed to check rate limit: %w", err)
 	}
 
-	count, ok := result.(int64)
-	if !ok {
-		return fmt.Errorf("unexpected result type from rate limit script")
+	// Handle multiple possible return types from Redis Lua script
+	var count int64
+	switch v := result.(type) {
+	case int64:
+		count = v
+	case int:
+		count = int64(v)
+	case float64:
+		count = int64(v)
+	case string:
+		parsed, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			slog.Warn("rate limit script returned unparseable string",
+				"value", v,
+				"client_id", clientID,
+				"limit_type", limitType,
+			)
+			return fmt.Errorf("unexpected string result from rate limit script: %q", v)
+		}
+		count = parsed
+	default:
+		slog.Warn("rate limit script returned unexpected type",
+			"type", fmt.Sprintf("%T", result),
+			"value", result,
+			"client_id", clientID,
+			"limit_type", limitType,
+		)
+		return fmt.Errorf("unexpected result type %T from rate limit script", result)
 	}
 
 	if int(count) > limit {
@@ -148,8 +175,20 @@ func (r *RateLimiter) GetUsage(ctx context.Context, clientID string) (map[string
 			return nil, err
 		}
 		if val != "" {
-			var count int64
-			fmt.Sscanf(val, "%d", &count)
+			count, err := strconv.ParseInt(val, 10, 64)
+			if err != nil {
+				// Log warning but treat as 0 to avoid blocking legitimate requests
+				slog.Warn("malformed rate limit value in Redis",
+					"key", key,
+					"value", val,
+					"client_id", clientID,
+					"limit_type", limitType,
+					"error", err,
+				)
+				// Treat unparseable values as 0
+				usage[limitType] = 0
+				continue
+			}
 			usage[limitType] = count
 		}
 	}
