@@ -91,12 +91,22 @@ func ChunkText(text string, opts Options) []Chunk {
 		}
 
 		chunkText := strings.TrimSpace(text[start:end])
+		if chunkText == "" {
+			// Move past empty chunks
+			start = end
+			continue
+		}
+
+		// Recalculate positions after trimming to ensure consistency
+		trimmedStart := start + strings.Index(text[start:end], chunkText)
+		trimmedEnd := trimmedStart + len(chunkText)
+
 		if len(chunkText) >= opts.MinChunkSize || start+opts.ChunkSize >= len(text) {
 			chunks = append(chunks, Chunk{
 				Index: len(chunks),
 				Text:  chunkText,
-				Start: start,
-				End:   end,
+				Start: trimmedStart,
+				End:   trimmedEnd,
 			})
 		}
 

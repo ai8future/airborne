@@ -381,3 +381,42 @@ func TestChunk_SmallTextNoPanic(t *testing.T) {
 		t.Fatal("expected at least one chunk")
 	}
 }
+
+func TestChunkText_TrimmedPositionConsistency(t *testing.T) {
+	// Test that after trimming whitespace, Start/End positions
+	// correctly reference the trimmed text.
+	// NOTE: ChunkText pre-trims the entire text, so positions are
+	// relative to the pre-trimmed text, not the original.
+	text := "   hello world   " + strings.Repeat("a", 100) + "   end   "
+	opts := Options{ChunkSize: 50, Overlap: 10, MinChunkSize: 10}
+
+	// Get the pre-trimmed text (what ChunkText actually works with)
+	trimmedText := strings.TrimSpace(text)
+
+	chunks := ChunkText(text, opts)
+
+	if len(chunks) == 0 {
+		t.Fatal("expected at least one chunk")
+	}
+
+	for i, chunk := range chunks {
+		// Verify the positions reference the actual trimmed text
+		if chunk.Start < 0 || chunk.End > len(trimmedText) {
+			t.Errorf("chunk %d has out-of-bounds positions: Start=%d, End=%d, textLen=%d",
+				i, chunk.Start, chunk.End, len(trimmedText))
+			continue
+		}
+
+		// The slice at positions should exactly match the stored text
+		sliceText := trimmedText[chunk.Start:chunk.End]
+		if sliceText != chunk.Text {
+			t.Errorf("chunk %d position mismatch: text[%d:%d]=%q but stored=%q",
+				i, chunk.Start, chunk.End, sliceText, chunk.Text)
+		}
+
+		// The text should have no leading/trailing whitespace
+		if chunk.Text != strings.TrimSpace(chunk.Text) {
+			t.Errorf("chunk %d has untrimmed whitespace: %q", i, chunk.Text)
+		}
+	}
+}

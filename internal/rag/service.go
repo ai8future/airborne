@@ -371,6 +371,9 @@ func (s *Service) collectionName(tenantID, storeID string) string {
 
 // Helper functions for payload extraction
 func getString(m map[string]any, key string) string {
+	if m == nil {
+		return ""
+	}
 	if v, ok := m[key]; ok {
 		if s, ok := v.(string); ok {
 			return s
@@ -380,6 +383,9 @@ func getString(m map[string]any, key string) string {
 }
 
 func getInt(m map[string]any, key string) int {
+	if m == nil {
+		return 0
+	}
 	if v, ok := m[key]; ok {
 		switch n := v.(type) {
 		case int:
