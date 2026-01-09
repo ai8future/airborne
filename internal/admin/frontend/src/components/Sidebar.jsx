@@ -41,7 +41,7 @@ function Sidebar({ activeView, onNavigate, version }) {
     { id: 'tenants', label: 'Tenants', icon: '🏢' },
     { id: 'usage', label: 'Usage', icon: '📈' },
     // AI Providers group
-    { id: 'providers', label: 'AI Providers', icon: '🤖', group: 'providers' },
+    { id: 'providers', label: 'AI Providers', icon: '🧠', group: 'providers' },
     { id: 'openai', label: 'OpenAI', icon: <OpenAIIcon />, parent: 'providers' },
     { id: 'anthropic', label: 'Anthropic', icon: <ClaudeIcon />, parent: 'providers' },
     { id: 'gemini', label: 'Gemini', icon: <GeminiIcon />, parent: 'providers' },
@@ -63,7 +63,6 @@ function Sidebar({ activeView, onNavigate, version }) {
       {/* Logo */}
       <div className="p-4 border-b border-gray-200">
         <div className="flex items-center gap-2">
-          <span className="text-2xl">🤖</span>
           <div>
             <h1 className="font-bold text-gray-900">AIBox Admin</h1>
             {version && <span className="text-xs text-gray-500">v{version}</span>}

@@ -61,7 +61,6 @@ function Login({ onLogin, isSetup = false }) {
         <div className="bg-white rounded-lg shadow-lg p-8">
           {/* Logo/Header */}
           <div className="text-center mb-8">
-            <div className="text-4xl mb-2">🤖</div>
             <h1 className="text-2xl font-bold text-gray-900">AIBox Admin</h1>
             <p className="text-sm text-gray-500 mt-1">
               {isSetup ? 'Create your admin password' : 'Enter your password to continue'}

@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.6] - 2026-01-09
+
+### Changed
+- Admin UI: Removed robot emoji from login page, sidebar, and favicon
+- AI Providers menu icon changed from robot to brain emoji
+
 ## [0.6.5] - 2026-01-09
 
 ### Added
