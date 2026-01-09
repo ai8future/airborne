@@ -53,8 +53,8 @@ dist/
 # Claude
 .claude/settings.local.json
 
-# Generated protobuf code
-gen/
+# Generated protobuf code is now committed to allow server-side builds
+# Regenerate with: make proto
 
 # Temporary files
 tmp/
