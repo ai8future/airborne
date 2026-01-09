@@ -37,8 +37,9 @@ type RAGConfig struct {
 
 // ServerConfig holds server settings
 type ServerConfig struct {
-	GRPCPort int    `yaml:"grpc_port"`
-	Host     string `yaml:"host"`
+	GRPCPort  int    `yaml:"grpc_port"`
+	AdminPort int    `yaml:"admin_port"` // HTTP admin UI port (0 to disable)
+	Host      string `yaml:"host"`
 }
 
 // TLSConfig holds TLS settings
@@ -187,6 +188,12 @@ func (c *Config) applyEnvOverrides() {
 
 	if host := os.Getenv("AIBOX_HOST"); host != "" {
 		c.Server.Host = host
+	}
+
+	if port := os.Getenv("AIBOX_ADMIN_PORT"); port != "" {
+		if p, err := strconv.Atoi(port); err == nil {
+			c.Server.AdminPort = p
+		}
 	}
 
 	// TLS configuration

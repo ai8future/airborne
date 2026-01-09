@@ -31,8 +31,17 @@ type VersionInfo struct {
 	BuildTime string
 }
 
+// ServerComponents holds components needed by both gRPC and admin servers
+type ServerComponents struct {
+	KeyStore    *auth.KeyStore
+	RateLimiter *auth.RateLimiter
+	TenantMgr   *tenant.Manager
+	RedisClient *redis.Client
+}
+
 // NewGRPCServer creates a new gRPC server with all services registered
-func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, error) {
+// Returns the server and components needed by admin HTTP server
+func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, *ServerComponents, error) {
 	// Load tenant configurations
 	tenantMgr, err := tenant.Load("")
 	if err != nil {
@@ -60,7 +69,7 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, error
 	})
 	if err != nil {
 		if cfg.StartupMode.IsProduction() {
-			return nil, fmt.Errorf("redis required in production mode: %w", err)
+			return nil, nil, fmt.Errorf("redis required in production mode: %w", err)
 		}
 		slog.Warn("Redis not available - auth and rate limiting disabled (development mode)", "error", err)
 	} else {
@@ -132,7 +141,7 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, error
 	if cfg.TLS.Enabled {
 		creds, err := credentials.NewServerTLSFromFile(cfg.TLS.CertFile, cfg.TLS.KeyFile)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		opts = append(opts, grpc.Creds(creds))
 	}
@@ -201,7 +210,14 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, error
 		"version", version.Version,
 	)
 
-	return server, nil
+	components := &ServerComponents{
+		KeyStore:    keyStore,
+		RateLimiter: rateLimiter,
+		TenantMgr:   tenantMgr,
+		RedisClient: redisClient,
+	}
+
+	return server, components, nil
 }
 
 // recoveryInterceptor recovers from panics in unary handlers

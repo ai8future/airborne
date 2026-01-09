@@ -119,6 +119,25 @@ func (c *Client) HDel(ctx context.Context, key string, fields ...string) error {
 	return c.rdb.HDel(ctx, key, fields...).Err()
 }
 
+// Scan iterates over keys matching a pattern
+func (c *Client) Scan(ctx context.Context, pattern string) ([]string, error) {
+	var keys []string
+	var cursor uint64
+	for {
+		var batch []string
+		var err error
+		batch, cursor, err = c.rdb.Scan(ctx, cursor, pattern, 100).Result()
+		if err != nil {
+			return nil, err
+		}
+		keys = append(keys, batch...)
+		if cursor == 0 {
+			break
+		}
+	}
+	return keys, nil
+}
+
 // IsNil checks if an error is redis.Nil (key not found)
 func IsNil(err error) bool {
 	return err == redis.Nil

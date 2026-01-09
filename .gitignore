@@ -37,6 +37,10 @@ coverage.html
 # Node
 node_modules/
 dist/
+!internal/admin/frontend/dist/
+
+# Admin credentials
+.admin_credentials
 
 # IDE/Editor
 .idea/

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	aiboxv1 "github.com/cliffpyles/aibox/gen/go/aibox/v1"
+	"github.com/cliffpyles/aibox/internal/admin"
 	"github.com/cliffpyles/aibox/internal/config"
 	"github.com/cliffpyles/aibox/internal/server"
 	"google.golang.org/grpc"
@@ -61,7 +63,7 @@ func main() {
 	)
 
 	// Create gRPC server
-	grpcServer, err := server.NewGRPCServer(cfg, server.VersionInfo{
+	grpcServer, components, err := server.NewGRPCServer(cfg, server.VersionInfo{
 		Version:   Version,
 		GitCommit: GitCommit,
 		BuildTime: BuildTime,
@@ -83,7 +85,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Start server in goroutine
+	// Start gRPC server in goroutine
 	go func() {
 		slog.Info("gRPC server listening", "address", addr)
 		if err := grpcServer.Serve(listener); err != nil && err != grpc.ErrServerStopped {
@@ -92,13 +94,59 @@ func main() {
 		}
 	}()
 
+	// Start Admin HTTP server if enabled
+	var adminServer *http.Server
+	if cfg.Server.AdminPort > 0 {
+		// Initialize admin auth
+		adminAuth := admin.NewAdminAuth(cfg.Redis.Addr) // Use Redis addr dir as config dir fallback
+		if homeDir, err := os.UserHomeDir(); err == nil {
+			adminAuth = admin.NewAdminAuth(homeDir + "/.aibox")
+		}
+		if err := adminAuth.Load(); err != nil {
+			slog.Error("failed to load admin credentials", "error", err)
+		}
+		adminAuth.StartCleanupRoutine()
+
+		// Create admin server
+		adminHTTP := admin.NewServer(
+			cfg,
+			adminAuth,
+			components.KeyStore,
+			components.RateLimiter,
+			components.TenantMgr,
+			admin.VersionInfo{
+				Version:   Version,
+				GitCommit: GitCommit,
+				BuildTime: BuildTime,
+			},
+		)
+
+		adminAddr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.AdminPort)
+		adminServer = &http.Server{
+			Addr:    adminAddr,
+			Handler: adminHTTP,
+		}
+
+		go func() {
+			slog.Info("admin HTTP server listening", "address", adminAddr)
+			if err := adminServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				slog.Error("admin HTTP server error", "error", err)
+			}
+		}()
+	}
+
 	// Wait for shutdown signal
 	<-ctx.Done()
-	slog.Info("shutdown signal received, stopping server...")
+	slog.Info("shutdown signal received, stopping servers...")
 
 	// Graceful shutdown
+	if adminServer != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		adminServer.Shutdown(shutdownCtx)
+	}
 	grpcServer.GracefulStop()
-	slog.Info("server stopped")
+	slog.Info("servers stopped")
 }
 
 // configureLogger sets up the default slog logger based on config values

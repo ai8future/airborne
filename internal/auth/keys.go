@@ -43,6 +43,7 @@ type ClientKey struct {
 	RateLimits  RateLimits        `json:"rate_limits"`
 	CreatedAt   time.Time         `json:"created_at"`
 	ExpiresAt   *time.Time        `json:"expires_at,omitempty"`
+	LastUsed    *time.Time        `json:"last_used,omitempty"`
 	Metadata    map[string]string `json:"metadata,omitempty"`
 }
 
@@ -149,6 +150,54 @@ func (s *KeyStore) GetKey(ctx context.Context, keyID string) (*ClientKey, error)
 // DeleteKey deletes an API key
 func (s *KeyStore) DeleteKey(ctx context.Context, keyID string) error {
 	return s.redis.Del(ctx, s.keyPrefix+keyID)
+}
+
+// ListKeys returns all API keys (without secrets)
+func (s *KeyStore) ListKeys(ctx context.Context) ([]*ClientKey, error) {
+	// Scan for all keys with our prefix
+	pattern := s.keyPrefix + "*"
+	keyNames, err := s.redis.Scan(ctx, pattern)
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan keys: %w", err)
+	}
+
+	keys := make([]*ClientKey, 0, len(keyNames))
+	for _, keyName := range keyNames {
+		// Extract keyID from full key name
+		keyID := keyName[len(s.keyPrefix):]
+		key, err := s.getKey(ctx, keyID)
+		if err != nil {
+			// Skip keys that can't be loaded (may have expired)
+			continue
+		}
+		keys = append(keys, key)
+	}
+
+	return keys, nil
+}
+
+// CreateKeyParams holds parameters for creating a new API key
+type CreateKeyParams struct {
+	ClientName  string
+	Permissions []Permission
+	RateLimits  RateLimits
+}
+
+// CreateKey creates a new API key with auto-generated client ID
+// Returns the full key (shown once) and the ClientKey record
+func (s *KeyStore) CreateKey(ctx context.Context, params CreateKeyParams) (*ClientKey, string, error) {
+	// Generate a unique client ID
+	clientID, err := generateRandomString(12)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to generate client ID: %w", err)
+	}
+
+	fullKey, key, err := s.GenerateAPIKey(ctx, clientID, params.ClientName, params.Permissions, params.RateLimits)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return key, fullKey, nil
 }
 
 // HasPermission checks if a key has a specific permission

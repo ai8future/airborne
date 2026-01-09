@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.4] - 2026-01-09
+
+### Added
+- **Admin UI**: Web-based administration interface for managing aibox
+  - React frontend (Vite + Tailwind) embedded in Go binary
+  - Password-based authentication with bcrypt hashing
+  - Session management with configurable TTL (24h default)
+  - Dashboard with server status, quick stats, provider status
+  - API Key management (list, create, revoke)
+  - Tenant configuration viewer
+  - Usage statistics with charts
+  - AI Provider status pages (OpenAI, Anthropic, Gemini)
+- `internal/admin/` package: HTTP server, auth, handlers
+- `internal/admin/frontend/`: React admin UI
+- `AdminPort` config option: Set port for admin HTTP server (0 to disable)
+- `AIBOX_ADMIN_PORT` environment variable
+- `KeyStore.ListKeys()`: List all API keys
+- `KeyStore.CreateKey()`: Create API key with auto-generated client ID
+- `redis.Client.Scan()`: Iterate over keys matching a pattern
+- `ClientKey.LastUsed` field: Track last usage time
+
+### Changed
+- `server.NewGRPCServer()` now returns `ServerComponents` for use by admin server
+
+Agent: Claude:Opus 4.5
+
 ## [0.6.3] - 2026-01-08
 
 ### Security
