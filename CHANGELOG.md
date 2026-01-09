@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.8] - 2026-01-09
+
+### Removed
+- **Admin UI**: Completely removed web-based admin interface
+  - Bizops already provides this functionality
+  - Removed `internal/admin/` package (auth.go, server.go, handlers.go, frontend/)
+  - Removed `AdminPort` config option and `AIBOX_ADMIN_PORT` env var
+  - Simplified main.go by removing HTTP server code
+
+Agent: Claude:Opus 4.5
+
 ## [0.6.7] - 2026-01-09
 
 ### Fixed
