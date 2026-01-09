@@ -21,7 +21,7 @@ func TestNewGRPCServer_FailsWithoutRedisInProductionMode(t *testing.T) {
 		},
 	}
 
-	_, err := NewGRPCServer(cfg, VersionInfo{Version: "test"})
+	_, _, err := NewGRPCServer(cfg, VersionInfo{Version: "test"})
 	if err == nil {
 		t.Fatal("expected error when Redis unavailable in production mode")
 	}
@@ -39,7 +39,7 @@ func TestNewGRPCServer_AllowsNoRedisInDevelopmentMode(t *testing.T) {
 		},
 	}
 
-	server, err := NewGRPCServer(cfg, VersionInfo{Version: "test"})
+	server, _, err := NewGRPCServer(cfg, VersionInfo{Version: "test"})
 	if err != nil {
 		t.Fatalf("development mode should allow missing Redis: %v", err)
 	}
