@@ -197,9 +197,17 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 		ctx, cancel = context.WithTimeout(ctx, requestTimeout)
 	}
 
+	// Helper to clean up cancel on error returns
+	cleanup := func() {
+		if cancel != nil {
+			cancel()
+		}
+	}
+
 	cfg := params.Config
 
 	if strings.TrimSpace(cfg.APIKey) == "" {
+		cleanup()
 		return nil, errors.New("Anthropic API key is required")
 	}
 
@@ -218,6 +226,7 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 	if cfg.BaseURL != "" {
 		// SECURITY: Validate base URL to prevent SSRF attacks
 		if err := validation.ValidateProviderURL(cfg.BaseURL); err != nil {
+			cleanup()
 			return nil, fmt.Errorf("invalid base URL: %w", err)
 		}
 		opts = append(opts, option.WithBaseURL(cfg.BaseURL))
