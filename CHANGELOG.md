@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.7] - 2026-01-09
+
+### Fixed
+- Docker container permission error when creating admin password
+  - Container now creates `/app/data` directory with proper ownership
+  - Code checks for `/app/data` before falling back to home directory
+  - Added `AIBOX_DATA_DIR` environment variable for custom data path
+
+Agent: Claude:Opus 4.5
+
 ## [0.6.6] - 2026-01-09
 
 ### Changed

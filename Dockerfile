@@ -40,8 +40,11 @@ COPY --from=builder /build/aibox .
 # Copy configs (can be overridden via volume mount)
 COPY configs/ /app/configs/
 
-# Create non-root user
-RUN adduser -D -H -s /sbin/nologin aibox
+# Create non-root user and data directory
+RUN adduser -D -H -s /sbin/nologin aibox && \
+    mkdir -p /app/data && \
+    chown aibox:aibox /app/data
+
 USER aibox
 
 # Expose gRPC port

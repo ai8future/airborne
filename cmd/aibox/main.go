@@ -97,11 +97,19 @@ func main() {
 	// Start Admin HTTP server if enabled
 	var adminServer *http.Server
 	if cfg.Server.AdminPort > 0 {
-		// Initialize admin auth
-		adminAuth := admin.NewAdminAuth(cfg.Redis.Addr) // Use Redis addr dir as config dir fallback
-		if homeDir, err := os.UserHomeDir(); err == nil {
-			adminAuth = admin.NewAdminAuth(homeDir + "/.aibox")
+		// Initialize admin auth - determine data directory
+		dataDir := os.Getenv("AIBOX_DATA_DIR")
+		if dataDir == "" {
+			// In Docker, use /app/data; otherwise use ~/.aibox
+			if _, err := os.Stat("/app/data"); err == nil {
+				dataDir = "/app/data"
+			} else if homeDir, err := os.UserHomeDir(); err == nil {
+				dataDir = homeDir + "/.aibox"
+			} else {
+				dataDir = "/tmp/aibox"
+			}
 		}
+		adminAuth := admin.NewAdminAuth(dataDir)
 		if err := adminAuth.Load(); err != nil {
 			slog.Error("failed to load admin credentials", "error", err)
 		}
