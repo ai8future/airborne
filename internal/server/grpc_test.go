@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cliffpyles/aibox/internal/auth"
-	"github.com/cliffpyles/aibox/internal/config"
+	"github.com/ai8future/airborne/internal/auth"
+	"github.com/ai8future/airborne/internal/config"
 	"google.golang.org/grpc"
 )
 

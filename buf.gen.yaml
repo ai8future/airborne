@@ -3,7 +3,7 @@ managed:
   enabled: true
   override:
     - file_option: go_package_prefix
-      value: github.com/cliffpyles/aibox/gen/go
+      value: github.com/ai8future/airborne/gen/go
 plugins:
   - remote: buf.build/protocolbuffers/go
     out: gen/go

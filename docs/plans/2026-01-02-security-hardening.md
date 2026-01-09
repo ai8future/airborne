@@ -28,7 +28,7 @@ package server
 import (
 	"testing"
 
-	"github.com/cliffpyles/aibox/internal/config"
+	"github.com/ai8future/airborne/internal/config"
 )
 
 func TestNewGRPCServer_FailsWithoutRedisInProductionMode(t *testing.T) {
@@ -310,7 +310,7 @@ Adds constants and validation functions for request size limits:
 Modify `internal/service/chat.go`. Add import:
 
 ```go
-"github.com/cliffpyles/aibox/internal/validation"
+"github.com/ai8future/airborne/internal/validation"
 ```
 
 Replace lines 47-50 with:
@@ -653,7 +653,7 @@ maintaining full error logging server-side."
 Modify `internal/service/chat.go`. Add import:
 
 ```go
-sanitize "github.com/cliffpyles/aibox/internal/errors"
+sanitize "github.com/ai8future/airborne/internal/errors"
 ```
 
 Replace line 105:

@@ -2,9 +2,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.0
 // - protoc             (unknown)
-// source: aibox/v1/aibox.proto
+// source: airborne/v1/airborne.proto
 
-package aiboxv1
+package airbornev1
 
 import (
 	context "context"
@@ -19,9 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AIBoxService_GenerateReply_FullMethodName       = "/aibox.v1.AIBoxService/GenerateReply"
-	AIBoxService_GenerateReplyStream_FullMethodName = "/aibox.v1.AIBoxService/GenerateReplyStream"
-	AIBoxService_SelectProvider_FullMethodName      = "/aibox.v1.AIBoxService/SelectProvider"
+	AIBoxService_GenerateReply_FullMethodName       = "/airborne.v1.AIBoxService/GenerateReply"
+	AIBoxService_GenerateReplyStream_FullMethodName = "/airborne.v1.AIBoxService/GenerateReplyStream"
+	AIBoxService_SelectProvider_FullMethodName      = "/airborne.v1.AIBoxService/SelectProvider"
 )
 
 // AIBoxServiceClient is the client API for AIBoxService service.
@@ -188,7 +188,7 @@ func _AIBoxService_SelectProvider_Handler(srv interface{}, ctx context.Context, 
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var AIBoxService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "aibox.v1.AIBoxService",
+	ServiceName: "airborne.v1.AIBoxService",
 	HandlerType: (*AIBoxServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -207,5 +207,5 @@ var AIBoxService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "aibox/v1/aibox.proto",
+	Metadata: "airborne/v1/airborne.proto",
 }

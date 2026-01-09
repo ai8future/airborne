@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cliffpyles/aibox/internal/rag/extractor"
-	"github.com/cliffpyles/aibox/internal/rag/testutil"
-	"github.com/cliffpyles/aibox/internal/rag/vectorstore"
+	"github.com/ai8future/airborne/internal/rag/extractor"
+	"github.com/ai8future/airborne/internal/rag/testutil"
+	"github.com/ai8future/airborne/internal/rag/vectorstore"
 )
 
 func newTestService(t *testing.T) (*Service, *testutil.MockEmbedder, *testutil.MockStore, *testutil.MockExtractor) {

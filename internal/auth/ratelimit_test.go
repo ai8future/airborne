@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/cliffpyles/aibox/internal/redis"
+	"github.com/ai8future/airborne/internal/redis"
 )
 
 func TestRateLimiter_AtomicIncrement(t *testing.T) {

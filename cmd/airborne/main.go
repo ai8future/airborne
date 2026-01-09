@@ -12,9 +12,9 @@ import (
 	"syscall"
 	"time"
 
-	aiboxv1 "github.com/cliffpyles/aibox/gen/go/aibox/v1"
-	"github.com/cliffpyles/aibox/internal/config"
-	"github.com/cliffpyles/aibox/internal/server"
+	airbornev1 "github.com/ai8future/airborne/gen/go/airborne/v1"
+	"github.com/ai8future/airborne/internal/config"
+	"github.com/ai8future/airborne/internal/server"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -53,7 +53,7 @@ func main() {
 	configureLogger(cfg.Logging)
 
 	// Log startup info
-	slog.Info("starting AIBox",
+	slog.Info("starting Airborne",
 		"version", Version,
 		"commit", GitCommit,
 		"build_time", BuildTime,
@@ -163,8 +163,8 @@ func runHealthCheck() error {
 	defer conn.Close()
 
 	// Create AdminService client and call Health
-	client := aiboxv1.NewAdminServiceClient(conn)
-	resp, err := client.Health(ctx, &aiboxv1.HealthRequest{})
+	client := airbornev1.NewAdminServiceClient(conn)
+	resp, err := client.Health(ctx, &airbornev1.HealthRequest{})
 	if err != nil {
 		return fmt.Errorf("health check RPC failed: %w", err)
 	}

@@ -2,9 +2,9 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        (unknown)
-// source: aibox/v1/common.proto
+// source: airborne/v1/common.proto
 
-package aiboxv1
+package airbornev1
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -58,11 +58,11 @@ func (x Provider) String() string {
 }
 
 func (Provider) Descriptor() protoreflect.EnumDescriptor {
-	return file_aibox_v1_common_proto_enumTypes[0].Descriptor()
+	return file_airborne_v1_common_proto_enumTypes[0].Descriptor()
 }
 
 func (Provider) Type() protoreflect.EnumType {
-	return &file_aibox_v1_common_proto_enumTypes[0]
+	return &file_airborne_v1_common_proto_enumTypes[0]
 }
 
 func (x Provider) Number() protoreflect.EnumNumber {
@@ -71,7 +71,7 @@ func (x Provider) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Provider.Descriptor instead.
 func (Provider) EnumDescriptor() ([]byte, []int) {
-	return file_aibox_v1_common_proto_rawDescGZIP(), []int{0}
+	return file_airborne_v1_common_proto_rawDescGZIP(), []int{0}
 }
 
 type Citation_Type int32
@@ -107,11 +107,11 @@ func (x Citation_Type) String() string {
 }
 
 func (Citation_Type) Descriptor() protoreflect.EnumDescriptor {
-	return file_aibox_v1_common_proto_enumTypes[1].Descriptor()
+	return file_airborne_v1_common_proto_enumTypes[1].Descriptor()
 }
 
 func (Citation_Type) Type() protoreflect.EnumType {
-	return &file_aibox_v1_common_proto_enumTypes[1]
+	return &file_airborne_v1_common_proto_enumTypes[1]
 }
 
 func (x Citation_Type) Number() protoreflect.EnumNumber {
@@ -120,7 +120,7 @@ func (x Citation_Type) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Citation_Type.Descriptor instead.
 func (Citation_Type) EnumDescriptor() ([]byte, []int) {
-	return file_aibox_v1_common_proto_rawDescGZIP(), []int{2, 0}
+	return file_airborne_v1_common_proto_rawDescGZIP(), []int{2, 0}
 }
 
 // Message represents a conversation turn
@@ -135,7 +135,7 @@ type Message struct {
 
 func (x *Message) Reset() {
 	*x = Message{}
-	mi := &file_aibox_v1_common_proto_msgTypes[0]
+	mi := &file_airborne_v1_common_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -147,7 +147,7 @@ func (x *Message) String() string {
 func (*Message) ProtoMessage() {}
 
 func (x *Message) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_common_proto_msgTypes[0]
+	mi := &file_airborne_v1_common_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -160,7 +160,7 @@ func (x *Message) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Message.ProtoReflect.Descriptor instead.
 func (*Message) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_common_proto_rawDescGZIP(), []int{0}
+	return file_airborne_v1_common_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *Message) GetRole() string {
@@ -196,7 +196,7 @@ type Usage struct {
 
 func (x *Usage) Reset() {
 	*x = Usage{}
-	mi := &file_aibox_v1_common_proto_msgTypes[1]
+	mi := &file_airborne_v1_common_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -208,7 +208,7 @@ func (x *Usage) String() string {
 func (*Usage) ProtoMessage() {}
 
 func (x *Usage) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_common_proto_msgTypes[1]
+	mi := &file_airborne_v1_common_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -221,7 +221,7 @@ func (x *Usage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Usage.ProtoReflect.Descriptor instead.
 func (*Usage) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_common_proto_rawDescGZIP(), []int{1}
+	return file_airborne_v1_common_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *Usage) GetInputTokens() int64 {
@@ -248,7 +248,7 @@ func (x *Usage) GetTotalTokens() int64 {
 // Citation represents a source reference from file or web search
 type Citation struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          Citation_Type          `protobuf:"varint,1,opt,name=type,proto3,enum=aibox.v1.Citation_Type" json:"type,omitempty"`
+	Type          Citation_Type          `protobuf:"varint,1,opt,name=type,proto3,enum=airborne.v1.Citation_Type" json:"type,omitempty"`
 	Provider      string                 `protobuf:"bytes,2,opt,name=provider,proto3" json:"provider,omitempty"`                        // Which provider generated this citation
 	Url           string                 `protobuf:"bytes,3,opt,name=url,proto3" json:"url,omitempty"`                                  // For URL citations
 	Title         string                 `protobuf:"bytes,4,opt,name=title,proto3" json:"title,omitempty"`                              // Page or file title
@@ -264,7 +264,7 @@ type Citation struct {
 
 func (x *Citation) Reset() {
 	*x = Citation{}
-	mi := &file_aibox_v1_common_proto_msgTypes[2]
+	mi := &file_airborne_v1_common_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -276,7 +276,7 @@ func (x *Citation) String() string {
 func (*Citation) ProtoMessage() {}
 
 func (x *Citation) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_common_proto_msgTypes[2]
+	mi := &file_airborne_v1_common_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -289,7 +289,7 @@ func (x *Citation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Citation.ProtoReflect.Descriptor instead.
 func (*Citation) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_common_proto_rawDescGZIP(), []int{2}
+	return file_airborne_v1_common_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Citation) GetType() Citation_Type {
@@ -384,7 +384,7 @@ type ProviderConfig struct {
 
 func (x *ProviderConfig) Reset() {
 	*x = ProviderConfig{}
-	mi := &file_aibox_v1_common_proto_msgTypes[3]
+	mi := &file_airborne_v1_common_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -396,7 +396,7 @@ func (x *ProviderConfig) String() string {
 func (*ProviderConfig) ProtoMessage() {}
 
 func (x *ProviderConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_common_proto_msgTypes[3]
+	mi := &file_airborne_v1_common_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -409,7 +409,7 @@ func (x *ProviderConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProviderConfig.ProtoReflect.Descriptor instead.
 func (*ProviderConfig) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_common_proto_rawDescGZIP(), []int{3}
+	return file_airborne_v1_common_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ProviderConfig) GetApiKey() string {
@@ -461,11 +461,11 @@ func (x *ProviderConfig) GetExtraOptions() map[string]string {
 	return nil
 }
 
-var File_aibox_v1_common_proto protoreflect.FileDescriptor
+var File_airborne_v1_common_proto protoreflect.FileDescriptor
 
-const file_aibox_v1_common_proto_rawDesc = "" +
+const file_airborne_v1_common_proto_rawDesc = "" +
 	"\n" +
-	"\x15aibox/v1/common.proto\x12\baibox.v1\"U\n" +
+	"\x18airborne/v1/common.proto\x12\vairborne.v1\"U\n" +
 	"\aMessage\x12\x12\n" +
 	"\x04role\x18\x01 \x01(\tR\x04role\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12\x1c\n" +
@@ -473,9 +473,9 @@ const file_aibox_v1_common_proto_rawDesc = "" +
 	"\x05Usage\x12!\n" +
 	"\finput_tokens\x18\x01 \x01(\x03R\vinputTokens\x12#\n" +
 	"\routput_tokens\x18\x02 \x01(\x03R\foutputTokens\x12!\n" +
-	"\ftotal_tokens\x18\x03 \x01(\x03R\vtotalTokens\"\xe4\x02\n" +
-	"\bCitation\x12+\n" +
-	"\x04type\x18\x01 \x01(\x0e2\x17.aibox.v1.Citation.TypeR\x04type\x12\x1a\n" +
+	"\ftotal_tokens\x18\x03 \x01(\x03R\vtotalTokens\"\xe7\x02\n" +
+	"\bCitation\x12.\n" +
+	"\x04type\x18\x01 \x01(\x0e2\x1a.airborne.v1.Citation.TypeR\x04type\x12\x1a\n" +
 	"\bprovider\x18\x02 \x01(\tR\bprovider\x12\x10\n" +
 	"\x03url\x18\x03 \x01(\tR\x03url\x12\x14\n" +
 	"\x05title\x18\x04 \x01(\tR\x05title\x12\x17\n" +
@@ -491,16 +491,16 @@ const file_aibox_v1_common_proto_rawDesc = "" +
 	"\x04Type\x12\x14\n" +
 	"\x10TYPE_UNSPECIFIED\x10\x00\x12\f\n" +
 	"\bTYPE_URL\x10\x01\x12\r\n" +
-	"\tTYPE_FILE\x10\x02\"\x8e\x03\n" +
+	"\tTYPE_FILE\x10\x02\"\x91\x03\n" +
 	"\x0eProviderConfig\x12\x17\n" +
 	"\aapi_key\x18\x01 \x01(\tR\x06apiKey\x12\x14\n" +
 	"\x05model\x18\x02 \x01(\tR\x05model\x12%\n" +
 	"\vtemperature\x18\x03 \x01(\x01H\x00R\vtemperature\x88\x01\x01\x12\x18\n" +
 	"\x05top_p\x18\x04 \x01(\x01H\x01R\x04topP\x88\x01\x01\x12/\n" +
 	"\x11max_output_tokens\x18\x05 \x01(\x05H\x02R\x0fmaxOutputTokens\x88\x01\x01\x12\x19\n" +
-	"\bbase_url\x18\x06 \x01(\tR\abaseUrl\x12O\n" +
+	"\bbase_url\x18\x06 \x01(\tR\abaseUrl\x12R\n" +
 	"\rextra_options\x18\n" +
-	" \x03(\v2*.aibox.v1.ProviderConfig.ExtraOptionsEntryR\fextraOptions\x1a?\n" +
+	" \x03(\v2-.airborne.v1.ProviderConfig.ExtraOptionsEntryR\fextraOptions\x1a?\n" +
 	"\x11ExtraOptionsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x0e\n" +
@@ -511,35 +511,35 @@ const file_aibox_v1_common_proto_rawDesc = "" +
 	"\x14PROVIDER_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fPROVIDER_OPENAI\x10\x01\x12\x13\n" +
 	"\x0fPROVIDER_GEMINI\x10\x02\x12\x16\n" +
-	"\x12PROVIDER_ANTHROPIC\x10\x03B\x91\x01\n" +
-	"\fcom.aibox.v1B\vCommonProtoP\x01Z3github.com/cliffpyles/aibox/gen/go/aibox/v1;aiboxv1\xa2\x02\x03AXX\xaa\x02\bAibox.V1\xca\x02\bAibox\\V1\xe2\x02\x14Aibox\\V1\\GPBMetadata\xea\x02\tAibox::V1b\x06proto3"
+	"\x12PROVIDER_ANTHROPIC\x10\x03B\xa8\x01\n" +
+	"\x0fcom.airborne.v1B\vCommonProtoP\x01Z;github.com/ai8future/airborne/gen/go/airborne/v1;airbornev1\xa2\x02\x03AXX\xaa\x02\vAirborne.V1\xca\x02\vAirborne\\V1\xe2\x02\x17Airborne\\V1\\GPBMetadata\xea\x02\fAirborne::V1b\x06proto3"
 
 var (
-	file_aibox_v1_common_proto_rawDescOnce sync.Once
-	file_aibox_v1_common_proto_rawDescData []byte
+	file_airborne_v1_common_proto_rawDescOnce sync.Once
+	file_airborne_v1_common_proto_rawDescData []byte
 )
 
-func file_aibox_v1_common_proto_rawDescGZIP() []byte {
-	file_aibox_v1_common_proto_rawDescOnce.Do(func() {
-		file_aibox_v1_common_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_aibox_v1_common_proto_rawDesc), len(file_aibox_v1_common_proto_rawDesc)))
+func file_airborne_v1_common_proto_rawDescGZIP() []byte {
+	file_airborne_v1_common_proto_rawDescOnce.Do(func() {
+		file_airborne_v1_common_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_airborne_v1_common_proto_rawDesc), len(file_airborne_v1_common_proto_rawDesc)))
 	})
-	return file_aibox_v1_common_proto_rawDescData
+	return file_airborne_v1_common_proto_rawDescData
 }
 
-var file_aibox_v1_common_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_aibox_v1_common_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
-var file_aibox_v1_common_proto_goTypes = []any{
-	(Provider)(0),          // 0: aibox.v1.Provider
-	(Citation_Type)(0),     // 1: aibox.v1.Citation.Type
-	(*Message)(nil),        // 2: aibox.v1.Message
-	(*Usage)(nil),          // 3: aibox.v1.Usage
-	(*Citation)(nil),       // 4: aibox.v1.Citation
-	(*ProviderConfig)(nil), // 5: aibox.v1.ProviderConfig
-	nil,                    // 6: aibox.v1.ProviderConfig.ExtraOptionsEntry
+var file_airborne_v1_common_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_airborne_v1_common_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_airborne_v1_common_proto_goTypes = []any{
+	(Provider)(0),          // 0: airborne.v1.Provider
+	(Citation_Type)(0),     // 1: airborne.v1.Citation.Type
+	(*Message)(nil),        // 2: airborne.v1.Message
+	(*Usage)(nil),          // 3: airborne.v1.Usage
+	(*Citation)(nil),       // 4: airborne.v1.Citation
+	(*ProviderConfig)(nil), // 5: airborne.v1.ProviderConfig
+	nil,                    // 6: airborne.v1.ProviderConfig.ExtraOptionsEntry
 }
-var file_aibox_v1_common_proto_depIdxs = []int32{
-	1, // 0: aibox.v1.Citation.type:type_name -> aibox.v1.Citation.Type
-	6, // 1: aibox.v1.ProviderConfig.extra_options:type_name -> aibox.v1.ProviderConfig.ExtraOptionsEntry
+var file_airborne_v1_common_proto_depIdxs = []int32{
+	1, // 0: airborne.v1.Citation.type:type_name -> airborne.v1.Citation.Type
+	6, // 1: airborne.v1.ProviderConfig.extra_options:type_name -> airborne.v1.ProviderConfig.ExtraOptionsEntry
 	2, // [2:2] is the sub-list for method output_type
 	2, // [2:2] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
@@ -547,28 +547,28 @@ var file_aibox_v1_common_proto_depIdxs = []int32{
 	0, // [0:2] is the sub-list for field type_name
 }
 
-func init() { file_aibox_v1_common_proto_init() }
-func file_aibox_v1_common_proto_init() {
-	if File_aibox_v1_common_proto != nil {
+func init() { file_airborne_v1_common_proto_init() }
+func file_airborne_v1_common_proto_init() {
+	if File_airborne_v1_common_proto != nil {
 		return
 	}
-	file_aibox_v1_common_proto_msgTypes[3].OneofWrappers = []any{}
+	file_airborne_v1_common_proto_msgTypes[3].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_aibox_v1_common_proto_rawDesc), len(file_aibox_v1_common_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_airborne_v1_common_proto_rawDesc), len(file_airborne_v1_common_proto_rawDesc)),
 			NumEnums:      2,
 			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_aibox_v1_common_proto_goTypes,
-		DependencyIndexes: file_aibox_v1_common_proto_depIdxs,
-		EnumInfos:         file_aibox_v1_common_proto_enumTypes,
-		MessageInfos:      file_aibox_v1_common_proto_msgTypes,
+		GoTypes:           file_airborne_v1_common_proto_goTypes,
+		DependencyIndexes: file_airborne_v1_common_proto_depIdxs,
+		EnumInfos:         file_airborne_v1_common_proto_enumTypes,
+		MessageInfos:      file_airborne_v1_common_proto_msgTypes,
 	}.Build()
-	File_aibox_v1_common_proto = out.File
-	file_aibox_v1_common_proto_goTypes = nil
-	file_aibox_v1_common_proto_depIdxs = nil
+	File_airborne_v1_common_proto = out.File
+	file_airborne_v1_common_proto_goTypes = nil
+	file_airborne_v1_common_proto_depIdxs = nil
 }

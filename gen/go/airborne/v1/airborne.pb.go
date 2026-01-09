@@ -2,9 +2,9 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        (unknown)
-// source: aibox/v1/aibox.proto
+// source: airborne/v1/airborne.proto
 
-package aiboxv1
+package airbornev1
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -34,8 +34,8 @@ type GenerateReplyRequest struct {
 	// Optional: Conversation history for context
 	ConversationHistory []*Message `protobuf:"bytes,3,rep,name=conversation_history,json=conversationHistory,proto3" json:"conversation_history,omitempty"`
 	// Provider selection
-	PreferredProvider Provider `protobuf:"varint,4,opt,name=preferred_provider,json=preferredProvider,proto3,enum=aibox.v1.Provider" json:"preferred_provider,omitempty"` // Which provider to use
-	ModelOverride     string   `protobuf:"bytes,5,opt,name=model_override,json=modelOverride,proto3" json:"model_override,omitempty"`                                     // Override the default model
+	PreferredProvider Provider `protobuf:"varint,4,opt,name=preferred_provider,json=preferredProvider,proto3,enum=airborne.v1.Provider" json:"preferred_provider,omitempty"` // Which provider to use
+	ModelOverride     string   `protobuf:"bytes,5,opt,name=model_override,json=modelOverride,proto3" json:"model_override,omitempty"`                                        // Override the default model
 	// Feature flags
 	EnableFileSearch bool `protobuf:"varint,6,opt,name=enable_file_search,json=enableFileSearch,proto3" json:"enable_file_search,omitempty"` // Enable RAG with file search
 	EnableWebSearch  bool `protobuf:"varint,7,opt,name=enable_web_search,json=enableWebSearch,proto3" json:"enable_web_search,omitempty"`    // Enable web search grounding
@@ -48,8 +48,8 @@ type GenerateReplyRequest struct {
 	// Key is provider name: "openai", "gemini", "anthropic"
 	ProviderConfigs map[string]*ProviderConfig `protobuf:"bytes,11,rep,name=provider_configs,json=providerConfigs,proto3" json:"provider_configs,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Failover settings
-	EnableFailover   bool     `protobuf:"varint,12,opt,name=enable_failover,json=enableFailover,proto3" json:"enable_failover,omitempty"`                              // Enable automatic failover on error
-	FallbackProvider Provider `protobuf:"varint,13,opt,name=fallback_provider,json=fallbackProvider,proto3,enum=aibox.v1.Provider" json:"fallback_provider,omitempty"` // Specific fallback provider (or use server default order)
+	EnableFailover   bool     `protobuf:"varint,12,opt,name=enable_failover,json=enableFailover,proto3" json:"enable_failover,omitempty"`                                 // Enable automatic failover on error
+	FallbackProvider Provider `protobuf:"varint,13,opt,name=fallback_provider,json=fallbackProvider,proto3,enum=airborne.v1.Provider" json:"fallback_provider,omitempty"` // Specific fallback provider (or use server default order)
 	// Request metadata
 	ClientId      string            `protobuf:"bytes,14,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`                                                           // Identifies the calling client
 	RequestId     string            `protobuf:"bytes,15,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`                                                        // Client-provided request ID for tracing
@@ -60,7 +60,7 @@ type GenerateReplyRequest struct {
 
 func (x *GenerateReplyRequest) Reset() {
 	*x = GenerateReplyRequest{}
-	mi := &file_aibox_v1_aibox_proto_msgTypes[0]
+	mi := &file_airborne_v1_airborne_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -72,7 +72,7 @@ func (x *GenerateReplyRequest) String() string {
 func (*GenerateReplyRequest) ProtoMessage() {}
 
 func (x *GenerateReplyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_aibox_proto_msgTypes[0]
+	mi := &file_airborne_v1_airborne_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -85,7 +85,7 @@ func (x *GenerateReplyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateReplyRequest.ProtoReflect.Descriptor instead.
 func (*GenerateReplyRequest) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_aibox_proto_rawDescGZIP(), []int{0}
+	return file_airborne_v1_airborne_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *GenerateReplyRequest) GetTenantId() string {
@@ -210,15 +210,15 @@ func (x *GenerateReplyRequest) GetMetadata() map[string]string {
 // GenerateReplyResponse contains the generated reply
 type GenerateReplyResponse struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
-	Text       string                 `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`                                 // The generated response text
-	ResponseId string                 `protobuf:"bytes,2,opt,name=response_id,json=responseId,proto3" json:"response_id,omitempty"`   // For conversation continuity (OpenAI)
-	Usage      *Usage                 `protobuf:"bytes,3,opt,name=usage,proto3" json:"usage,omitempty"`                               // Token usage metrics
-	Citations  []*Citation            `protobuf:"bytes,4,rep,name=citations,proto3" json:"citations,omitempty"`                       // Source citations (from file or web search)
-	Model      string                 `protobuf:"bytes,5,opt,name=model,proto3" json:"model,omitempty"`                               // Actual model used
-	Provider   Provider               `protobuf:"varint,6,opt,name=provider,proto3,enum=aibox.v1.Provider" json:"provider,omitempty"` // Actual provider used
+	Text       string                 `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`                                    // The generated response text
+	ResponseId string                 `protobuf:"bytes,2,opt,name=response_id,json=responseId,proto3" json:"response_id,omitempty"`      // For conversation continuity (OpenAI)
+	Usage      *Usage                 `protobuf:"bytes,3,opt,name=usage,proto3" json:"usage,omitempty"`                                  // Token usage metrics
+	Citations  []*Citation            `protobuf:"bytes,4,rep,name=citations,proto3" json:"citations,omitempty"`                          // Source citations (from file or web search)
+	Model      string                 `protobuf:"bytes,5,opt,name=model,proto3" json:"model,omitempty"`                                  // Actual model used
+	Provider   Provider               `protobuf:"varint,6,opt,name=provider,proto3,enum=airborne.v1.Provider" json:"provider,omitempty"` // Actual provider used
 	// Failover info (if failover occurred)
 	FailedOver       bool     `protobuf:"varint,7,opt,name=failed_over,json=failedOver,proto3" json:"failed_over,omitempty"`
-	OriginalProvider Provider `protobuf:"varint,8,opt,name=original_provider,json=originalProvider,proto3,enum=aibox.v1.Provider" json:"original_provider,omitempty"`
+	OriginalProvider Provider `protobuf:"varint,8,opt,name=original_provider,json=originalProvider,proto3,enum=airborne.v1.Provider" json:"original_provider,omitempty"`
 	OriginalError    string   `protobuf:"bytes,9,opt,name=original_error,json=originalError,proto3" json:"original_error,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
@@ -226,7 +226,7 @@ type GenerateReplyResponse struct {
 
 func (x *GenerateReplyResponse) Reset() {
 	*x = GenerateReplyResponse{}
-	mi := &file_aibox_v1_aibox_proto_msgTypes[1]
+	mi := &file_airborne_v1_airborne_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -238,7 +238,7 @@ func (x *GenerateReplyResponse) String() string {
 func (*GenerateReplyResponse) ProtoMessage() {}
 
 func (x *GenerateReplyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_aibox_proto_msgTypes[1]
+	mi := &file_airborne_v1_airborne_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -251,7 +251,7 @@ func (x *GenerateReplyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateReplyResponse.ProtoReflect.Descriptor instead.
 func (*GenerateReplyResponse) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_aibox_proto_rawDescGZIP(), []int{1}
+	return file_airborne_v1_airborne_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *GenerateReplyResponse) GetText() string {
@@ -334,7 +334,7 @@ type GenerateReplyChunk struct {
 
 func (x *GenerateReplyChunk) Reset() {
 	*x = GenerateReplyChunk{}
-	mi := &file_aibox_v1_aibox_proto_msgTypes[2]
+	mi := &file_airborne_v1_airborne_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -346,7 +346,7 @@ func (x *GenerateReplyChunk) String() string {
 func (*GenerateReplyChunk) ProtoMessage() {}
 
 func (x *GenerateReplyChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_aibox_proto_msgTypes[2]
+	mi := &file_airborne_v1_airborne_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -359,7 +359,7 @@ func (x *GenerateReplyChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateReplyChunk.ProtoReflect.Descriptor instead.
 func (*GenerateReplyChunk) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_aibox_proto_rawDescGZIP(), []int{2}
+	return file_airborne_v1_airborne_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *GenerateReplyChunk) GetChunk() isGenerateReplyChunk_Chunk {
@@ -459,7 +459,7 @@ type TextDelta struct {
 
 func (x *TextDelta) Reset() {
 	*x = TextDelta{}
-	mi := &file_aibox_v1_aibox_proto_msgTypes[3]
+	mi := &file_airborne_v1_airborne_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -471,7 +471,7 @@ func (x *TextDelta) String() string {
 func (*TextDelta) ProtoMessage() {}
 
 func (x *TextDelta) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_aibox_proto_msgTypes[3]
+	mi := &file_airborne_v1_airborne_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -484,7 +484,7 @@ func (x *TextDelta) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TextDelta.ProtoReflect.Descriptor instead.
 func (*TextDelta) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_aibox_proto_rawDescGZIP(), []int{3}
+	return file_airborne_v1_airborne_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *TextDelta) GetText() string {
@@ -511,7 +511,7 @@ type UsageUpdate struct {
 
 func (x *UsageUpdate) Reset() {
 	*x = UsageUpdate{}
-	mi := &file_aibox_v1_aibox_proto_msgTypes[4]
+	mi := &file_airborne_v1_airborne_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -523,7 +523,7 @@ func (x *UsageUpdate) String() string {
 func (*UsageUpdate) ProtoMessage() {}
 
 func (x *UsageUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_aibox_proto_msgTypes[4]
+	mi := &file_airborne_v1_airborne_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -536,7 +536,7 @@ func (x *UsageUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UsageUpdate.ProtoReflect.Descriptor instead.
 func (*UsageUpdate) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_aibox_proto_rawDescGZIP(), []int{4}
+	return file_airborne_v1_airborne_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *UsageUpdate) GetUsage() *Usage {
@@ -556,7 +556,7 @@ type CitationUpdate struct {
 
 func (x *CitationUpdate) Reset() {
 	*x = CitationUpdate{}
-	mi := &file_aibox_v1_aibox_proto_msgTypes[5]
+	mi := &file_airborne_v1_airborne_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -568,7 +568,7 @@ func (x *CitationUpdate) String() string {
 func (*CitationUpdate) ProtoMessage() {}
 
 func (x *CitationUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_aibox_proto_msgTypes[5]
+	mi := &file_airborne_v1_airborne_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -581,7 +581,7 @@ func (x *CitationUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CitationUpdate.ProtoReflect.Descriptor instead.
 func (*CitationUpdate) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_aibox_proto_rawDescGZIP(), []int{5}
+	return file_airborne_v1_airborne_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *CitationUpdate) GetCitation() *Citation {
@@ -596,7 +596,7 @@ type StreamComplete struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ResponseId    string                 `protobuf:"bytes,1,opt,name=response_id,json=responseId,proto3" json:"response_id,omitempty"`
 	Model         string                 `protobuf:"bytes,2,opt,name=model,proto3" json:"model,omitempty"`
-	Provider      Provider               `protobuf:"varint,3,opt,name=provider,proto3,enum=aibox.v1.Provider" json:"provider,omitempty"`
+	Provider      Provider               `protobuf:"varint,3,opt,name=provider,proto3,enum=airborne.v1.Provider" json:"provider,omitempty"`
 	FinalUsage    *Usage                 `protobuf:"bytes,4,opt,name=final_usage,json=finalUsage,proto3" json:"final_usage,omitempty"`
 	Citations     []*Citation            `protobuf:"bytes,5,rep,name=citations,proto3" json:"citations,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -605,7 +605,7 @@ type StreamComplete struct {
 
 func (x *StreamComplete) Reset() {
 	*x = StreamComplete{}
-	mi := &file_aibox_v1_aibox_proto_msgTypes[6]
+	mi := &file_airborne_v1_airborne_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -617,7 +617,7 @@ func (x *StreamComplete) String() string {
 func (*StreamComplete) ProtoMessage() {}
 
 func (x *StreamComplete) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_aibox_proto_msgTypes[6]
+	mi := &file_airborne_v1_airborne_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -630,7 +630,7 @@ func (x *StreamComplete) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamComplete.ProtoReflect.Descriptor instead.
 func (*StreamComplete) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_aibox_proto_rawDescGZIP(), []int{6}
+	return file_airborne_v1_airborne_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *StreamComplete) GetResponseId() string {
@@ -680,7 +680,7 @@ type StreamError struct {
 
 func (x *StreamError) Reset() {
 	*x = StreamError{}
-	mi := &file_aibox_v1_aibox_proto_msgTypes[7]
+	mi := &file_airborne_v1_airborne_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -692,7 +692,7 @@ func (x *StreamError) String() string {
 func (*StreamError) ProtoMessage() {}
 
 func (x *StreamError) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_aibox_proto_msgTypes[7]
+	mi := &file_airborne_v1_airborne_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -705,7 +705,7 @@ func (x *StreamError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamError.ProtoReflect.Descriptor instead.
 func (*StreamError) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_aibox_proto_rawDescGZIP(), []int{7}
+	return file_airborne_v1_airborne_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *StreamError) GetCode() string {
@@ -744,7 +744,7 @@ type SelectProviderRequest struct {
 
 func (x *SelectProviderRequest) Reset() {
 	*x = SelectProviderRequest{}
-	mi := &file_aibox_v1_aibox_proto_msgTypes[8]
+	mi := &file_airborne_v1_airborne_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -756,7 +756,7 @@ func (x *SelectProviderRequest) String() string {
 func (*SelectProviderRequest) ProtoMessage() {}
 
 func (x *SelectProviderRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_aibox_proto_msgTypes[8]
+	mi := &file_airborne_v1_airborne_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -769,7 +769,7 @@ func (x *SelectProviderRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SelectProviderRequest.ProtoReflect.Descriptor instead.
 func (*SelectProviderRequest) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_aibox_proto_rawDescGZIP(), []int{8}
+	return file_airborne_v1_airborne_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *SelectProviderRequest) GetTenantId() string {
@@ -810,16 +810,16 @@ func (x *SelectProviderRequest) GetTriggers() []*ProviderTrigger {
 // ProviderTrigger defines a phrase that triggers a specific provider
 type ProviderTrigger struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Phrase        string                 `protobuf:"bytes,1,opt,name=phrase,proto3" json:"phrase,omitempty"`                             // Trigger phrase to match
-	Provider      Provider               `protobuf:"varint,2,opt,name=provider,proto3,enum=aibox.v1.Provider" json:"provider,omitempty"` // Provider to use when matched
-	Model         string                 `protobuf:"bytes,3,opt,name=model,proto3" json:"model,omitempty"`                               // Optional model override
+	Phrase        string                 `protobuf:"bytes,1,opt,name=phrase,proto3" json:"phrase,omitempty"`                                // Trigger phrase to match
+	Provider      Provider               `protobuf:"varint,2,opt,name=provider,proto3,enum=airborne.v1.Provider" json:"provider,omitempty"` // Provider to use when matched
+	Model         string                 `protobuf:"bytes,3,opt,name=model,proto3" json:"model,omitempty"`                                  // Optional model override
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ProviderTrigger) Reset() {
 	*x = ProviderTrigger{}
-	mi := &file_aibox_v1_aibox_proto_msgTypes[9]
+	mi := &file_airborne_v1_airborne_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -831,7 +831,7 @@ func (x *ProviderTrigger) String() string {
 func (*ProviderTrigger) ProtoMessage() {}
 
 func (x *ProviderTrigger) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_aibox_proto_msgTypes[9]
+	mi := &file_airborne_v1_airborne_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -844,7 +844,7 @@ func (x *ProviderTrigger) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProviderTrigger.ProtoReflect.Descriptor instead.
 func (*ProviderTrigger) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_aibox_proto_rawDescGZIP(), []int{9}
+	return file_airborne_v1_airborne_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ProviderTrigger) GetPhrase() string {
@@ -871,7 +871,7 @@ func (x *ProviderTrigger) GetModel() string {
 // SelectProviderResponse contains the provider selection result
 type SelectProviderResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Provider      Provider               `protobuf:"varint,1,opt,name=provider,proto3,enum=aibox.v1.Provider" json:"provider,omitempty"`
+	Provider      Provider               `protobuf:"varint,1,opt,name=provider,proto3,enum=airborne.v1.Provider" json:"provider,omitempty"`
 	ModelOverride string                 `protobuf:"bytes,2,opt,name=model_override,json=modelOverride,proto3" json:"model_override,omitempty"`
 	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"` // "trigger", "tier", "continuity", "default"
 	unknownFields protoimpl.UnknownFields
@@ -880,7 +880,7 @@ type SelectProviderResponse struct {
 
 func (x *SelectProviderResponse) Reset() {
 	*x = SelectProviderResponse{}
-	mi := &file_aibox_v1_aibox_proto_msgTypes[10]
+	mi := &file_airborne_v1_airborne_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -892,7 +892,7 @@ func (x *SelectProviderResponse) String() string {
 func (*SelectProviderResponse) ProtoMessage() {}
 
 func (x *SelectProviderResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_aibox_proto_msgTypes[10]
+	mi := &file_airborne_v1_airborne_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -905,7 +905,7 @@ func (x *SelectProviderResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SelectProviderResponse.ProtoReflect.Descriptor instead.
 func (*SelectProviderResponse) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_aibox_proto_rawDescGZIP(), []int{10}
+	return file_airborne_v1_airborne_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *SelectProviderResponse) GetProvider() Provider {
@@ -929,166 +929,165 @@ func (x *SelectProviderResponse) GetReason() string {
 	return ""
 }
 
-var File_aibox_v1_aibox_proto protoreflect.FileDescriptor
+var File_airborne_v1_airborne_proto protoreflect.FileDescriptor
 
-const file_aibox_v1_aibox_proto_rawDesc = "" +
+const file_airborne_v1_airborne_proto_rawDesc = "" +
 	"\n" +
-	"\x14aibox/v1/aibox.proto\x12\baibox.v1\x1a\x15aibox/v1/common.proto\"\xeb\b\n" +
+	"\x1aairborne/v1/airborne.proto\x12\vairborne.v1\x1a\x18airborne/v1/common.proto\"\x80\t\n" +
 	"\x14GenerateReplyRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x11 \x01(\tR\btenantId\x12\"\n" +
 	"\finstructions\x18\x01 \x01(\tR\finstructions\x12\x1d\n" +
 	"\n" +
-	"user_input\x18\x02 \x01(\tR\tuserInput\x12D\n" +
-	"\x14conversation_history\x18\x03 \x03(\v2\x11.aibox.v1.MessageR\x13conversationHistory\x12A\n" +
-	"\x12preferred_provider\x18\x04 \x01(\x0e2\x12.aibox.v1.ProviderR\x11preferredProvider\x12%\n" +
+	"user_input\x18\x02 \x01(\tR\tuserInput\x12G\n" +
+	"\x14conversation_history\x18\x03 \x03(\v2\x14.airborne.v1.MessageR\x13conversationHistory\x12D\n" +
+	"\x12preferred_provider\x18\x04 \x01(\x0e2\x15.airborne.v1.ProviderR\x11preferredProvider\x12%\n" +
 	"\x0emodel_override\x18\x05 \x01(\tR\rmodelOverride\x12,\n" +
 	"\x12enable_file_search\x18\x06 \x01(\bR\x10enableFileSearch\x12*\n" +
 	"\x11enable_web_search\x18\a \x01(\bR\x0fenableWebSearch\x12\"\n" +
-	"\rfile_store_id\x18\b \x01(\tR\vfileStoreId\x12c\n" +
-	"\x13file_id_to_filename\x18\t \x03(\v24.aibox.v1.GenerateReplyRequest.FileIdToFilenameEntryR\x10fileIdToFilename\x120\n" +
+	"\rfile_store_id\x18\b \x01(\tR\vfileStoreId\x12f\n" +
+	"\x13file_id_to_filename\x18\t \x03(\v27.airborne.v1.GenerateReplyRequest.FileIdToFilenameEntryR\x10fileIdToFilename\x120\n" +
 	"\x14previous_response_id\x18\n" +
-	" \x01(\tR\x12previousResponseId\x12^\n" +
-	"\x10provider_configs\x18\v \x03(\v23.aibox.v1.GenerateReplyRequest.ProviderConfigsEntryR\x0fproviderConfigs\x12'\n" +
-	"\x0fenable_failover\x18\f \x01(\bR\x0eenableFailover\x12?\n" +
-	"\x11fallback_provider\x18\r \x01(\x0e2\x12.aibox.v1.ProviderR\x10fallbackProvider\x12\x1b\n" +
+	" \x01(\tR\x12previousResponseId\x12a\n" +
+	"\x10provider_configs\x18\v \x03(\v26.airborne.v1.GenerateReplyRequest.ProviderConfigsEntryR\x0fproviderConfigs\x12'\n" +
+	"\x0fenable_failover\x18\f \x01(\bR\x0eenableFailover\x12B\n" +
+	"\x11fallback_provider\x18\r \x01(\x0e2\x15.airborne.v1.ProviderR\x10fallbackProvider\x12\x1b\n" +
 	"\tclient_id\x18\x0e \x01(\tR\bclientId\x12\x1d\n" +
 	"\n" +
-	"request_id\x18\x0f \x01(\tR\trequestId\x12H\n" +
-	"\bmetadata\x18\x10 \x03(\v2,.aibox.v1.GenerateReplyRequest.MetadataEntryR\bmetadata\x1aC\n" +
+	"request_id\x18\x0f \x01(\tR\trequestId\x12K\n" +
+	"\bmetadata\x18\x10 \x03(\v2/.airborne.v1.GenerateReplyRequest.MetadataEntryR\bmetadata\x1aC\n" +
 	"\x15FileIdToFilenameEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a\\\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a_\n" +
 	"\x14ProviderConfigsEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12.\n" +
-	"\x05value\x18\x02 \x01(\v2\x18.aibox.v1.ProviderConfigR\x05value:\x028\x01\x1a;\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x121\n" +
+	"\x05value\x18\x02 \x01(\v2\x1b.airborne.v1.ProviderConfigR\x05value:\x028\x01\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf4\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x80\x03\n" +
 	"\x15GenerateReplyResponse\x12\x12\n" +
 	"\x04text\x18\x01 \x01(\tR\x04text\x12\x1f\n" +
 	"\vresponse_id\x18\x02 \x01(\tR\n" +
-	"responseId\x12%\n" +
-	"\x05usage\x18\x03 \x01(\v2\x0f.aibox.v1.UsageR\x05usage\x120\n" +
-	"\tcitations\x18\x04 \x03(\v2\x12.aibox.v1.CitationR\tcitations\x12\x14\n" +
-	"\x05model\x18\x05 \x01(\tR\x05model\x12.\n" +
-	"\bprovider\x18\x06 \x01(\x0e2\x12.aibox.v1.ProviderR\bprovider\x12\x1f\n" +
+	"responseId\x12(\n" +
+	"\x05usage\x18\x03 \x01(\v2\x12.airborne.v1.UsageR\x05usage\x123\n" +
+	"\tcitations\x18\x04 \x03(\v2\x15.airborne.v1.CitationR\tcitations\x12\x14\n" +
+	"\x05model\x18\x05 \x01(\tR\x05model\x121\n" +
+	"\bprovider\x18\x06 \x01(\x0e2\x15.airborne.v1.ProviderR\bprovider\x12\x1f\n" +
 	"\vfailed_over\x18\a \x01(\bR\n" +
-	"failedOver\x12?\n" +
-	"\x11original_provider\x18\b \x01(\x0e2\x12.aibox.v1.ProviderR\x10originalProvider\x12%\n" +
-	"\x0eoriginal_error\x18\t \x01(\tR\roriginalError\"\xbb\x02\n" +
-	"\x12GenerateReplyChunk\x124\n" +
+	"failedOver\x12B\n" +
+	"\x11original_provider\x18\b \x01(\x0e2\x15.airborne.v1.ProviderR\x10originalProvider\x12%\n" +
+	"\x0eoriginal_error\x18\t \x01(\tR\roriginalError\"\xca\x02\n" +
+	"\x12GenerateReplyChunk\x127\n" +
 	"\n" +
-	"text_delta\x18\x01 \x01(\v2\x13.aibox.v1.TextDeltaH\x00R\ttextDelta\x12:\n" +
-	"\fusage_update\x18\x02 \x01(\v2\x15.aibox.v1.UsageUpdateH\x00R\vusageUpdate\x12C\n" +
-	"\x0fcitation_update\x18\x03 \x01(\v2\x18.aibox.v1.CitationUpdateH\x00R\x0ecitationUpdate\x126\n" +
-	"\bcomplete\x18\x04 \x01(\v2\x18.aibox.v1.StreamCompleteH\x00R\bcomplete\x12-\n" +
-	"\x05error\x18\x05 \x01(\v2\x15.aibox.v1.StreamErrorH\x00R\x05errorB\a\n" +
+	"text_delta\x18\x01 \x01(\v2\x16.airborne.v1.TextDeltaH\x00R\ttextDelta\x12=\n" +
+	"\fusage_update\x18\x02 \x01(\v2\x18.airborne.v1.UsageUpdateH\x00R\vusageUpdate\x12F\n" +
+	"\x0fcitation_update\x18\x03 \x01(\v2\x1b.airborne.v1.CitationUpdateH\x00R\x0ecitationUpdate\x129\n" +
+	"\bcomplete\x18\x04 \x01(\v2\x1b.airborne.v1.StreamCompleteH\x00R\bcomplete\x120\n" +
+	"\x05error\x18\x05 \x01(\v2\x18.airborne.v1.StreamErrorH\x00R\x05errorB\a\n" +
 	"\x05chunk\"5\n" +
 	"\tTextDelta\x12\x12\n" +
 	"\x04text\x18\x01 \x01(\tR\x04text\x12\x14\n" +
-	"\x05index\x18\x02 \x01(\x05R\x05index\"4\n" +
-	"\vUsageUpdate\x12%\n" +
-	"\x05usage\x18\x01 \x01(\v2\x0f.aibox.v1.UsageR\x05usage\"@\n" +
-	"\x0eCitationUpdate\x12.\n" +
-	"\bcitation\x18\x01 \x01(\v2\x12.aibox.v1.CitationR\bcitation\"\xdb\x01\n" +
+	"\x05index\x18\x02 \x01(\x05R\x05index\"7\n" +
+	"\vUsageUpdate\x12(\n" +
+	"\x05usage\x18\x01 \x01(\v2\x12.airborne.v1.UsageR\x05usage\"C\n" +
+	"\x0eCitationUpdate\x121\n" +
+	"\bcitation\x18\x01 \x01(\v2\x15.airborne.v1.CitationR\bcitation\"\xe4\x01\n" +
 	"\x0eStreamComplete\x12\x1f\n" +
 	"\vresponse_id\x18\x01 \x01(\tR\n" +
 	"responseId\x12\x14\n" +
-	"\x05model\x18\x02 \x01(\tR\x05model\x12.\n" +
-	"\bprovider\x18\x03 \x01(\x0e2\x12.aibox.v1.ProviderR\bprovider\x120\n" +
-	"\vfinal_usage\x18\x04 \x01(\v2\x0f.aibox.v1.UsageR\n" +
-	"finalUsage\x120\n" +
-	"\tcitations\x18\x05 \x03(\v2\x12.aibox.v1.CitationR\tcitations\"Y\n" +
+	"\x05model\x18\x02 \x01(\tR\x05model\x121\n" +
+	"\bprovider\x18\x03 \x01(\x0e2\x15.airborne.v1.ProviderR\bprovider\x123\n" +
+	"\vfinal_usage\x18\x04 \x01(\v2\x12.airborne.v1.UsageR\n" +
+	"finalUsage\x123\n" +
+	"\tcitations\x18\x05 \x03(\v2\x15.airborne.v1.CitationR\tcitations\"Y\n" +
 	"\vStreamError\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12\x1c\n" +
-	"\tretryable\x18\x03 \x01(\bR\tretryable\"\xcf\x01\n" +
+	"\tretryable\x18\x03 \x01(\bR\tretryable\"\xd2\x01\n" +
 	"\x15SelectProviderRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x05 \x01(\tR\btenantId\x12\x18\n" +
 	"\acontent\x18\x01 \x01(\tR\acontent\x12+\n" +
 	"\x11existing_provider\x18\x02 \x01(\tR\x10existingProvider\x12\x1b\n" +
-	"\tuser_tier\x18\x03 \x01(\tR\buserTier\x125\n" +
-	"\btriggers\x18\x04 \x03(\v2\x19.aibox.v1.ProviderTriggerR\btriggers\"o\n" +
+	"\tuser_tier\x18\x03 \x01(\tR\buserTier\x128\n" +
+	"\btriggers\x18\x04 \x03(\v2\x1c.airborne.v1.ProviderTriggerR\btriggers\"r\n" +
 	"\x0fProviderTrigger\x12\x16\n" +
-	"\x06phrase\x18\x01 \x01(\tR\x06phrase\x12.\n" +
-	"\bprovider\x18\x02 \x01(\x0e2\x12.aibox.v1.ProviderR\bprovider\x12\x14\n" +
-	"\x05model\x18\x03 \x01(\tR\x05model\"\x87\x01\n" +
-	"\x16SelectProviderResponse\x12.\n" +
-	"\bprovider\x18\x01 \x01(\x0e2\x12.aibox.v1.ProviderR\bprovider\x12%\n" +
+	"\x06phrase\x18\x01 \x01(\tR\x06phrase\x121\n" +
+	"\bprovider\x18\x02 \x01(\x0e2\x15.airborne.v1.ProviderR\bprovider\x12\x14\n" +
+	"\x05model\x18\x03 \x01(\tR\x05model\"\x8a\x01\n" +
+	"\x16SelectProviderResponse\x121\n" +
+	"\bprovider\x18\x01 \x01(\x0e2\x15.airborne.v1.ProviderR\bprovider\x12%\n" +
 	"\x0emodel_override\x18\x02 \x01(\tR\rmodelOverride\x12\x16\n" +
-	"\x06reason\x18\x03 \x01(\tR\x06reason2\x8c\x02\n" +
-	"\fAIBoxService\x12P\n" +
-	"\rGenerateReply\x12\x1e.aibox.v1.GenerateReplyRequest\x1a\x1f.aibox.v1.GenerateReplyResponse\x12U\n" +
-	"\x13GenerateReplyStream\x12\x1e.aibox.v1.GenerateReplyRequest\x1a\x1c.aibox.v1.GenerateReplyChunk0\x01\x12S\n" +
-	"\x0eSelectProvider\x12\x1f.aibox.v1.SelectProviderRequest\x1a .aibox.v1.SelectProviderResponseB\x90\x01\n" +
-	"\fcom.aibox.v1B\n" +
-	"AiboxProtoP\x01Z3github.com/cliffpyles/aibox/gen/go/aibox/v1;aiboxv1\xa2\x02\x03AXX\xaa\x02\bAibox.V1\xca\x02\bAibox\\V1\xe2\x02\x14Aibox\\V1\\GPBMetadata\xea\x02\tAibox::V1b\x06proto3"
+	"\x06reason\x18\x03 \x01(\tR\x06reason2\x9e\x02\n" +
+	"\fAIBoxService\x12V\n" +
+	"\rGenerateReply\x12!.airborne.v1.GenerateReplyRequest\x1a\".airborne.v1.GenerateReplyResponse\x12[\n" +
+	"\x13GenerateReplyStream\x12!.airborne.v1.GenerateReplyRequest\x1a\x1f.airborne.v1.GenerateReplyChunk0\x01\x12Y\n" +
+	"\x0eSelectProvider\x12\".airborne.v1.SelectProviderRequest\x1a#.airborne.v1.SelectProviderResponseB\xaa\x01\n" +
+	"\x0fcom.airborne.v1B\rAirborneProtoP\x01Z;github.com/ai8future/airborne/gen/go/airborne/v1;airbornev1\xa2\x02\x03AXX\xaa\x02\vAirborne.V1\xca\x02\vAirborne\\V1\xe2\x02\x17Airborne\\V1\\GPBMetadata\xea\x02\fAirborne::V1b\x06proto3"
 
 var (
-	file_aibox_v1_aibox_proto_rawDescOnce sync.Once
-	file_aibox_v1_aibox_proto_rawDescData []byte
+	file_airborne_v1_airborne_proto_rawDescOnce sync.Once
+	file_airborne_v1_airborne_proto_rawDescData []byte
 )
 
-func file_aibox_v1_aibox_proto_rawDescGZIP() []byte {
-	file_aibox_v1_aibox_proto_rawDescOnce.Do(func() {
-		file_aibox_v1_aibox_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_aibox_v1_aibox_proto_rawDesc), len(file_aibox_v1_aibox_proto_rawDesc)))
+func file_airborne_v1_airborne_proto_rawDescGZIP() []byte {
+	file_airborne_v1_airborne_proto_rawDescOnce.Do(func() {
+		file_airborne_v1_airborne_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_airborne_v1_airborne_proto_rawDesc), len(file_airborne_v1_airborne_proto_rawDesc)))
 	})
-	return file_aibox_v1_aibox_proto_rawDescData
+	return file_airborne_v1_airborne_proto_rawDescData
 }
 
-var file_aibox_v1_aibox_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
-var file_aibox_v1_aibox_proto_goTypes = []any{
-	(*GenerateReplyRequest)(nil),   // 0: aibox.v1.GenerateReplyRequest
-	(*GenerateReplyResponse)(nil),  // 1: aibox.v1.GenerateReplyResponse
-	(*GenerateReplyChunk)(nil),     // 2: aibox.v1.GenerateReplyChunk
-	(*TextDelta)(nil),              // 3: aibox.v1.TextDelta
-	(*UsageUpdate)(nil),            // 4: aibox.v1.UsageUpdate
-	(*CitationUpdate)(nil),         // 5: aibox.v1.CitationUpdate
-	(*StreamComplete)(nil),         // 6: aibox.v1.StreamComplete
-	(*StreamError)(nil),            // 7: aibox.v1.StreamError
-	(*SelectProviderRequest)(nil),  // 8: aibox.v1.SelectProviderRequest
-	(*ProviderTrigger)(nil),        // 9: aibox.v1.ProviderTrigger
-	(*SelectProviderResponse)(nil), // 10: aibox.v1.SelectProviderResponse
-	nil,                            // 11: aibox.v1.GenerateReplyRequest.FileIdToFilenameEntry
-	nil,                            // 12: aibox.v1.GenerateReplyRequest.ProviderConfigsEntry
-	nil,                            // 13: aibox.v1.GenerateReplyRequest.MetadataEntry
-	(*Message)(nil),                // 14: aibox.v1.Message
-	(Provider)(0),                  // 15: aibox.v1.Provider
-	(*Usage)(nil),                  // 16: aibox.v1.Usage
-	(*Citation)(nil),               // 17: aibox.v1.Citation
-	(*ProviderConfig)(nil),         // 18: aibox.v1.ProviderConfig
+var file_airborne_v1_airborne_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_airborne_v1_airborne_proto_goTypes = []any{
+	(*GenerateReplyRequest)(nil),   // 0: airborne.v1.GenerateReplyRequest
+	(*GenerateReplyResponse)(nil),  // 1: airborne.v1.GenerateReplyResponse
+	(*GenerateReplyChunk)(nil),     // 2: airborne.v1.GenerateReplyChunk
+	(*TextDelta)(nil),              // 3: airborne.v1.TextDelta
+	(*UsageUpdate)(nil),            // 4: airborne.v1.UsageUpdate
+	(*CitationUpdate)(nil),         // 5: airborne.v1.CitationUpdate
+	(*StreamComplete)(nil),         // 6: airborne.v1.StreamComplete
+	(*StreamError)(nil),            // 7: airborne.v1.StreamError
+	(*SelectProviderRequest)(nil),  // 8: airborne.v1.SelectProviderRequest
+	(*ProviderTrigger)(nil),        // 9: airborne.v1.ProviderTrigger
+	(*SelectProviderResponse)(nil), // 10: airborne.v1.SelectProviderResponse
+	nil,                            // 11: airborne.v1.GenerateReplyRequest.FileIdToFilenameEntry
+	nil,                            // 12: airborne.v1.GenerateReplyRequest.ProviderConfigsEntry
+	nil,                            // 13: airborne.v1.GenerateReplyRequest.MetadataEntry
+	(*Message)(nil),                // 14: airborne.v1.Message
+	(Provider)(0),                  // 15: airborne.v1.Provider
+	(*Usage)(nil),                  // 16: airborne.v1.Usage
+	(*Citation)(nil),               // 17: airborne.v1.Citation
+	(*ProviderConfig)(nil),         // 18: airborne.v1.ProviderConfig
 }
-var file_aibox_v1_aibox_proto_depIdxs = []int32{
-	14, // 0: aibox.v1.GenerateReplyRequest.conversation_history:type_name -> aibox.v1.Message
-	15, // 1: aibox.v1.GenerateReplyRequest.preferred_provider:type_name -> aibox.v1.Provider
-	11, // 2: aibox.v1.GenerateReplyRequest.file_id_to_filename:type_name -> aibox.v1.GenerateReplyRequest.FileIdToFilenameEntry
-	12, // 3: aibox.v1.GenerateReplyRequest.provider_configs:type_name -> aibox.v1.GenerateReplyRequest.ProviderConfigsEntry
-	15, // 4: aibox.v1.GenerateReplyRequest.fallback_provider:type_name -> aibox.v1.Provider
-	13, // 5: aibox.v1.GenerateReplyRequest.metadata:type_name -> aibox.v1.GenerateReplyRequest.MetadataEntry
-	16, // 6: aibox.v1.GenerateReplyResponse.usage:type_name -> aibox.v1.Usage
-	17, // 7: aibox.v1.GenerateReplyResponse.citations:type_name -> aibox.v1.Citation
-	15, // 8: aibox.v1.GenerateReplyResponse.provider:type_name -> aibox.v1.Provider
-	15, // 9: aibox.v1.GenerateReplyResponse.original_provider:type_name -> aibox.v1.Provider
-	3,  // 10: aibox.v1.GenerateReplyChunk.text_delta:type_name -> aibox.v1.TextDelta
-	4,  // 11: aibox.v1.GenerateReplyChunk.usage_update:type_name -> aibox.v1.UsageUpdate
-	5,  // 12: aibox.v1.GenerateReplyChunk.citation_update:type_name -> aibox.v1.CitationUpdate
-	6,  // 13: aibox.v1.GenerateReplyChunk.complete:type_name -> aibox.v1.StreamComplete
-	7,  // 14: aibox.v1.GenerateReplyChunk.error:type_name -> aibox.v1.StreamError
-	16, // 15: aibox.v1.UsageUpdate.usage:type_name -> aibox.v1.Usage
-	17, // 16: aibox.v1.CitationUpdate.citation:type_name -> aibox.v1.Citation
-	15, // 17: aibox.v1.StreamComplete.provider:type_name -> aibox.v1.Provider
-	16, // 18: aibox.v1.StreamComplete.final_usage:type_name -> aibox.v1.Usage
-	17, // 19: aibox.v1.StreamComplete.citations:type_name -> aibox.v1.Citation
-	9,  // 20: aibox.v1.SelectProviderRequest.triggers:type_name -> aibox.v1.ProviderTrigger
-	15, // 21: aibox.v1.ProviderTrigger.provider:type_name -> aibox.v1.Provider
-	15, // 22: aibox.v1.SelectProviderResponse.provider:type_name -> aibox.v1.Provider
-	18, // 23: aibox.v1.GenerateReplyRequest.ProviderConfigsEntry.value:type_name -> aibox.v1.ProviderConfig
-	0,  // 24: aibox.v1.AIBoxService.GenerateReply:input_type -> aibox.v1.GenerateReplyRequest
-	0,  // 25: aibox.v1.AIBoxService.GenerateReplyStream:input_type -> aibox.v1.GenerateReplyRequest
-	8,  // 26: aibox.v1.AIBoxService.SelectProvider:input_type -> aibox.v1.SelectProviderRequest
-	1,  // 27: aibox.v1.AIBoxService.GenerateReply:output_type -> aibox.v1.GenerateReplyResponse
-	2,  // 28: aibox.v1.AIBoxService.GenerateReplyStream:output_type -> aibox.v1.GenerateReplyChunk
-	10, // 29: aibox.v1.AIBoxService.SelectProvider:output_type -> aibox.v1.SelectProviderResponse
+var file_airborne_v1_airborne_proto_depIdxs = []int32{
+	14, // 0: airborne.v1.GenerateReplyRequest.conversation_history:type_name -> airborne.v1.Message
+	15, // 1: airborne.v1.GenerateReplyRequest.preferred_provider:type_name -> airborne.v1.Provider
+	11, // 2: airborne.v1.GenerateReplyRequest.file_id_to_filename:type_name -> airborne.v1.GenerateReplyRequest.FileIdToFilenameEntry
+	12, // 3: airborne.v1.GenerateReplyRequest.provider_configs:type_name -> airborne.v1.GenerateReplyRequest.ProviderConfigsEntry
+	15, // 4: airborne.v1.GenerateReplyRequest.fallback_provider:type_name -> airborne.v1.Provider
+	13, // 5: airborne.v1.GenerateReplyRequest.metadata:type_name -> airborne.v1.GenerateReplyRequest.MetadataEntry
+	16, // 6: airborne.v1.GenerateReplyResponse.usage:type_name -> airborne.v1.Usage
+	17, // 7: airborne.v1.GenerateReplyResponse.citations:type_name -> airborne.v1.Citation
+	15, // 8: airborne.v1.GenerateReplyResponse.provider:type_name -> airborne.v1.Provider
+	15, // 9: airborne.v1.GenerateReplyResponse.original_provider:type_name -> airborne.v1.Provider
+	3,  // 10: airborne.v1.GenerateReplyChunk.text_delta:type_name -> airborne.v1.TextDelta
+	4,  // 11: airborne.v1.GenerateReplyChunk.usage_update:type_name -> airborne.v1.UsageUpdate
+	5,  // 12: airborne.v1.GenerateReplyChunk.citation_update:type_name -> airborne.v1.CitationUpdate
+	6,  // 13: airborne.v1.GenerateReplyChunk.complete:type_name -> airborne.v1.StreamComplete
+	7,  // 14: airborne.v1.GenerateReplyChunk.error:type_name -> airborne.v1.StreamError
+	16, // 15: airborne.v1.UsageUpdate.usage:type_name -> airborne.v1.Usage
+	17, // 16: airborne.v1.CitationUpdate.citation:type_name -> airborne.v1.Citation
+	15, // 17: airborne.v1.StreamComplete.provider:type_name -> airborne.v1.Provider
+	16, // 18: airborne.v1.StreamComplete.final_usage:type_name -> airborne.v1.Usage
+	17, // 19: airborne.v1.StreamComplete.citations:type_name -> airborne.v1.Citation
+	9,  // 20: airborne.v1.SelectProviderRequest.triggers:type_name -> airborne.v1.ProviderTrigger
+	15, // 21: airborne.v1.ProviderTrigger.provider:type_name -> airborne.v1.Provider
+	15, // 22: airborne.v1.SelectProviderResponse.provider:type_name -> airborne.v1.Provider
+	18, // 23: airborne.v1.GenerateReplyRequest.ProviderConfigsEntry.value:type_name -> airborne.v1.ProviderConfig
+	0,  // 24: airborne.v1.AIBoxService.GenerateReply:input_type -> airborne.v1.GenerateReplyRequest
+	0,  // 25: airborne.v1.AIBoxService.GenerateReplyStream:input_type -> airborne.v1.GenerateReplyRequest
+	8,  // 26: airborne.v1.AIBoxService.SelectProvider:input_type -> airborne.v1.SelectProviderRequest
+	1,  // 27: airborne.v1.AIBoxService.GenerateReply:output_type -> airborne.v1.GenerateReplyResponse
+	2,  // 28: airborne.v1.AIBoxService.GenerateReplyStream:output_type -> airborne.v1.GenerateReplyChunk
+	10, // 29: airborne.v1.AIBoxService.SelectProvider:output_type -> airborne.v1.SelectProviderResponse
 	27, // [27:30] is the sub-list for method output_type
 	24, // [24:27] is the sub-list for method input_type
 	24, // [24:24] is the sub-list for extension type_name
@@ -1096,13 +1095,13 @@ var file_aibox_v1_aibox_proto_depIdxs = []int32{
 	0,  // [0:24] is the sub-list for field type_name
 }
 
-func init() { file_aibox_v1_aibox_proto_init() }
-func file_aibox_v1_aibox_proto_init() {
-	if File_aibox_v1_aibox_proto != nil {
+func init() { file_airborne_v1_airborne_proto_init() }
+func file_airborne_v1_airborne_proto_init() {
+	if File_airborne_v1_airborne_proto != nil {
 		return
 	}
-	file_aibox_v1_common_proto_init()
-	file_aibox_v1_aibox_proto_msgTypes[2].OneofWrappers = []any{
+	file_airborne_v1_common_proto_init()
+	file_airborne_v1_airborne_proto_msgTypes[2].OneofWrappers = []any{
 		(*GenerateReplyChunk_TextDelta)(nil),
 		(*GenerateReplyChunk_UsageUpdate)(nil),
 		(*GenerateReplyChunk_CitationUpdate)(nil),
@@ -1113,17 +1112,17 @@ func file_aibox_v1_aibox_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_aibox_v1_aibox_proto_rawDesc), len(file_aibox_v1_aibox_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_airborne_v1_airborne_proto_rawDesc), len(file_airborne_v1_airborne_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_aibox_v1_aibox_proto_goTypes,
-		DependencyIndexes: file_aibox_v1_aibox_proto_depIdxs,
-		MessageInfos:      file_aibox_v1_aibox_proto_msgTypes,
+		GoTypes:           file_airborne_v1_airborne_proto_goTypes,
+		DependencyIndexes: file_airborne_v1_airborne_proto_depIdxs,
+		MessageInfos:      file_airborne_v1_airborne_proto_msgTypes,
 	}.Build()
-	File_aibox_v1_aibox_proto = out.File
-	file_aibox_v1_aibox_proto_goTypes = nil
-	file_aibox_v1_aibox_proto_depIdxs = nil
+	File_airborne_v1_airborne_proto = out.File
+	file_airborne_v1_airborne_proto_goTypes = nil
+	file_airborne_v1_airborne_proto_depIdxs = nil
 }

@@ -5,14 +5,14 @@ import (
 	"strings"
 	"testing"
 
-	pb "github.com/cliffpyles/aibox/gen/go/aibox/v1"
-	"github.com/cliffpyles/aibox/internal/auth"
-	"github.com/cliffpyles/aibox/internal/provider"
-	"github.com/cliffpyles/aibox/internal/rag"
-	"github.com/cliffpyles/aibox/internal/rag/testutil"
-	"github.com/cliffpyles/aibox/internal/rag/vectorstore"
-	"github.com/cliffpyles/aibox/internal/tenant"
-	"github.com/cliffpyles/aibox/internal/validation"
+	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
+	"github.com/ai8future/airborne/internal/auth"
+	"github.com/ai8future/airborne/internal/provider"
+	"github.com/ai8future/airborne/internal/rag"
+	"github.com/ai8future/airborne/internal/rag/testutil"
+	"github.com/ai8future/airborne/internal/rag/vectorstore"
+	"github.com/ai8future/airborne/internal/tenant"
+	"github.com/ai8future/airborne/internal/validation"
 )
 
 // mockProvider implements provider.Provider for testing.

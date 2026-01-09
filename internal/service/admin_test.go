@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/cliffpyles/aibox/gen/go/aibox/v1"
-	"github.com/cliffpyles/aibox/internal/auth"
+	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
+	"github.com/ai8future/airborne/internal/auth"
 )
 
 // ctxWithAdminPermission creates a context with admin permission for testing.

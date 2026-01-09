@@ -8,10 +8,10 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/cliffpyles/aibox/internal/rag/chunker"
-	"github.com/cliffpyles/aibox/internal/rag/embedder"
-	"github.com/cliffpyles/aibox/internal/rag/extractor"
-	"github.com/cliffpyles/aibox/internal/rag/vectorstore"
+	"github.com/ai8future/airborne/internal/rag/chunker"
+	"github.com/ai8future/airborne/internal/rag/embedder"
+	"github.com/ai8future/airborne/internal/rag/extractor"
+	"github.com/ai8future/airborne/internal/rag/vectorstore"
 )
 
 const maxCollectionPartLen = 128

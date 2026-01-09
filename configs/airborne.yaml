@@ -1,4 +1,4 @@
-# AIBox Configuration
+# Airborne Configuration
 # Environment variables can be used with ${VAR_NAME} syntax
 
 server:
@@ -16,7 +16,7 @@ redis:
   db: 0
 
 auth:
-  admin_token: "${AIBOX_ADMIN_TOKEN}"
+  admin_token: "${AIRBORNE_ADMIN_TOKEN}"
 
 rate_limits:
   default_rpm: 60      # Requests per minute
@@ -51,7 +51,7 @@ logging:
 # Startup mode controls dependency requirements
 # - production: requires all dependencies (Redis, etc.) to be available (default)
 # - development: allows running without optional dependencies
-# Can also be set via AIBOX_STARTUP_MODE environment variable
+# Can also be set via AIRBORNE_STARTUP_MODE environment variable
 startup_mode: "production"
 
 # RAG (Retrieval-Augmented Generation) settings

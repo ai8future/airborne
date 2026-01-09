@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package aibox.v1;
+package airborne.v1;
 
-option go_package = "github.com/cliffpyles/aibox/gen/go/aibox/v1;aiboxv1";
+option go_package = "github.com/ai8future/airborne/gen/go/airborne/v1;airbornev1";
 
 // AdminService provides health checks and administrative endpoints
 service AdminService {

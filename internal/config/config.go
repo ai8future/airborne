@@ -92,9 +92,9 @@ func Load() (*Config, error) {
 	cfg := defaultConfig()
 
 	// Try to load from file
-	configPath := os.Getenv("AIBOX_CONFIG")
+	configPath := os.Getenv("AIRBORNE_CONFIG")
 	if configPath == "" {
-		configPath = "configs/aibox.yaml"
+		configPath = "configs/airborne.yaml"
 	}
 
 	data, err := os.ReadFile(configPath)
@@ -183,26 +183,26 @@ func defaultConfig() *Config {
 
 // applyEnvOverrides applies environment variable overrides
 func (c *Config) applyEnvOverrides() {
-	if port := os.Getenv("AIBOX_GRPC_PORT"); port != "" {
+	if port := os.Getenv("AIRBORNE_GRPC_PORT"); port != "" {
 		if p, err := strconv.Atoi(port); err == nil {
 			c.Server.GRPCPort = p
 		}
 	}
 
-	if host := os.Getenv("AIBOX_HOST"); host != "" {
+	if host := os.Getenv("AIRBORNE_HOST"); host != "" {
 		c.Server.Host = host
 	}
 
 	// TLS configuration
-	if enabled := os.Getenv("AIBOX_TLS_ENABLED"); enabled != "" {
+	if enabled := os.Getenv("AIRBORNE_TLS_ENABLED"); enabled != "" {
 		if v, err := strconv.ParseBool(enabled); err == nil {
 			c.TLS.Enabled = v
 		}
 	}
-	if cert := os.Getenv("AIBOX_TLS_CERT_FILE"); cert != "" {
+	if cert := os.Getenv("AIRBORNE_TLS_CERT_FILE"); cert != "" {
 		c.TLS.CertFile = cert
 	}
-	if key := os.Getenv("AIBOX_TLS_KEY_FILE"); key != "" {
+	if key := os.Getenv("AIRBORNE_TLS_KEY_FILE"); key != "" {
 		c.TLS.KeyFile = key
 	}
 
@@ -220,23 +220,23 @@ func (c *Config) applyEnvOverrides() {
 		}
 	}
 
-	if token := os.Getenv("AIBOX_ADMIN_TOKEN"); token != "" {
+	if token := os.Getenv("AIRBORNE_ADMIN_TOKEN"); token != "" {
 		c.Auth.AdminToken = token
 	}
 
-	if mode := os.Getenv("AIBOX_AUTH_MODE"); mode != "" {
+	if mode := os.Getenv("AIRBORNE_AUTH_MODE"); mode != "" {
 		c.Auth.AuthMode = mode
 	}
 
-	if level := os.Getenv("AIBOX_LOG_LEVEL"); level != "" {
+	if level := os.Getenv("AIRBORNE_LOG_LEVEL"); level != "" {
 		c.Logging.Level = level
 	}
 
-	if format := os.Getenv("AIBOX_LOG_FORMAT"); format != "" {
+	if format := os.Getenv("AIRBORNE_LOG_FORMAT"); format != "" {
 		c.Logging.Format = format
 	}
 
-	if mode := os.Getenv("AIBOX_STARTUP_MODE"); mode != "" {
+	if mode := os.Getenv("AIRBORNE_STARTUP_MODE"); mode != "" {
 		c.StartupMode = StartupMode(mode)
 	}
 

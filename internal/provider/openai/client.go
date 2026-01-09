@@ -15,8 +15,8 @@ import (
 	"github.com/openai/openai-go/shared"
 	"github.com/openai/openai-go/shared/constant"
 
-	"github.com/cliffpyles/aibox/internal/provider"
-	"github.com/cliffpyles/aibox/internal/validation"
+	"github.com/ai8future/airborne/internal/provider"
+	"github.com/ai8future/airborne/internal/validation"
 )
 
 const (

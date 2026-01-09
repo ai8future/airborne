@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.9] - 2026-01-09
+
+### Changed
+- **Project Renamed**: Renamed from `aibox` to `airborne`
+  - GitHub repository renamed to `ai8future/airborne`
+  - Go module path changed to `github.com/ai8future/airborne`
+  - Proto package renamed from `aibox.v1` to `airborne.v1`
+  - Environment variables changed from `AIBOX_*` to `AIRBORNE_*`
+  - Config file renamed from `configs/aibox.yaml` to `configs/airborne.yaml`
+  - Binary renamed from `aibox` to `airborne`
+  - Docker service and user renamed from `aibox` to `airborne`
+
+Agent: Claude:Opus 4.5
+
 ## [0.6.8] - 2026-01-09
 
 ### Removed

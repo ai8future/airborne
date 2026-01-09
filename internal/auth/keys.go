@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cliffpyles/aibox/internal/redis"
+	"github.com/ai8future/airborne/internal/redis"
 	"golang.org/x/crypto/bcrypt"
 )
 

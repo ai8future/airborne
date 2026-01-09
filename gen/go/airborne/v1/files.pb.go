@@ -2,9 +2,9 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        (unknown)
-// source: aibox/v1/files.proto
+// source: airborne/v1/files.proto
 
-package aiboxv1
+package airbornev1
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -24,10 +24,10 @@ const (
 // CreateFileStoreRequest creates a new file store
 type CreateFileStoreRequest struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
-	Provider Provider               `protobuf:"varint,1,opt,name=provider,proto3,enum=aibox.v1.Provider" json:"provider,omitempty"` // Which provider's store to create
-	Name     string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`                                 // Human-readable name
-	ClientId string                 `protobuf:"bytes,3,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`         // Client identifier
-	Config   *ProviderConfig        `protobuf:"bytes,4,opt,name=config,proto3" json:"config,omitempty"`                             // Provider configuration (including API key)
+	Provider Provider               `protobuf:"varint,1,opt,name=provider,proto3,enum=airborne.v1.Provider" json:"provider,omitempty"` // Which provider's store to create
+	Name     string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`                                    // Human-readable name
+	ClientId string                 `protobuf:"bytes,3,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`            // Client identifier
+	Config   *ProviderConfig        `protobuf:"bytes,4,opt,name=config,proto3" json:"config,omitempty"`                                // Provider configuration (including API key)
 	// Store options
 	ExpirationDays int32 `protobuf:"varint,5,opt,name=expiration_days,json=expirationDays,proto3" json:"expiration_days,omitempty"` // Days until auto-deletion (0 = no expiration)
 	unknownFields  protoimpl.UnknownFields
@@ -36,7 +36,7 @@ type CreateFileStoreRequest struct {
 
 func (x *CreateFileStoreRequest) Reset() {
 	*x = CreateFileStoreRequest{}
-	mi := &file_aibox_v1_files_proto_msgTypes[0]
+	mi := &file_airborne_v1_files_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -48,7 +48,7 @@ func (x *CreateFileStoreRequest) String() string {
 func (*CreateFileStoreRequest) ProtoMessage() {}
 
 func (x *CreateFileStoreRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_files_proto_msgTypes[0]
+	mi := &file_airborne_v1_files_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -61,7 +61,7 @@ func (x *CreateFileStoreRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateFileStoreRequest.ProtoReflect.Descriptor instead.
 func (*CreateFileStoreRequest) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_files_proto_rawDescGZIP(), []int{0}
+	return file_airborne_v1_files_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *CreateFileStoreRequest) GetProvider() Provider {
@@ -103,7 +103,7 @@ func (x *CreateFileStoreRequest) GetExpirationDays() int32 {
 type CreateFileStoreResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	StoreId       string                 `protobuf:"bytes,1,opt,name=store_id,json=storeId,proto3" json:"store_id,omitempty"`
-	Provider      Provider               `protobuf:"varint,2,opt,name=provider,proto3,enum=aibox.v1.Provider" json:"provider,omitempty"`
+	Provider      Provider               `protobuf:"varint,2,opt,name=provider,proto3,enum=airborne.v1.Provider" json:"provider,omitempty"`
 	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	CreatedAt     string                 `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"` // ISO 8601 timestamp
 	unknownFields protoimpl.UnknownFields
@@ -112,7 +112,7 @@ type CreateFileStoreResponse struct {
 
 func (x *CreateFileStoreResponse) Reset() {
 	*x = CreateFileStoreResponse{}
-	mi := &file_aibox_v1_files_proto_msgTypes[1]
+	mi := &file_airborne_v1_files_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -124,7 +124,7 @@ func (x *CreateFileStoreResponse) String() string {
 func (*CreateFileStoreResponse) ProtoMessage() {}
 
 func (x *CreateFileStoreResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_files_proto_msgTypes[1]
+	mi := &file_airborne_v1_files_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -137,7 +137,7 @@ func (x *CreateFileStoreResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateFileStoreResponse.ProtoReflect.Descriptor instead.
 func (*CreateFileStoreResponse) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_files_proto_rawDescGZIP(), []int{1}
+	return file_airborne_v1_files_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *CreateFileStoreResponse) GetStoreId() string {
@@ -182,7 +182,7 @@ type UploadFileRequest struct {
 
 func (x *UploadFileRequest) Reset() {
 	*x = UploadFileRequest{}
-	mi := &file_aibox_v1_files_proto_msgTypes[2]
+	mi := &file_airborne_v1_files_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -194,7 +194,7 @@ func (x *UploadFileRequest) String() string {
 func (*UploadFileRequest) ProtoMessage() {}
 
 func (x *UploadFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_files_proto_msgTypes[2]
+	mi := &file_airborne_v1_files_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -207,7 +207,7 @@ func (x *UploadFileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadFileRequest.ProtoReflect.Descriptor instead.
 func (*UploadFileRequest) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_files_proto_rawDescGZIP(), []int{2}
+	return file_airborne_v1_files_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *UploadFileRequest) GetData() isUploadFileRequest_Data {
@@ -254,19 +254,19 @@ func (*UploadFileRequest_Chunk) isUploadFileRequest_Data() {}
 // UploadFileMetadata describes the file being uploaded
 type UploadFileMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	StoreId       string                 `protobuf:"bytes,1,opt,name=store_id,json=storeId,proto3" json:"store_id,omitempty"`            // Target store ID
-	Filename      string                 `protobuf:"bytes,2,opt,name=filename,proto3" json:"filename,omitempty"`                         // Original filename
-	MimeType      string                 `protobuf:"bytes,3,opt,name=mime_type,json=mimeType,proto3" json:"mime_type,omitempty"`         // MIME type (e.g., "application/pdf")
-	Size          int64                  `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`                                // File size in bytes
-	Provider      Provider               `protobuf:"varint,5,opt,name=provider,proto3,enum=aibox.v1.Provider" json:"provider,omitempty"` // Provider for this store
-	Config        *ProviderConfig        `protobuf:"bytes,6,opt,name=config,proto3" json:"config,omitempty"`                             // Provider configuration
+	StoreId       string                 `protobuf:"bytes,1,opt,name=store_id,json=storeId,proto3" json:"store_id,omitempty"`               // Target store ID
+	Filename      string                 `protobuf:"bytes,2,opt,name=filename,proto3" json:"filename,omitempty"`                            // Original filename
+	MimeType      string                 `protobuf:"bytes,3,opt,name=mime_type,json=mimeType,proto3" json:"mime_type,omitempty"`            // MIME type (e.g., "application/pdf")
+	Size          int64                  `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`                                   // File size in bytes
+	Provider      Provider               `protobuf:"varint,5,opt,name=provider,proto3,enum=airborne.v1.Provider" json:"provider,omitempty"` // Provider for this store
+	Config        *ProviderConfig        `protobuf:"bytes,6,opt,name=config,proto3" json:"config,omitempty"`                                // Provider configuration
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UploadFileMetadata) Reset() {
 	*x = UploadFileMetadata{}
-	mi := &file_aibox_v1_files_proto_msgTypes[3]
+	mi := &file_airborne_v1_files_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -278,7 +278,7 @@ func (x *UploadFileMetadata) String() string {
 func (*UploadFileMetadata) ProtoMessage() {}
 
 func (x *UploadFileMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_files_proto_msgTypes[3]
+	mi := &file_airborne_v1_files_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -291,7 +291,7 @@ func (x *UploadFileMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadFileMetadata.ProtoReflect.Descriptor instead.
 func (*UploadFileMetadata) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_files_proto_rawDescGZIP(), []int{3}
+	return file_airborne_v1_files_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *UploadFileMetadata) GetStoreId() string {
@@ -349,7 +349,7 @@ type UploadFileResponse struct {
 
 func (x *UploadFileResponse) Reset() {
 	*x = UploadFileResponse{}
-	mi := &file_aibox_v1_files_proto_msgTypes[4]
+	mi := &file_airborne_v1_files_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -361,7 +361,7 @@ func (x *UploadFileResponse) String() string {
 func (*UploadFileResponse) ProtoMessage() {}
 
 func (x *UploadFileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_files_proto_msgTypes[4]
+	mi := &file_airborne_v1_files_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -374,7 +374,7 @@ func (x *UploadFileResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadFileResponse.ProtoReflect.Descriptor instead.
 func (*UploadFileResponse) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_files_proto_rawDescGZIP(), []int{4}
+	return file_airborne_v1_files_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *UploadFileResponse) GetFileId() string {
@@ -409,7 +409,7 @@ func (x *UploadFileResponse) GetStatus() string {
 type DeleteFileStoreRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	StoreId       string                 `protobuf:"bytes,1,opt,name=store_id,json=storeId,proto3" json:"store_id,omitempty"`
-	Provider      Provider               `protobuf:"varint,2,opt,name=provider,proto3,enum=aibox.v1.Provider" json:"provider,omitempty"`
+	Provider      Provider               `protobuf:"varint,2,opt,name=provider,proto3,enum=airborne.v1.Provider" json:"provider,omitempty"`
 	Config        *ProviderConfig        `protobuf:"bytes,3,opt,name=config,proto3" json:"config,omitempty"`
 	Force         bool                   `protobuf:"varint,4,opt,name=force,proto3" json:"force,omitempty"` // Delete even if files are still being processed
 	unknownFields protoimpl.UnknownFields
@@ -418,7 +418,7 @@ type DeleteFileStoreRequest struct {
 
 func (x *DeleteFileStoreRequest) Reset() {
 	*x = DeleteFileStoreRequest{}
-	mi := &file_aibox_v1_files_proto_msgTypes[5]
+	mi := &file_airborne_v1_files_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -430,7 +430,7 @@ func (x *DeleteFileStoreRequest) String() string {
 func (*DeleteFileStoreRequest) ProtoMessage() {}
 
 func (x *DeleteFileStoreRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_files_proto_msgTypes[5]
+	mi := &file_airborne_v1_files_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -443,7 +443,7 @@ func (x *DeleteFileStoreRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteFileStoreRequest.ProtoReflect.Descriptor instead.
 func (*DeleteFileStoreRequest) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_files_proto_rawDescGZIP(), []int{5}
+	return file_airborne_v1_files_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *DeleteFileStoreRequest) GetStoreId() string {
@@ -485,7 +485,7 @@ type DeleteFileStoreResponse struct {
 
 func (x *DeleteFileStoreResponse) Reset() {
 	*x = DeleteFileStoreResponse{}
-	mi := &file_aibox_v1_files_proto_msgTypes[6]
+	mi := &file_airborne_v1_files_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -497,7 +497,7 @@ func (x *DeleteFileStoreResponse) String() string {
 func (*DeleteFileStoreResponse) ProtoMessage() {}
 
 func (x *DeleteFileStoreResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_files_proto_msgTypes[6]
+	mi := &file_airborne_v1_files_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -510,7 +510,7 @@ func (x *DeleteFileStoreResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteFileStoreResponse.ProtoReflect.Descriptor instead.
 func (*DeleteFileStoreResponse) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_files_proto_rawDescGZIP(), []int{6}
+	return file_airborne_v1_files_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *DeleteFileStoreResponse) GetSuccess() bool {
@@ -531,7 +531,7 @@ func (x *DeleteFileStoreResponse) GetMessage() string {
 type GetFileStoreRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	StoreId       string                 `protobuf:"bytes,1,opt,name=store_id,json=storeId,proto3" json:"store_id,omitempty"`
-	Provider      Provider               `protobuf:"varint,2,opt,name=provider,proto3,enum=aibox.v1.Provider" json:"provider,omitempty"`
+	Provider      Provider               `protobuf:"varint,2,opt,name=provider,proto3,enum=airborne.v1.Provider" json:"provider,omitempty"`
 	Config        *ProviderConfig        `protobuf:"bytes,3,opt,name=config,proto3" json:"config,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -539,7 +539,7 @@ type GetFileStoreRequest struct {
 
 func (x *GetFileStoreRequest) Reset() {
 	*x = GetFileStoreRequest{}
-	mi := &file_aibox_v1_files_proto_msgTypes[7]
+	mi := &file_airborne_v1_files_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -551,7 +551,7 @@ func (x *GetFileStoreRequest) String() string {
 func (*GetFileStoreRequest) ProtoMessage() {}
 
 func (x *GetFileStoreRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_files_proto_msgTypes[7]
+	mi := &file_airborne_v1_files_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -564,7 +564,7 @@ func (x *GetFileStoreRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFileStoreRequest.ProtoReflect.Descriptor instead.
 func (*GetFileStoreRequest) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_files_proto_rawDescGZIP(), []int{7}
+	return file_airborne_v1_files_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *GetFileStoreRequest) GetStoreId() string {
@@ -593,7 +593,7 @@ type GetFileStoreResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	StoreId       string                 `protobuf:"bytes,1,opt,name=store_id,json=storeId,proto3" json:"store_id,omitempty"`
 	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Provider      Provider               `protobuf:"varint,3,opt,name=provider,proto3,enum=aibox.v1.Provider" json:"provider,omitempty"`
+	Provider      Provider               `protobuf:"varint,3,opt,name=provider,proto3,enum=airborne.v1.Provider" json:"provider,omitempty"`
 	FileCount     int32                  `protobuf:"varint,4,opt,name=file_count,json=fileCount,proto3" json:"file_count,omitempty"`
 	TotalBytes    int64                  `protobuf:"varint,5,opt,name=total_bytes,json=totalBytes,proto3" json:"total_bytes,omitempty"`
 	Status        string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"` // "ready", "processing", "expired"
@@ -605,7 +605,7 @@ type GetFileStoreResponse struct {
 
 func (x *GetFileStoreResponse) Reset() {
 	*x = GetFileStoreResponse{}
-	mi := &file_aibox_v1_files_proto_msgTypes[8]
+	mi := &file_airborne_v1_files_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -617,7 +617,7 @@ func (x *GetFileStoreResponse) String() string {
 func (*GetFileStoreResponse) ProtoMessage() {}
 
 func (x *GetFileStoreResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_files_proto_msgTypes[8]
+	mi := &file_airborne_v1_files_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -630,7 +630,7 @@ func (x *GetFileStoreResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFileStoreResponse.ProtoReflect.Descriptor instead.
 func (*GetFileStoreResponse) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_files_proto_rawDescGZIP(), []int{8}
+	return file_airborne_v1_files_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *GetFileStoreResponse) GetStoreId() string {
@@ -693,7 +693,7 @@ func (x *GetFileStoreResponse) GetExpiresAt() string {
 type ListFileStoresRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ClientId      string                 `protobuf:"bytes,1,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
-	Provider      Provider               `protobuf:"varint,2,opt,name=provider,proto3,enum=aibox.v1.Provider" json:"provider,omitempty"` // Optional: filter by provider
+	Provider      Provider               `protobuf:"varint,2,opt,name=provider,proto3,enum=airborne.v1.Provider" json:"provider,omitempty"` // Optional: filter by provider
 	Config        *ProviderConfig        `protobuf:"bytes,3,opt,name=config,proto3" json:"config,omitempty"`
 	Limit         int32                  `protobuf:"varint,4,opt,name=limit,proto3" json:"limit,omitempty"`                         // Max results (default 100)
 	PageToken     string                 `protobuf:"bytes,5,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"` // Pagination token
@@ -703,7 +703,7 @@ type ListFileStoresRequest struct {
 
 func (x *ListFileStoresRequest) Reset() {
 	*x = ListFileStoresRequest{}
-	mi := &file_aibox_v1_files_proto_msgTypes[9]
+	mi := &file_airborne_v1_files_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -715,7 +715,7 @@ func (x *ListFileStoresRequest) String() string {
 func (*ListFileStoresRequest) ProtoMessage() {}
 
 func (x *ListFileStoresRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_files_proto_msgTypes[9]
+	mi := &file_airborne_v1_files_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -728,7 +728,7 @@ func (x *ListFileStoresRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFileStoresRequest.ProtoReflect.Descriptor instead.
 func (*ListFileStoresRequest) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_files_proto_rawDescGZIP(), []int{9}
+	return file_airborne_v1_files_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ListFileStoresRequest) GetClientId() string {
@@ -777,7 +777,7 @@ type ListFileStoresResponse struct {
 
 func (x *ListFileStoresResponse) Reset() {
 	*x = ListFileStoresResponse{}
-	mi := &file_aibox_v1_files_proto_msgTypes[10]
+	mi := &file_airborne_v1_files_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -789,7 +789,7 @@ func (x *ListFileStoresResponse) String() string {
 func (*ListFileStoresResponse) ProtoMessage() {}
 
 func (x *ListFileStoresResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_files_proto_msgTypes[10]
+	mi := &file_airborne_v1_files_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -802,7 +802,7 @@ func (x *ListFileStoresResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFileStoresResponse.ProtoReflect.Descriptor instead.
 func (*ListFileStoresResponse) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_files_proto_rawDescGZIP(), []int{10}
+	return file_airborne_v1_files_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ListFileStoresResponse) GetStores() []*FileStoreSummary {
@@ -824,7 +824,7 @@ type FileStoreSummary struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	StoreId       string                 `protobuf:"bytes,1,opt,name=store_id,json=storeId,proto3" json:"store_id,omitempty"`
 	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Provider      Provider               `protobuf:"varint,3,opt,name=provider,proto3,enum=aibox.v1.Provider" json:"provider,omitempty"`
+	Provider      Provider               `protobuf:"varint,3,opt,name=provider,proto3,enum=airborne.v1.Provider" json:"provider,omitempty"`
 	FileCount     int32                  `protobuf:"varint,4,opt,name=file_count,json=fileCount,proto3" json:"file_count,omitempty"`
 	Status        string                 `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
 	CreatedAt     string                 `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
@@ -834,7 +834,7 @@ type FileStoreSummary struct {
 
 func (x *FileStoreSummary) Reset() {
 	*x = FileStoreSummary{}
-	mi := &file_aibox_v1_files_proto_msgTypes[11]
+	mi := &file_airborne_v1_files_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -846,7 +846,7 @@ func (x *FileStoreSummary) String() string {
 func (*FileStoreSummary) ProtoMessage() {}
 
 func (x *FileStoreSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_files_proto_msgTypes[11]
+	mi := &file_airborne_v1_files_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -859,7 +859,7 @@ func (x *FileStoreSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileStoreSummary.ProtoReflect.Descriptor instead.
 func (*FileStoreSummary) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_files_proto_rawDescGZIP(), []int{11}
+	return file_airborne_v1_files_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *FileStoreSummary) GetStoreId() string {
@@ -904,55 +904,55 @@ func (x *FileStoreSummary) GetCreatedAt() string {
 	return ""
 }
 
-var File_aibox_v1_files_proto protoreflect.FileDescriptor
+var File_airborne_v1_files_proto protoreflect.FileDescriptor
 
-const file_aibox_v1_files_proto_rawDesc = "" +
+const file_airborne_v1_files_proto_rawDesc = "" +
 	"\n" +
-	"\x14aibox/v1/files.proto\x12\baibox.v1\x1a\x15aibox/v1/common.proto\"\xd4\x01\n" +
-	"\x16CreateFileStoreRequest\x12.\n" +
-	"\bprovider\x18\x01 \x01(\x0e2\x12.aibox.v1.ProviderR\bprovider\x12\x12\n" +
+	"\x17airborne/v1/files.proto\x12\vairborne.v1\x1a\x18airborne/v1/common.proto\"\xda\x01\n" +
+	"\x16CreateFileStoreRequest\x121\n" +
+	"\bprovider\x18\x01 \x01(\x0e2\x15.airborne.v1.ProviderR\bprovider\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1b\n" +
-	"\tclient_id\x18\x03 \x01(\tR\bclientId\x120\n" +
-	"\x06config\x18\x04 \x01(\v2\x18.aibox.v1.ProviderConfigR\x06config\x12'\n" +
-	"\x0fexpiration_days\x18\x05 \x01(\x05R\x0eexpirationDays\"\x97\x01\n" +
+	"\tclient_id\x18\x03 \x01(\tR\bclientId\x123\n" +
+	"\x06config\x18\x04 \x01(\v2\x1b.airborne.v1.ProviderConfigR\x06config\x12'\n" +
+	"\x0fexpiration_days\x18\x05 \x01(\x05R\x0eexpirationDays\"\x9a\x01\n" +
 	"\x17CreateFileStoreResponse\x12\x19\n" +
-	"\bstore_id\x18\x01 \x01(\tR\astoreId\x12.\n" +
-	"\bprovider\x18\x02 \x01(\x0e2\x12.aibox.v1.ProviderR\bprovider\x12\x12\n" +
+	"\bstore_id\x18\x01 \x01(\tR\astoreId\x121\n" +
+	"\bprovider\x18\x02 \x01(\x0e2\x15.airborne.v1.ProviderR\bprovider\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12\x1d\n" +
 	"\n" +
-	"created_at\x18\x04 \x01(\tR\tcreatedAt\"o\n" +
-	"\x11UploadFileRequest\x12:\n" +
-	"\bmetadata\x18\x01 \x01(\v2\x1c.aibox.v1.UploadFileMetadataH\x00R\bmetadata\x12\x16\n" +
+	"created_at\x18\x04 \x01(\tR\tcreatedAt\"r\n" +
+	"\x11UploadFileRequest\x12=\n" +
+	"\bmetadata\x18\x01 \x01(\v2\x1f.airborne.v1.UploadFileMetadataH\x00R\bmetadata\x12\x16\n" +
 	"\x05chunk\x18\x02 \x01(\fH\x00R\x05chunkB\x06\n" +
-	"\x04data\"\xde\x01\n" +
+	"\x04data\"\xe4\x01\n" +
 	"\x12UploadFileMetadata\x12\x19\n" +
 	"\bstore_id\x18\x01 \x01(\tR\astoreId\x12\x1a\n" +
 	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x1b\n" +
 	"\tmime_type\x18\x03 \x01(\tR\bmimeType\x12\x12\n" +
-	"\x04size\x18\x04 \x01(\x03R\x04size\x12.\n" +
-	"\bprovider\x18\x05 \x01(\x0e2\x12.aibox.v1.ProviderR\bprovider\x120\n" +
-	"\x06config\x18\x06 \x01(\v2\x18.aibox.v1.ProviderConfigR\x06config\"|\n" +
+	"\x04size\x18\x04 \x01(\x03R\x04size\x121\n" +
+	"\bprovider\x18\x05 \x01(\x0e2\x15.airborne.v1.ProviderR\bprovider\x123\n" +
+	"\x06config\x18\x06 \x01(\v2\x1b.airborne.v1.ProviderConfigR\x06config\"|\n" +
 	"\x12UploadFileResponse\x12\x17\n" +
 	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12\x1a\n" +
 	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x19\n" +
 	"\bstore_id\x18\x03 \x01(\tR\astoreId\x12\x16\n" +
-	"\x06status\x18\x04 \x01(\tR\x06status\"\xab\x01\n" +
+	"\x06status\x18\x04 \x01(\tR\x06status\"\xb1\x01\n" +
 	"\x16DeleteFileStoreRequest\x12\x19\n" +
-	"\bstore_id\x18\x01 \x01(\tR\astoreId\x12.\n" +
-	"\bprovider\x18\x02 \x01(\x0e2\x12.aibox.v1.ProviderR\bprovider\x120\n" +
-	"\x06config\x18\x03 \x01(\v2\x18.aibox.v1.ProviderConfigR\x06config\x12\x14\n" +
+	"\bstore_id\x18\x01 \x01(\tR\astoreId\x121\n" +
+	"\bprovider\x18\x02 \x01(\x0e2\x15.airborne.v1.ProviderR\bprovider\x123\n" +
+	"\x06config\x18\x03 \x01(\v2\x1b.airborne.v1.ProviderConfigR\x06config\x12\x14\n" +
 	"\x05force\x18\x04 \x01(\bR\x05force\"M\n" +
 	"\x17DeleteFileStoreResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"\x92\x01\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"\x98\x01\n" +
 	"\x13GetFileStoreRequest\x12\x19\n" +
-	"\bstore_id\x18\x01 \x01(\tR\astoreId\x12.\n" +
-	"\bprovider\x18\x02 \x01(\x0e2\x12.aibox.v1.ProviderR\bprovider\x120\n" +
-	"\x06config\x18\x03 \x01(\v2\x18.aibox.v1.ProviderConfigR\x06config\"\x8b\x02\n" +
+	"\bstore_id\x18\x01 \x01(\tR\astoreId\x121\n" +
+	"\bprovider\x18\x02 \x01(\x0e2\x15.airborne.v1.ProviderR\bprovider\x123\n" +
+	"\x06config\x18\x03 \x01(\v2\x1b.airborne.v1.ProviderConfigR\x06config\"\x8e\x02\n" +
 	"\x14GetFileStoreResponse\x12\x19\n" +
 	"\bstore_id\x18\x01 \x01(\tR\astoreId\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\x12.\n" +
-	"\bprovider\x18\x03 \x01(\x0e2\x12.aibox.v1.ProviderR\bprovider\x12\x1d\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x121\n" +
+	"\bprovider\x18\x03 \x01(\x0e2\x15.airborne.v1.ProviderR\bprovider\x12\x1d\n" +
 	"\n" +
 	"file_count\x18\x04 \x01(\x05R\tfileCount\x12\x1f\n" +
 	"\vtotal_bytes\x18\x05 \x01(\x03R\n" +
@@ -961,91 +961,91 @@ const file_aibox_v1_files_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\a \x01(\tR\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"expires_at\x18\b \x01(\tR\texpiresAt\"\xcb\x01\n" +
+	"expires_at\x18\b \x01(\tR\texpiresAt\"\xd1\x01\n" +
 	"\x15ListFileStoresRequest\x12\x1b\n" +
-	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12.\n" +
-	"\bprovider\x18\x02 \x01(\x0e2\x12.aibox.v1.ProviderR\bprovider\x120\n" +
-	"\x06config\x18\x03 \x01(\v2\x18.aibox.v1.ProviderConfigR\x06config\x12\x14\n" +
+	"\tclient_id\x18\x01 \x01(\tR\bclientId\x121\n" +
+	"\bprovider\x18\x02 \x01(\x0e2\x15.airborne.v1.ProviderR\bprovider\x123\n" +
+	"\x06config\x18\x03 \x01(\v2\x1b.airborne.v1.ProviderConfigR\x06config\x12\x14\n" +
 	"\x05limit\x18\x04 \x01(\x05R\x05limit\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x05 \x01(\tR\tpageToken\"t\n" +
-	"\x16ListFileStoresResponse\x122\n" +
-	"\x06stores\x18\x01 \x03(\v2\x1a.aibox.v1.FileStoreSummaryR\x06stores\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xc7\x01\n" +
+	"page_token\x18\x05 \x01(\tR\tpageToken\"w\n" +
+	"\x16ListFileStoresResponse\x125\n" +
+	"\x06stores\x18\x01 \x03(\v2\x1d.airborne.v1.FileStoreSummaryR\x06stores\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xca\x01\n" +
 	"\x10FileStoreSummary\x12\x19\n" +
 	"\bstore_id\x18\x01 \x01(\tR\astoreId\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\x12.\n" +
-	"\bprovider\x18\x03 \x01(\x0e2\x12.aibox.v1.ProviderR\bprovider\x12\x1d\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x121\n" +
+	"\bprovider\x18\x03 \x01(\x0e2\x15.airborne.v1.ProviderR\bprovider\x12\x1d\n" +
 	"\n" +
 	"file_count\x18\x04 \x01(\x05R\tfileCount\x12\x16\n" +
 	"\x06status\x18\x05 \x01(\tR\x06status\x12\x1d\n" +
 	"\n" +
-	"created_at\x18\x06 \x01(\tR\tcreatedAt2\xac\x03\n" +
-	"\vFileService\x12V\n" +
-	"\x0fCreateFileStore\x12 .aibox.v1.CreateFileStoreRequest\x1a!.aibox.v1.CreateFileStoreResponse\x12I\n" +
+	"created_at\x18\x06 \x01(\tR\tcreatedAt2\xca\x03\n" +
+	"\vFileService\x12\\\n" +
+	"\x0fCreateFileStore\x12#.airborne.v1.CreateFileStoreRequest\x1a$.airborne.v1.CreateFileStoreResponse\x12O\n" +
 	"\n" +
-	"UploadFile\x12\x1b.aibox.v1.UploadFileRequest\x1a\x1c.aibox.v1.UploadFileResponse(\x01\x12V\n" +
-	"\x0fDeleteFileStore\x12 .aibox.v1.DeleteFileStoreRequest\x1a!.aibox.v1.DeleteFileStoreResponse\x12M\n" +
-	"\fGetFileStore\x12\x1d.aibox.v1.GetFileStoreRequest\x1a\x1e.aibox.v1.GetFileStoreResponse\x12S\n" +
-	"\x0eListFileStores\x12\x1f.aibox.v1.ListFileStoresRequest\x1a .aibox.v1.ListFileStoresResponseB\x90\x01\n" +
-	"\fcom.aibox.v1B\n" +
-	"FilesProtoP\x01Z3github.com/cliffpyles/aibox/gen/go/aibox/v1;aiboxv1\xa2\x02\x03AXX\xaa\x02\bAibox.V1\xca\x02\bAibox\\V1\xe2\x02\x14Aibox\\V1\\GPBMetadata\xea\x02\tAibox::V1b\x06proto3"
+	"UploadFile\x12\x1e.airborne.v1.UploadFileRequest\x1a\x1f.airborne.v1.UploadFileResponse(\x01\x12\\\n" +
+	"\x0fDeleteFileStore\x12#.airborne.v1.DeleteFileStoreRequest\x1a$.airborne.v1.DeleteFileStoreResponse\x12S\n" +
+	"\fGetFileStore\x12 .airborne.v1.GetFileStoreRequest\x1a!.airborne.v1.GetFileStoreResponse\x12Y\n" +
+	"\x0eListFileStores\x12\".airborne.v1.ListFileStoresRequest\x1a#.airborne.v1.ListFileStoresResponseB\xa7\x01\n" +
+	"\x0fcom.airborne.v1B\n" +
+	"FilesProtoP\x01Z;github.com/ai8future/airborne/gen/go/airborne/v1;airbornev1\xa2\x02\x03AXX\xaa\x02\vAirborne.V1\xca\x02\vAirborne\\V1\xe2\x02\x17Airborne\\V1\\GPBMetadata\xea\x02\fAirborne::V1b\x06proto3"
 
 var (
-	file_aibox_v1_files_proto_rawDescOnce sync.Once
-	file_aibox_v1_files_proto_rawDescData []byte
+	file_airborne_v1_files_proto_rawDescOnce sync.Once
+	file_airborne_v1_files_proto_rawDescData []byte
 )
 
-func file_aibox_v1_files_proto_rawDescGZIP() []byte {
-	file_aibox_v1_files_proto_rawDescOnce.Do(func() {
-		file_aibox_v1_files_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_aibox_v1_files_proto_rawDesc), len(file_aibox_v1_files_proto_rawDesc)))
+func file_airborne_v1_files_proto_rawDescGZIP() []byte {
+	file_airborne_v1_files_proto_rawDescOnce.Do(func() {
+		file_airborne_v1_files_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_airborne_v1_files_proto_rawDesc), len(file_airborne_v1_files_proto_rawDesc)))
 	})
-	return file_aibox_v1_files_proto_rawDescData
+	return file_airborne_v1_files_proto_rawDescData
 }
 
-var file_aibox_v1_files_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
-var file_aibox_v1_files_proto_goTypes = []any{
-	(*CreateFileStoreRequest)(nil),  // 0: aibox.v1.CreateFileStoreRequest
-	(*CreateFileStoreResponse)(nil), // 1: aibox.v1.CreateFileStoreResponse
-	(*UploadFileRequest)(nil),       // 2: aibox.v1.UploadFileRequest
-	(*UploadFileMetadata)(nil),      // 3: aibox.v1.UploadFileMetadata
-	(*UploadFileResponse)(nil),      // 4: aibox.v1.UploadFileResponse
-	(*DeleteFileStoreRequest)(nil),  // 5: aibox.v1.DeleteFileStoreRequest
-	(*DeleteFileStoreResponse)(nil), // 6: aibox.v1.DeleteFileStoreResponse
-	(*GetFileStoreRequest)(nil),     // 7: aibox.v1.GetFileStoreRequest
-	(*GetFileStoreResponse)(nil),    // 8: aibox.v1.GetFileStoreResponse
-	(*ListFileStoresRequest)(nil),   // 9: aibox.v1.ListFileStoresRequest
-	(*ListFileStoresResponse)(nil),  // 10: aibox.v1.ListFileStoresResponse
-	(*FileStoreSummary)(nil),        // 11: aibox.v1.FileStoreSummary
-	(Provider)(0),                   // 12: aibox.v1.Provider
-	(*ProviderConfig)(nil),          // 13: aibox.v1.ProviderConfig
+var file_airborne_v1_files_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_airborne_v1_files_proto_goTypes = []any{
+	(*CreateFileStoreRequest)(nil),  // 0: airborne.v1.CreateFileStoreRequest
+	(*CreateFileStoreResponse)(nil), // 1: airborne.v1.CreateFileStoreResponse
+	(*UploadFileRequest)(nil),       // 2: airborne.v1.UploadFileRequest
+	(*UploadFileMetadata)(nil),      // 3: airborne.v1.UploadFileMetadata
+	(*UploadFileResponse)(nil),      // 4: airborne.v1.UploadFileResponse
+	(*DeleteFileStoreRequest)(nil),  // 5: airborne.v1.DeleteFileStoreRequest
+	(*DeleteFileStoreResponse)(nil), // 6: airborne.v1.DeleteFileStoreResponse
+	(*GetFileStoreRequest)(nil),     // 7: airborne.v1.GetFileStoreRequest
+	(*GetFileStoreResponse)(nil),    // 8: airborne.v1.GetFileStoreResponse
+	(*ListFileStoresRequest)(nil),   // 9: airborne.v1.ListFileStoresRequest
+	(*ListFileStoresResponse)(nil),  // 10: airborne.v1.ListFileStoresResponse
+	(*FileStoreSummary)(nil),        // 11: airborne.v1.FileStoreSummary
+	(Provider)(0),                   // 12: airborne.v1.Provider
+	(*ProviderConfig)(nil),          // 13: airborne.v1.ProviderConfig
 }
-var file_aibox_v1_files_proto_depIdxs = []int32{
-	12, // 0: aibox.v1.CreateFileStoreRequest.provider:type_name -> aibox.v1.Provider
-	13, // 1: aibox.v1.CreateFileStoreRequest.config:type_name -> aibox.v1.ProviderConfig
-	12, // 2: aibox.v1.CreateFileStoreResponse.provider:type_name -> aibox.v1.Provider
-	3,  // 3: aibox.v1.UploadFileRequest.metadata:type_name -> aibox.v1.UploadFileMetadata
-	12, // 4: aibox.v1.UploadFileMetadata.provider:type_name -> aibox.v1.Provider
-	13, // 5: aibox.v1.UploadFileMetadata.config:type_name -> aibox.v1.ProviderConfig
-	12, // 6: aibox.v1.DeleteFileStoreRequest.provider:type_name -> aibox.v1.Provider
-	13, // 7: aibox.v1.DeleteFileStoreRequest.config:type_name -> aibox.v1.ProviderConfig
-	12, // 8: aibox.v1.GetFileStoreRequest.provider:type_name -> aibox.v1.Provider
-	13, // 9: aibox.v1.GetFileStoreRequest.config:type_name -> aibox.v1.ProviderConfig
-	12, // 10: aibox.v1.GetFileStoreResponse.provider:type_name -> aibox.v1.Provider
-	12, // 11: aibox.v1.ListFileStoresRequest.provider:type_name -> aibox.v1.Provider
-	13, // 12: aibox.v1.ListFileStoresRequest.config:type_name -> aibox.v1.ProviderConfig
-	11, // 13: aibox.v1.ListFileStoresResponse.stores:type_name -> aibox.v1.FileStoreSummary
-	12, // 14: aibox.v1.FileStoreSummary.provider:type_name -> aibox.v1.Provider
-	0,  // 15: aibox.v1.FileService.CreateFileStore:input_type -> aibox.v1.CreateFileStoreRequest
-	2,  // 16: aibox.v1.FileService.UploadFile:input_type -> aibox.v1.UploadFileRequest
-	5,  // 17: aibox.v1.FileService.DeleteFileStore:input_type -> aibox.v1.DeleteFileStoreRequest
-	7,  // 18: aibox.v1.FileService.GetFileStore:input_type -> aibox.v1.GetFileStoreRequest
-	9,  // 19: aibox.v1.FileService.ListFileStores:input_type -> aibox.v1.ListFileStoresRequest
-	1,  // 20: aibox.v1.FileService.CreateFileStore:output_type -> aibox.v1.CreateFileStoreResponse
-	4,  // 21: aibox.v1.FileService.UploadFile:output_type -> aibox.v1.UploadFileResponse
-	6,  // 22: aibox.v1.FileService.DeleteFileStore:output_type -> aibox.v1.DeleteFileStoreResponse
-	8,  // 23: aibox.v1.FileService.GetFileStore:output_type -> aibox.v1.GetFileStoreResponse
-	10, // 24: aibox.v1.FileService.ListFileStores:output_type -> aibox.v1.ListFileStoresResponse
+var file_airborne_v1_files_proto_depIdxs = []int32{
+	12, // 0: airborne.v1.CreateFileStoreRequest.provider:type_name -> airborne.v1.Provider
+	13, // 1: airborne.v1.CreateFileStoreRequest.config:type_name -> airborne.v1.ProviderConfig
+	12, // 2: airborne.v1.CreateFileStoreResponse.provider:type_name -> airborne.v1.Provider
+	3,  // 3: airborne.v1.UploadFileRequest.metadata:type_name -> airborne.v1.UploadFileMetadata
+	12, // 4: airborne.v1.UploadFileMetadata.provider:type_name -> airborne.v1.Provider
+	13, // 5: airborne.v1.UploadFileMetadata.config:type_name -> airborne.v1.ProviderConfig
+	12, // 6: airborne.v1.DeleteFileStoreRequest.provider:type_name -> airborne.v1.Provider
+	13, // 7: airborne.v1.DeleteFileStoreRequest.config:type_name -> airborne.v1.ProviderConfig
+	12, // 8: airborne.v1.GetFileStoreRequest.provider:type_name -> airborne.v1.Provider
+	13, // 9: airborne.v1.GetFileStoreRequest.config:type_name -> airborne.v1.ProviderConfig
+	12, // 10: airborne.v1.GetFileStoreResponse.provider:type_name -> airborne.v1.Provider
+	12, // 11: airborne.v1.ListFileStoresRequest.provider:type_name -> airborne.v1.Provider
+	13, // 12: airborne.v1.ListFileStoresRequest.config:type_name -> airborne.v1.ProviderConfig
+	11, // 13: airborne.v1.ListFileStoresResponse.stores:type_name -> airborne.v1.FileStoreSummary
+	12, // 14: airborne.v1.FileStoreSummary.provider:type_name -> airborne.v1.Provider
+	0,  // 15: airborne.v1.FileService.CreateFileStore:input_type -> airborne.v1.CreateFileStoreRequest
+	2,  // 16: airborne.v1.FileService.UploadFile:input_type -> airborne.v1.UploadFileRequest
+	5,  // 17: airborne.v1.FileService.DeleteFileStore:input_type -> airborne.v1.DeleteFileStoreRequest
+	7,  // 18: airborne.v1.FileService.GetFileStore:input_type -> airborne.v1.GetFileStoreRequest
+	9,  // 19: airborne.v1.FileService.ListFileStores:input_type -> airborne.v1.ListFileStoresRequest
+	1,  // 20: airborne.v1.FileService.CreateFileStore:output_type -> airborne.v1.CreateFileStoreResponse
+	4,  // 21: airborne.v1.FileService.UploadFile:output_type -> airborne.v1.UploadFileResponse
+	6,  // 22: airborne.v1.FileService.DeleteFileStore:output_type -> airborne.v1.DeleteFileStoreResponse
+	8,  // 23: airborne.v1.FileService.GetFileStore:output_type -> airborne.v1.GetFileStoreResponse
+	10, // 24: airborne.v1.FileService.ListFileStores:output_type -> airborne.v1.ListFileStoresResponse
 	20, // [20:25] is the sub-list for method output_type
 	15, // [15:20] is the sub-list for method input_type
 	15, // [15:15] is the sub-list for extension type_name
@@ -1053,13 +1053,13 @@ var file_aibox_v1_files_proto_depIdxs = []int32{
 	0,  // [0:15] is the sub-list for field type_name
 }
 
-func init() { file_aibox_v1_files_proto_init() }
-func file_aibox_v1_files_proto_init() {
-	if File_aibox_v1_files_proto != nil {
+func init() { file_airborne_v1_files_proto_init() }
+func file_airborne_v1_files_proto_init() {
+	if File_airborne_v1_files_proto != nil {
 		return
 	}
-	file_aibox_v1_common_proto_init()
-	file_aibox_v1_files_proto_msgTypes[2].OneofWrappers = []any{
+	file_airborne_v1_common_proto_init()
+	file_airborne_v1_files_proto_msgTypes[2].OneofWrappers = []any{
 		(*UploadFileRequest_Metadata)(nil),
 		(*UploadFileRequest_Chunk)(nil),
 	}
@@ -1067,17 +1067,17 @@ func file_aibox_v1_files_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_aibox_v1_files_proto_rawDesc), len(file_aibox_v1_files_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_airborne_v1_files_proto_rawDesc), len(file_airborne_v1_files_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_aibox_v1_files_proto_goTypes,
-		DependencyIndexes: file_aibox_v1_files_proto_depIdxs,
-		MessageInfos:      file_aibox_v1_files_proto_msgTypes,
+		GoTypes:           file_airborne_v1_files_proto_goTypes,
+		DependencyIndexes: file_airborne_v1_files_proto_depIdxs,
+		MessageInfos:      file_airborne_v1_files_proto_msgTypes,
 	}.Build()
-	File_aibox_v1_files_proto = out.File
-	file_aibox_v1_files_proto_goTypes = nil
-	file_aibox_v1_files_proto_depIdxs = nil
+	File_airborne_v1_files_proto = out.File
+	file_airborne_v1_files_proto_goTypes = nil
+	file_airborne_v1_files_proto_depIdxs = nil
 }

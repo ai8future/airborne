@@ -7,7 +7,7 @@ import (
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 
-	"github.com/cliffpyles/aibox/internal/provider"
+	"github.com/ai8future/airborne/internal/provider"
 )
 
 func TestBuildMessages_NormalHistory(t *testing.T) {

@@ -446,7 +446,7 @@ Expected: All tests pass
 In `internal/service/chat.go`, update `hasCustomBaseURL`:
 
 ```go
-import "github.com/cliffpyles/aibox/internal/validation"
+import "github.com/ai8future/airborne/internal/validation"
 
 func hasCustomBaseURL(req *pb.GenerateReplyRequest) bool {
     for _, cfg := range req.ProviderConfigs {

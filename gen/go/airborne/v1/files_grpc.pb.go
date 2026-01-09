@@ -2,9 +2,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.0
 // - protoc             (unknown)
-// source: aibox/v1/files.proto
+// source: airborne/v1/files.proto
 
-package aiboxv1
+package airbornev1
 
 import (
 	context "context"
@@ -19,11 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	FileService_CreateFileStore_FullMethodName = "/aibox.v1.FileService/CreateFileStore"
-	FileService_UploadFile_FullMethodName      = "/aibox.v1.FileService/UploadFile"
-	FileService_DeleteFileStore_FullMethodName = "/aibox.v1.FileService/DeleteFileStore"
-	FileService_GetFileStore_FullMethodName    = "/aibox.v1.FileService/GetFileStore"
-	FileService_ListFileStores_FullMethodName  = "/aibox.v1.FileService/ListFileStores"
+	FileService_CreateFileStore_FullMethodName = "/airborne.v1.FileService/CreateFileStore"
+	FileService_UploadFile_FullMethodName      = "/airborne.v1.FileService/UploadFile"
+	FileService_DeleteFileStore_FullMethodName = "/airborne.v1.FileService/DeleteFileStore"
+	FileService_GetFileStore_FullMethodName    = "/airborne.v1.FileService/GetFileStore"
+	FileService_ListFileStores_FullMethodName  = "/airborne.v1.FileService/ListFileStores"
 )
 
 // FileServiceClient is the client API for FileService service.
@@ -250,7 +250,7 @@ func _FileService_ListFileStores_Handler(srv interface{}, ctx context.Context, d
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var FileService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "aibox.v1.FileService",
+	ServiceName: "airborne.v1.FileService",
 	HandlerType: (*FileServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -277,5 +277,5 @@ var FileService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "aibox/v1/files.proto",
+	Metadata: "airborne/v1/files.proto",
 }

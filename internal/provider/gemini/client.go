@@ -11,8 +11,8 @@ import (
 
 	"google.golang.org/genai"
 
-	"github.com/cliffpyles/aibox/internal/provider"
-	"github.com/cliffpyles/aibox/internal/validation"
+	"github.com/ai8future/airborne/internal/provider"
+	"github.com/ai8future/airborne/internal/validation"
 )
 
 const (

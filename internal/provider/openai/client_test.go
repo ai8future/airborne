@@ -9,7 +9,7 @@ import (
 	"github.com/openai/openai-go/responses"
 	"github.com/openai/openai-go/shared"
 
-	"github.com/cliffpyles/aibox/internal/provider"
+	"github.com/ai8future/airborne/internal/provider"
 )
 
 func TestBuildUserPrompt_NoHistory(t *testing.T) {

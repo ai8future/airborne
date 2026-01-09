@@ -7,7 +7,7 @@ import (
 
 	"google.golang.org/genai"
 
-	"github.com/cliffpyles/aibox/internal/provider"
+	"github.com/ai8future/airborne/internal/provider"
 )
 
 func TestBuildContents(t *testing.T) {

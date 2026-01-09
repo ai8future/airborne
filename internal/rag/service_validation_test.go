@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cliffpyles/aibox/internal/rag/testutil"
+	"github.com/ai8future/airborne/internal/rag/testutil"
 )
 
 func TestValidateCollectionParts_ValidInputs(t *testing.T) {

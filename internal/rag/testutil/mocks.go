@@ -8,8 +8,8 @@ import (
 	"math/rand"
 	"sync"
 
-	"github.com/cliffpyles/aibox/internal/rag/extractor"
-	"github.com/cliffpyles/aibox/internal/rag/vectorstore"
+	"github.com/ai8future/airborne/internal/rag/extractor"
+	"github.com/ai8future/airborne/internal/rag/vectorstore"
 )
 
 // MockEmbedder is a configurable mock for the Embedder interface.

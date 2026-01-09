@@ -2,9 +2,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.0
 // - protoc             (unknown)
-// source: aibox/v1/admin.proto
+// source: airborne/v1/admin.proto
 
-package aiboxv1
+package airbornev1
 
 import (
 	context "context"
@@ -19,9 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AdminService_Health_FullMethodName  = "/aibox.v1.AdminService/Health"
-	AdminService_Ready_FullMethodName   = "/aibox.v1.AdminService/Ready"
-	AdminService_Version_FullMethodName = "/aibox.v1.AdminService/Version"
+	AdminService_Health_FullMethodName  = "/airborne.v1.AdminService/Health"
+	AdminService_Ready_FullMethodName   = "/airborne.v1.AdminService/Ready"
+	AdminService_Version_FullMethodName = "/airborne.v1.AdminService/Version"
 )
 
 // AdminServiceClient is the client API for AdminService service.
@@ -186,7 +186,7 @@ func _AdminService_Version_Handler(srv interface{}, ctx context.Context, dec fun
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var AdminService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "aibox.v1.AdminService",
+	ServiceName: "airborne.v1.AdminService",
 	HandlerType: (*AdminServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -203,5 +203,5 @@ var AdminService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "aibox/v1/admin.proto",
+	Metadata: "airborne/v1/admin.proto",
 }

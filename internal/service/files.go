@@ -10,9 +10,9 @@ import (
 	"log/slog"
 	"time"
 
-	pb "github.com/cliffpyles/aibox/gen/go/aibox/v1"
-	"github.com/cliffpyles/aibox/internal/auth"
-	"github.com/cliffpyles/aibox/internal/rag"
+	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
+	"github.com/ai8future/airborne/internal/auth"
+	"github.com/ai8future/airborne/internal/rag"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

@@ -2,9 +2,9 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        (unknown)
-// source: aibox/v1/admin.proto
+// source: airborne/v1/admin.proto
 
-package aiboxv1
+package airbornev1
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -30,7 +30,7 @@ type HealthRequest struct {
 
 func (x *HealthRequest) Reset() {
 	*x = HealthRequest{}
-	mi := &file_aibox_v1_admin_proto_msgTypes[0]
+	mi := &file_airborne_v1_admin_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42,7 +42,7 @@ func (x *HealthRequest) String() string {
 func (*HealthRequest) ProtoMessage() {}
 
 func (x *HealthRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_admin_proto_msgTypes[0]
+	mi := &file_airborne_v1_admin_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -55,7 +55,7 @@ func (x *HealthRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthRequest.ProtoReflect.Descriptor instead.
 func (*HealthRequest) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_admin_proto_rawDescGZIP(), []int{0}
+	return file_airborne_v1_admin_proto_rawDescGZIP(), []int{0}
 }
 
 // HealthResponse contains basic health info
@@ -70,7 +70,7 @@ type HealthResponse struct {
 
 func (x *HealthResponse) Reset() {
 	*x = HealthResponse{}
-	mi := &file_aibox_v1_admin_proto_msgTypes[1]
+	mi := &file_airborne_v1_admin_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -82,7 +82,7 @@ func (x *HealthResponse) String() string {
 func (*HealthResponse) ProtoMessage() {}
 
 func (x *HealthResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_admin_proto_msgTypes[1]
+	mi := &file_airborne_v1_admin_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -95,7 +95,7 @@ func (x *HealthResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthResponse.ProtoReflect.Descriptor instead.
 func (*HealthResponse) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_admin_proto_rawDescGZIP(), []int{1}
+	return file_airborne_v1_admin_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *HealthResponse) GetStatus() string {
@@ -128,7 +128,7 @@ type ReadyRequest struct {
 
 func (x *ReadyRequest) Reset() {
 	*x = ReadyRequest{}
-	mi := &file_aibox_v1_admin_proto_msgTypes[2]
+	mi := &file_airborne_v1_admin_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -140,7 +140,7 @@ func (x *ReadyRequest) String() string {
 func (*ReadyRequest) ProtoMessage() {}
 
 func (x *ReadyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_admin_proto_msgTypes[2]
+	mi := &file_airborne_v1_admin_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -153,7 +153,7 @@ func (x *ReadyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadyRequest.ProtoReflect.Descriptor instead.
 func (*ReadyRequest) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_admin_proto_rawDescGZIP(), []int{2}
+	return file_airborne_v1_admin_proto_rawDescGZIP(), []int{2}
 }
 
 // ReadyResponse contains dependency readiness
@@ -167,7 +167,7 @@ type ReadyResponse struct {
 
 func (x *ReadyResponse) Reset() {
 	*x = ReadyResponse{}
-	mi := &file_aibox_v1_admin_proto_msgTypes[3]
+	mi := &file_airborne_v1_admin_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -179,7 +179,7 @@ func (x *ReadyResponse) String() string {
 func (*ReadyResponse) ProtoMessage() {}
 
 func (x *ReadyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_admin_proto_msgTypes[3]
+	mi := &file_airborne_v1_admin_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -192,7 +192,7 @@ func (x *ReadyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadyResponse.ProtoReflect.Descriptor instead.
 func (*ReadyResponse) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_admin_proto_rawDescGZIP(), []int{3}
+	return file_airborne_v1_admin_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ReadyResponse) GetReady() bool {
@@ -221,7 +221,7 @@ type DependencyStatus struct {
 
 func (x *DependencyStatus) Reset() {
 	*x = DependencyStatus{}
-	mi := &file_aibox_v1_admin_proto_msgTypes[4]
+	mi := &file_airborne_v1_admin_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -233,7 +233,7 @@ func (x *DependencyStatus) String() string {
 func (*DependencyStatus) ProtoMessage() {}
 
 func (x *DependencyStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_admin_proto_msgTypes[4]
+	mi := &file_airborne_v1_admin_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -246,7 +246,7 @@ func (x *DependencyStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DependencyStatus.ProtoReflect.Descriptor instead.
 func (*DependencyStatus) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_admin_proto_rawDescGZIP(), []int{4}
+	return file_airborne_v1_admin_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *DependencyStatus) GetHealthy() bool {
@@ -279,7 +279,7 @@ type VersionRequest struct {
 
 func (x *VersionRequest) Reset() {
 	*x = VersionRequest{}
-	mi := &file_aibox_v1_admin_proto_msgTypes[5]
+	mi := &file_airborne_v1_admin_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -291,7 +291,7 @@ func (x *VersionRequest) String() string {
 func (*VersionRequest) ProtoMessage() {}
 
 func (x *VersionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_admin_proto_msgTypes[5]
+	mi := &file_airborne_v1_admin_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -304,7 +304,7 @@ func (x *VersionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VersionRequest.ProtoReflect.Descriptor instead.
 func (*VersionRequest) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_admin_proto_rawDescGZIP(), []int{5}
+	return file_airborne_v1_admin_proto_rawDescGZIP(), []int{5}
 }
 
 // VersionResponse contains detailed version info
@@ -320,7 +320,7 @@ type VersionResponse struct {
 
 func (x *VersionResponse) Reset() {
 	*x = VersionResponse{}
-	mi := &file_aibox_v1_admin_proto_msgTypes[6]
+	mi := &file_airborne_v1_admin_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -332,7 +332,7 @@ func (x *VersionResponse) String() string {
 func (*VersionResponse) ProtoMessage() {}
 
 func (x *VersionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aibox_v1_admin_proto_msgTypes[6]
+	mi := &file_airborne_v1_admin_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -345,7 +345,7 @@ func (x *VersionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VersionResponse.ProtoReflect.Descriptor instead.
 func (*VersionResponse) Descriptor() ([]byte, []int) {
-	return file_aibox_v1_admin_proto_rawDescGZIP(), []int{6}
+	return file_airborne_v1_admin_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *VersionResponse) GetVersion() string {
@@ -376,23 +376,23 @@ func (x *VersionResponse) GetGoVersion() string {
 	return ""
 }
 
-var File_aibox_v1_admin_proto protoreflect.FileDescriptor
+var File_airborne_v1_admin_proto protoreflect.FileDescriptor
 
-const file_aibox_v1_admin_proto_rawDesc = "" +
+const file_airborne_v1_admin_proto_rawDesc = "" +
 	"\n" +
-	"\x14aibox/v1/admin.proto\x12\baibox.v1\"\x0f\n" +
+	"\x17airborne/v1/admin.proto\x12\vairborne.v1\"\x0f\n" +
 	"\rHealthRequest\"i\n" +
 	"\x0eHealthResponse\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12%\n" +
 	"\x0euptime_seconds\x18\x03 \x01(\x03R\ruptimeSeconds\"\x0e\n" +
-	"\fReadyRequest\"\xd1\x01\n" +
+	"\fReadyRequest\"\xd7\x01\n" +
 	"\rReadyResponse\x12\x14\n" +
-	"\x05ready\x18\x01 \x01(\bR\x05ready\x12M\n" +
-	"\fdependencies\x18\x02 \x03(\v2).aibox.v1.ReadyResponse.DependenciesEntryR\fdependencies\x1a[\n" +
+	"\x05ready\x18\x01 \x01(\bR\x05ready\x12P\n" +
+	"\fdependencies\x18\x02 \x03(\v2,.airborne.v1.ReadyResponse.DependenciesEntryR\fdependencies\x1a^\n" +
 	"\x11DependenciesEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x120\n" +
-	"\x05value\x18\x02 \x01(\v2\x1a.aibox.v1.DependencyStatusR\x05value:\x028\x01\"e\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x123\n" +
+	"\x05value\x18\x02 \x01(\v2\x1d.airborne.v1.DependencyStatusR\x05value:\x028\x01\"e\n" +
 	"\x10DependencyStatus\x12\x18\n" +
 	"\ahealthy\x18\x01 \x01(\bR\ahealthy\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12\x1d\n" +
@@ -406,46 +406,46 @@ const file_aibox_v1_admin_proto_rawDesc = "" +
 	"\n" +
 	"build_time\x18\x03 \x01(\tR\tbuildTime\x12\x1d\n" +
 	"\n" +
-	"go_version\x18\x04 \x01(\tR\tgoVersion2\xc5\x01\n" +
-	"\fAdminService\x12;\n" +
-	"\x06Health\x12\x17.aibox.v1.HealthRequest\x1a\x18.aibox.v1.HealthResponse\x128\n" +
-	"\x05Ready\x12\x16.aibox.v1.ReadyRequest\x1a\x17.aibox.v1.ReadyResponse\x12>\n" +
-	"\aVersion\x12\x18.aibox.v1.VersionRequest\x1a\x19.aibox.v1.VersionResponseB\x90\x01\n" +
-	"\fcom.aibox.v1B\n" +
-	"AdminProtoP\x01Z3github.com/cliffpyles/aibox/gen/go/aibox/v1;aiboxv1\xa2\x02\x03AXX\xaa\x02\bAibox.V1\xca\x02\bAibox\\V1\xe2\x02\x14Aibox\\V1\\GPBMetadata\xea\x02\tAibox::V1b\x06proto3"
+	"go_version\x18\x04 \x01(\tR\tgoVersion2\xd7\x01\n" +
+	"\fAdminService\x12A\n" +
+	"\x06Health\x12\x1a.airborne.v1.HealthRequest\x1a\x1b.airborne.v1.HealthResponse\x12>\n" +
+	"\x05Ready\x12\x19.airborne.v1.ReadyRequest\x1a\x1a.airborne.v1.ReadyResponse\x12D\n" +
+	"\aVersion\x12\x1b.airborne.v1.VersionRequest\x1a\x1c.airborne.v1.VersionResponseB\xa7\x01\n" +
+	"\x0fcom.airborne.v1B\n" +
+	"AdminProtoP\x01Z;github.com/ai8future/airborne/gen/go/airborne/v1;airbornev1\xa2\x02\x03AXX\xaa\x02\vAirborne.V1\xca\x02\vAirborne\\V1\xe2\x02\x17Airborne\\V1\\GPBMetadata\xea\x02\fAirborne::V1b\x06proto3"
 
 var (
-	file_aibox_v1_admin_proto_rawDescOnce sync.Once
-	file_aibox_v1_admin_proto_rawDescData []byte
+	file_airborne_v1_admin_proto_rawDescOnce sync.Once
+	file_airborne_v1_admin_proto_rawDescData []byte
 )
 
-func file_aibox_v1_admin_proto_rawDescGZIP() []byte {
-	file_aibox_v1_admin_proto_rawDescOnce.Do(func() {
-		file_aibox_v1_admin_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_aibox_v1_admin_proto_rawDesc), len(file_aibox_v1_admin_proto_rawDesc)))
+func file_airborne_v1_admin_proto_rawDescGZIP() []byte {
+	file_airborne_v1_admin_proto_rawDescOnce.Do(func() {
+		file_airborne_v1_admin_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_airborne_v1_admin_proto_rawDesc), len(file_airborne_v1_admin_proto_rawDesc)))
 	})
-	return file_aibox_v1_admin_proto_rawDescData
+	return file_airborne_v1_admin_proto_rawDescData
 }
 
-var file_aibox_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
-var file_aibox_v1_admin_proto_goTypes = []any{
-	(*HealthRequest)(nil),    // 0: aibox.v1.HealthRequest
-	(*HealthResponse)(nil),   // 1: aibox.v1.HealthResponse
-	(*ReadyRequest)(nil),     // 2: aibox.v1.ReadyRequest
-	(*ReadyResponse)(nil),    // 3: aibox.v1.ReadyResponse
-	(*DependencyStatus)(nil), // 4: aibox.v1.DependencyStatus
-	(*VersionRequest)(nil),   // 5: aibox.v1.VersionRequest
-	(*VersionResponse)(nil),  // 6: aibox.v1.VersionResponse
-	nil,                      // 7: aibox.v1.ReadyResponse.DependenciesEntry
+var file_airborne_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_airborne_v1_admin_proto_goTypes = []any{
+	(*HealthRequest)(nil),    // 0: airborne.v1.HealthRequest
+	(*HealthResponse)(nil),   // 1: airborne.v1.HealthResponse
+	(*ReadyRequest)(nil),     // 2: airborne.v1.ReadyRequest
+	(*ReadyResponse)(nil),    // 3: airborne.v1.ReadyResponse
+	(*DependencyStatus)(nil), // 4: airborne.v1.DependencyStatus
+	(*VersionRequest)(nil),   // 5: airborne.v1.VersionRequest
+	(*VersionResponse)(nil),  // 6: airborne.v1.VersionResponse
+	nil,                      // 7: airborne.v1.ReadyResponse.DependenciesEntry
 }
-var file_aibox_v1_admin_proto_depIdxs = []int32{
-	7, // 0: aibox.v1.ReadyResponse.dependencies:type_name -> aibox.v1.ReadyResponse.DependenciesEntry
-	4, // 1: aibox.v1.ReadyResponse.DependenciesEntry.value:type_name -> aibox.v1.DependencyStatus
-	0, // 2: aibox.v1.AdminService.Health:input_type -> aibox.v1.HealthRequest
-	2, // 3: aibox.v1.AdminService.Ready:input_type -> aibox.v1.ReadyRequest
-	5, // 4: aibox.v1.AdminService.Version:input_type -> aibox.v1.VersionRequest
-	1, // 5: aibox.v1.AdminService.Health:output_type -> aibox.v1.HealthResponse
-	3, // 6: aibox.v1.AdminService.Ready:output_type -> aibox.v1.ReadyResponse
-	6, // 7: aibox.v1.AdminService.Version:output_type -> aibox.v1.VersionResponse
+var file_airborne_v1_admin_proto_depIdxs = []int32{
+	7, // 0: airborne.v1.ReadyResponse.dependencies:type_name -> airborne.v1.ReadyResponse.DependenciesEntry
+	4, // 1: airborne.v1.ReadyResponse.DependenciesEntry.value:type_name -> airborne.v1.DependencyStatus
+	0, // 2: airborne.v1.AdminService.Health:input_type -> airborne.v1.HealthRequest
+	2, // 3: airborne.v1.AdminService.Ready:input_type -> airborne.v1.ReadyRequest
+	5, // 4: airborne.v1.AdminService.Version:input_type -> airborne.v1.VersionRequest
+	1, // 5: airborne.v1.AdminService.Health:output_type -> airborne.v1.HealthResponse
+	3, // 6: airborne.v1.AdminService.Ready:output_type -> airborne.v1.ReadyResponse
+	6, // 7: airborne.v1.AdminService.Version:output_type -> airborne.v1.VersionResponse
 	5, // [5:8] is the sub-list for method output_type
 	2, // [2:5] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
@@ -453,26 +453,26 @@ var file_aibox_v1_admin_proto_depIdxs = []int32{
 	0, // [0:2] is the sub-list for field type_name
 }
 
-func init() { file_aibox_v1_admin_proto_init() }
-func file_aibox_v1_admin_proto_init() {
-	if File_aibox_v1_admin_proto != nil {
+func init() { file_airborne_v1_admin_proto_init() }
+func file_airborne_v1_admin_proto_init() {
+	if File_airborne_v1_admin_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_aibox_v1_admin_proto_rawDesc), len(file_aibox_v1_admin_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_airborne_v1_admin_proto_rawDesc), len(file_airborne_v1_admin_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_aibox_v1_admin_proto_goTypes,
-		DependencyIndexes: file_aibox_v1_admin_proto_depIdxs,
-		MessageInfos:      file_aibox_v1_admin_proto_msgTypes,
+		GoTypes:           file_airborne_v1_admin_proto_goTypes,
+		DependencyIndexes: file_airborne_v1_admin_proto_depIdxs,
+		MessageInfos:      file_airborne_v1_admin_proto_msgTypes,
 	}.Build()
-	File_aibox_v1_admin_proto = out.File
-	file_aibox_v1_admin_proto_goTypes = nil
-	file_aibox_v1_admin_proto_depIdxs = nil
+	File_airborne_v1_admin_proto = out.File
+	file_airborne_v1_admin_proto_goTypes = nil
+	file_airborne_v1_admin_proto_depIdxs = nil
 }

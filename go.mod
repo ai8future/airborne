@@ -1,4 +1,4 @@
-module github.com/cliffpyles/aibox
+module github.com/ai8future/airborne
 
 go 1.25.5
 

@@ -1,16 +1,16 @@
-# AIBox Docker Compose
+# Airborne Docker Compose
 # Simple deployment with static token authentication (no Redis)
 
 services:
-  aibox:
+  airborne:
     build:
       context: .
       dockerfile: Dockerfile
     ports:
       - "50051:50051"
     environment:
-      - AIBOX_ADMIN_TOKEN=${AIBOX_ADMIN_TOKEN:-}
-      - AIBOX_AUTH_MODE=static
+      - AIRBORNE_ADMIN_TOKEN=${AIRBORNE_ADMIN_TOKEN:-}
+      - AIRBORNE_AUTH_MODE=static
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
@@ -19,7 +19,7 @@ services:
       - ./configs:/app/configs:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "/app/aibox", "--health-check"]
+      test: ["CMD", "/app/airborne", "--health-check"]
       interval: 30s
       timeout: 10s
       retries: 3

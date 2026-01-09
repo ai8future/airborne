@@ -1,4 +1,4 @@
-# AIBox Makefile
+# Airborne Makefile
 
 # Build variables
 VERSION ?= $(shell cat VERSION 2>/dev/null || echo "dev")
@@ -15,7 +15,7 @@ GOFMT := gofmt
 
 # Directories
 BIN_DIR := bin
-CMD_DIR := cmd/aibox
+CMD_DIR := cmd/airborne
 
 .PHONY: all build clean test lint fmt proto deps help run
 
@@ -24,10 +24,10 @@ all: proto build
 
 # Build the binary
 build:
-	@echo "Building aibox..."
+	@echo "Building airborne..."
 	@mkdir -p $(BIN_DIR)
-	$(GOBUILD) $(LDFLAGS) -o $(BIN_DIR)/aibox ./$(CMD_DIR)
-	@echo "Built $(BIN_DIR)/aibox"
+	$(GOBUILD) $(LDFLAGS) -o $(BIN_DIR)/airborne ./$(CMD_DIR)
+	@echo "Built $(BIN_DIR)/airborne"
 
 # Generate protobuf code
 proto:
@@ -36,8 +36,8 @@ proto:
 
 # Run the server
 run: build
-	@echo "Starting aibox server..."
-	@$(BIN_DIR)/aibox
+	@echo "Starting airborne server..."
+	@$(BIN_DIR)/airborne
 
 # Run tests
 test:
@@ -95,11 +95,11 @@ proto-lint:
 # Docker build
 docker-build:
 	@echo "Building Docker image..."
-	docker build -t aibox:$(VERSION) .
+	docker build -t airborne:$(VERSION) .
 
 # Help
 help:
-	@echo "AIBox Makefile targets:"
+	@echo "Airborne Makefile targets:"
 	@echo ""
 	@echo "  all            - Generate protos and build binary (default)"
 	@echo "  build          - Build the binary"

@@ -9,7 +9,7 @@ import (
 func TestLoad_DefaultValues(t *testing.T) {
 	// Point to non-existent config to use defaults
 	dir := t.TempDir()
-	t.Setenv("AIBOX_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
+	t.Setenv("AIRBORNE_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
 
 	cfg, err := Load()
 	if err != nil {
@@ -61,10 +61,10 @@ func TestLoad_DefaultValues(t *testing.T) {
 
 func TestLoad_TLSEnvOverrides(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("AIBOX_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
-	t.Setenv("AIBOX_TLS_ENABLED", "true")
-	t.Setenv("AIBOX_TLS_CERT_FILE", "/path/to/cert.pem")
-	t.Setenv("AIBOX_TLS_KEY_FILE", "/path/to/key.pem")
+	t.Setenv("AIRBORNE_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
+	t.Setenv("AIRBORNE_TLS_ENABLED", "true")
+	t.Setenv("AIRBORNE_TLS_CERT_FILE", "/path/to/cert.pem")
+	t.Setenv("AIRBORNE_TLS_KEY_FILE", "/path/to/key.pem")
 
 	cfg, err := Load()
 	if err != nil {
@@ -96,10 +96,10 @@ tls:
 	if err := os.WriteFile(cfgPath, []byte(cfgYAML), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	t.Setenv("AIBOX_CONFIG", cfgPath)
+	t.Setenv("AIRBORNE_CONFIG", cfgPath)
 
 	// Disable TLS via env
-	t.Setenv("AIBOX_TLS_ENABLED", "false")
+	t.Setenv("AIRBORNE_TLS_ENABLED", "false")
 
 	cfg, err := Load()
 	if err != nil {
@@ -113,7 +113,7 @@ tls:
 
 func TestLoad_RedisDBEnvOverride(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("AIBOX_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
+	t.Setenv("AIRBORNE_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
 	t.Setenv("REDIS_DB", "5")
 
 	cfg, err := Load()
@@ -128,7 +128,7 @@ func TestLoad_RedisDBEnvOverride(t *testing.T) {
 
 func TestLoad_RedisDBEnvOverride_InvalidValue(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("AIBOX_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
+	t.Setenv("AIRBORNE_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
 	t.Setenv("REDIS_DB", "not-a-number")
 
 	cfg, err := Load()
@@ -144,8 +144,8 @@ func TestLoad_RedisDBEnvOverride_InvalidValue(t *testing.T) {
 
 func TestLoad_LogFormatEnvOverride(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("AIBOX_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
-	t.Setenv("AIBOX_LOG_FORMAT", "text")
+	t.Setenv("AIRBORNE_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
+	t.Setenv("AIRBORNE_LOG_FORMAT", "text")
 
 	cfg, err := Load()
 	if err != nil {
@@ -159,8 +159,8 @@ func TestLoad_LogFormatEnvOverride(t *testing.T) {
 
 func TestLoad_LogLevelEnvOverride(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("AIBOX_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
-	t.Setenv("AIBOX_LOG_LEVEL", "debug")
+	t.Setenv("AIRBORNE_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
+	t.Setenv("AIRBORNE_LOG_LEVEL", "debug")
 
 	cfg, err := Load()
 	if err != nil {
@@ -175,7 +175,7 @@ func TestLoad_LogLevelEnvOverride(t *testing.T) {
 func TestLoad_MissingConfigFile_UsesDefaults(t *testing.T) {
 	dir := t.TempDir()
 	nonexistentPath := filepath.Join(dir, "does_not_exist.yaml")
-	t.Setenv("AIBOX_CONFIG", nonexistentPath)
+	t.Setenv("AIRBORNE_CONFIG", nonexistentPath)
 
 	cfg, err := Load()
 	if err != nil {
@@ -197,7 +197,7 @@ func TestLoad_ConfigReadError_Fails(t *testing.T) {
 		t.Fatalf("failed to create directory: %v", err)
 	}
 
-	t.Setenv("AIBOX_CONFIG", configPath)
+	t.Setenv("AIRBORNE_CONFIG", configPath)
 
 	_, err := Load()
 	if err == nil {
@@ -213,7 +213,7 @@ func TestLoad_InvalidYAML_Fails(t *testing.T) {
 	if err := os.WriteFile(cfgPath, []byte("server: {invalid: yaml: content}"), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	t.Setenv("AIBOX_CONFIG", cfgPath)
+	t.Setenv("AIRBORNE_CONFIG", cfgPath)
 
 	_, err := Load()
 	if err == nil {
@@ -240,12 +240,12 @@ logging:
 	if err := os.WriteFile(cfgPath, []byte(cfgYAML), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	t.Setenv("AIBOX_CONFIG", cfgPath)
+	t.Setenv("AIRBORNE_CONFIG", cfgPath)
 
 	// Override some values via env
-	t.Setenv("AIBOX_GRPC_PORT", "8888")
+	t.Setenv("AIRBORNE_GRPC_PORT", "8888")
 	t.Setenv("REDIS_DB", "7")
-	t.Setenv("AIBOX_LOG_FORMAT", "text")
+	t.Setenv("AIRBORNE_LOG_FORMAT", "text")
 
 	cfg, err := Load()
 	if err != nil {
@@ -277,8 +277,8 @@ logging:
 
 func TestLoad_TLSValidation_EnabledWithoutCert(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("AIBOX_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
-	t.Setenv("AIBOX_TLS_ENABLED", "true")
+	t.Setenv("AIRBORNE_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
+	t.Setenv("AIRBORNE_TLS_ENABLED", "true")
 	// Don't set cert file
 
 	_, err := Load()
@@ -289,9 +289,9 @@ func TestLoad_TLSValidation_EnabledWithoutCert(t *testing.T) {
 
 func TestLoad_TLSValidation_EnabledWithoutKey(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("AIBOX_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
-	t.Setenv("AIBOX_TLS_ENABLED", "true")
-	t.Setenv("AIBOX_TLS_CERT_FILE", "/path/to/cert.pem")
+	t.Setenv("AIRBORNE_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
+	t.Setenv("AIRBORNE_TLS_ENABLED", "true")
+	t.Setenv("AIRBORNE_TLS_CERT_FILE", "/path/to/cert.pem")
 	// Don't set key file
 
 	_, err := Load()
@@ -302,8 +302,8 @@ func TestLoad_TLSValidation_EnabledWithoutKey(t *testing.T) {
 
 func TestLoad_InvalidPort(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("AIBOX_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
-	t.Setenv("AIBOX_GRPC_PORT", "99999")
+	t.Setenv("AIRBORNE_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
+	t.Setenv("AIRBORNE_GRPC_PORT", "99999")
 
 	_, err := Load()
 	if err == nil {
@@ -313,7 +313,7 @@ func TestLoad_InvalidPort(t *testing.T) {
 
 func TestLoad_RAGEnvOverrides(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("AIBOX_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
+	t.Setenv("AIRBORNE_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
 	t.Setenv("RAG_ENABLED", "true")
 	t.Setenv("RAG_OLLAMA_URL", "http://ollama.local:11434")
 	t.Setenv("RAG_EMBEDDING_MODEL", "custom-model")
@@ -367,7 +367,7 @@ rag:
 	if err := os.WriteFile(cfgPath, []byte(cfgYAML), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	t.Setenv("AIBOX_CONFIG", cfgPath)
+	t.Setenv("AIRBORNE_CONFIG", cfgPath)
 
 	// Disable RAG via env
 	t.Setenv("RAG_ENABLED", "false")
@@ -384,8 +384,8 @@ rag:
 
 func TestLoad_StartupModeEnvOverride(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("AIBOX_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
-	t.Setenv("AIBOX_STARTUP_MODE", "development")
+	t.Setenv("AIRBORNE_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
+	t.Setenv("AIRBORNE_STARTUP_MODE", "development")
 
 	cfg, err := Load()
 	if err != nil {
@@ -414,7 +414,7 @@ tls:
 	if err := os.WriteFile(cfgPath, []byte(cfgYAML), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	t.Setenv("AIBOX_CONFIG", cfgPath)
+	t.Setenv("AIRBORNE_CONFIG", cfgPath)
 	t.Setenv("TEST_REDIS_PASS", "secret-password")
 	t.Setenv("TEST_ADMIN_TOKEN", "admin-secret")
 	t.Setenv("TEST_TLS_CERT", "/expanded/cert.pem")
@@ -441,17 +441,17 @@ tls:
 
 func TestLoad_MultipleEnvOverrides(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("AIBOX_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
+	t.Setenv("AIRBORNE_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
 
 	// Set multiple env overrides at once
-	t.Setenv("AIBOX_GRPC_PORT", "9001")
-	t.Setenv("AIBOX_HOST", "192.168.1.1")
+	t.Setenv("AIRBORNE_GRPC_PORT", "9001")
+	t.Setenv("AIRBORNE_HOST", "192.168.1.1")
 	t.Setenv("REDIS_ADDR", "redis.example.com:6379")
 	t.Setenv("REDIS_PASSWORD", "mypassword")
 	t.Setenv("REDIS_DB", "3")
-	t.Setenv("AIBOX_ADMIN_TOKEN", "supersecret")
-	t.Setenv("AIBOX_LOG_LEVEL", "error")
-	t.Setenv("AIBOX_LOG_FORMAT", "text")
+	t.Setenv("AIRBORNE_ADMIN_TOKEN", "supersecret")
+	t.Setenv("AIRBORNE_LOG_LEVEL", "error")
+	t.Setenv("AIRBORNE_LOG_FORMAT", "text")
 
 	cfg, err := Load()
 	if err != nil {
@@ -486,8 +486,8 @@ func TestLoad_MultipleEnvOverrides(t *testing.T) {
 
 func TestLoad_GRPCPortEnvOverride_InvalidValue(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("AIBOX_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
-	t.Setenv("AIBOX_GRPC_PORT", "not-a-port")
+	t.Setenv("AIRBORNE_CONFIG", filepath.Join(dir, "nonexistent.yaml"))
+	t.Setenv("AIRBORNE_GRPC_PORT", "not-a-port")
 
 	cfg, err := Load()
 	if err != nil {

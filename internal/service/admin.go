@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	pb "github.com/cliffpyles/aibox/gen/go/aibox/v1"
-	"github.com/cliffpyles/aibox/internal/auth"
-	"github.com/cliffpyles/aibox/internal/redis"
+	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
+	"github.com/ai8future/airborne/internal/auth"
+	"github.com/ai8future/airborne/internal/redis"
 )
 
 // AdminService implements the AdminService gRPC service.
