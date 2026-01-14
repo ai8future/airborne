@@ -103,6 +103,12 @@ type GenerateResult struct {
 
 	// Model is the actual model used
 	Model string
+
+	// RequestJSON contains the raw API request for debugging
+	RequestJSON []byte
+
+	// ResponseJSON contains the raw API response for debugging
+	ResponseJSON []byte
 }
 
 // Usage contains token usage metrics

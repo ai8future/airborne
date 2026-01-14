@@ -199,3 +199,64 @@ func TestExtractCitations_EmptyResponse(t *testing.T) {
 		t.Fatalf("expected empty citations for empty response, got %d", len(citations))
 	}
 }
+
+func TestStripCitationMarkers(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"no markers", "Hello world", "Hello world"},
+		{"single marker", "Hello fileciteturn2file0 world", "Hello  world"},
+		{"multiple markers", "fileciteturn1file0 Hello fileciteturn2file1 world", " Hello  world"},
+		{"complex marker", "Test fileciteturn2file0turn2file1turn3file2 end", "Test  end"},
+		{"empty string", "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := stripCitationMarkers(tt.input)
+			if got != tt.want {
+				t.Fatalf("stripCitationMarkers(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSupportsPromptCacheRetention(t *testing.T) {
+	tests := []struct {
+		model string
+		want  bool
+	}{
+		{"gpt-5.0", true},
+		{"gpt-5.1-turbo", true},
+		{"gpt-4o", false},
+		{"gpt-4-turbo", false},
+		{"o1-preview", false},
+		{"", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			got := supportsPromptCacheRetention(tt.model)
+			if got != tt.want {
+				t.Fatalf("supportsPromptCacheRetention(%q) = %v, want %v", tt.model, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewClientWithDebugLogging(t *testing.T) {
+	client := NewClient(WithDebugLogging(true))
+	if client == nil {
+		t.Fatal("NewClient() returned nil")
+	}
+	if !client.debug {
+		t.Error("expected debug to be true")
+	}
+
+	client2 := NewClient(WithDebugLogging(false))
+	if client2.debug {
+		t.Error("expected debug to be false")
+	}
+}

@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.12] - 2026-01-14
+
+### Added
+- **OpenAI Provider Enhancements** (Phase 1 of Solstice migration):
+  - Request/response JSON capture for debugging (new `RequestJSON`/`ResponseJSON` fields in `GenerateResult`)
+  - HTTP capture utility (`internal/httpcapture`) for intercepting API payloads
+  - Verbosity setting support via `ExtraOptions["verbosity"]`
+  - Prompt cache retention for gpt-5.x models via `ExtraOptions["prompt_cache_retention"]`
+  - Citation marker stripping (removes `fileciteturn` markers from GPT-5 responses)
+  - Debug logging mode via `WithDebugLogging()` client option
+  - Improved retry error detection (broader network error matching)
+
+Agent: Claude:Opus 4.5
+
 ## [0.6.11] - 2026-01-14
 
 ### Added

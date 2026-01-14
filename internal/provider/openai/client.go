@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/openai/openai-go/shared"
 	"github.com/openai/openai-go/shared/constant"
 
+	"github.com/ai8future/airborne/internal/httpcapture"
 	"github.com/ai8future/airborne/internal/provider"
 	"github.com/ai8future/airborne/internal/validation"
 )
@@ -27,12 +29,33 @@ const (
 	backoffBase    = 250 * time.Millisecond
 )
 
+// citationMarkerPattern matches OpenAI's inline file citation markers like "fileciteturn2file0"
+var citationMarkerPattern = regexp.MustCompile(`filecite(?:turn\d+file\d+)+`)
+
 // Client implements the provider.Provider interface using OpenAI's Responses API.
-type Client struct{}
+type Client struct {
+	debug bool
+}
+
+// ClientOption configures a Client.
+type ClientOption func(*Client)
+
+// WithDebugLogging enables verbose OpenAI payload logging.
+func WithDebugLogging(enabled bool) ClientOption {
+	return func(c *Client) {
+		c.debug = enabled
+	}
+}
 
 // NewClient creates a new OpenAI provider client.
-func NewClient() *Client {
-	return &Client{}
+func NewClient(opts ...ClientOption) *Client {
+	c := &Client{}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(c)
+		}
+	}
+	return c
 }
 
 // Name returns the provider identifier.
@@ -85,17 +108,23 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		model = params.OverrideModel
 	}
 
-	client := openai.NewClient(option.WithAPIKey(cfg.APIKey))
+	// Create capturing transport for debug JSON
+	capture := httpcapture.New()
+
+	// Build client options
+	clientOpts := []option.RequestOption{
+		option.WithAPIKey(cfg.APIKey),
+		option.WithHTTPClient(capture.Client()),
+	}
 	if cfg.BaseURL != "" {
 		// SECURITY: Validate base URL to prevent SSRF attacks
 		if err := validation.ValidateProviderURL(cfg.BaseURL); err != nil {
 			return provider.GenerateResult{}, fmt.Errorf("invalid base URL: %w", err)
 		}
-		client = openai.NewClient(
-			option.WithAPIKey(cfg.APIKey),
-			option.WithBaseURL(cfg.BaseURL),
-		)
+		clientOpts = append(clientOpts, option.WithBaseURL(cfg.BaseURL))
 	}
+
+	client := openai.NewClient(clientOpts...)
 
 	// Build user prompt from input and history
 	userPrompt := buildUserPrompt(params.UserInput, params.ConversationHistory)
@@ -121,14 +150,36 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		req.MaxOutputTokens = openai.Int(int64(*cfg.MaxOutputTokens))
 	}
 
-	// Apply extra options
+	// Apply reasoning effort
 	if effort := cfg.ExtraOptions["reasoning_effort"]; effort != "" {
 		req.Reasoning = shared.ReasoningParam{
 			Effort: mapReasoningEffort(effort),
 		}
 	}
+
+	// Apply service tier
 	if tier := cfg.ExtraOptions["service_tier"]; tier != "" {
 		req.ServiceTier = mapServiceTier(tier)
+	}
+
+	// Apply verbosity setting
+	if verbosity := cfg.ExtraOptions["verbosity"]; verbosity != "" {
+		textConfig := responses.ResponseTextConfigParam{}
+		textConfig.SetExtraFields(map[string]any{
+			"verbosity": strings.ToLower(verbosity),
+		})
+		req.Text = textConfig
+	}
+
+	// Apply prompt cache retention for gpt-5.x models
+	if supportsPromptCacheRetention(model) {
+		retention := cfg.ExtraOptions["prompt_cache_retention"]
+		if retention == "" {
+			retention = "24h"
+		}
+		req.SetExtraFields(map[string]any{
+			"prompt_cache_retention": retention,
+		})
 	}
 
 	// Build tools
@@ -156,6 +207,15 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 	// Add previous response ID for conversation continuity
 	if strings.TrimSpace(params.PreviousResponseID) != "" {
 		req.PreviousResponseID = openai.String(params.PreviousResponseID)
+	}
+
+	if c.debug {
+		slog.Debug("openai request",
+			"model", model,
+			"override_model", params.OverrideModel,
+			"file_store_id", params.FileStoreID,
+			"request_id", params.RequestID,
+		)
 	}
 
 	// Execute with retry
@@ -210,6 +270,9 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 			continue
 		}
 
+		// Strip OpenAI's inline file citation markers (e.g., "fileciteturn2file0")
+		text = stripCitationMarkers(text)
+
 		citations := extractCitations(resp, params.FileIDToFilename)
 
 		slog.Info("openai request completed",
@@ -227,8 +290,10 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 				OutputTokens: resp.Usage.OutputTokens,
 				TotalTokens:  resp.Usage.TotalTokens,
 			},
-			Citations: citations,
-			Model:     model,
+			Citations:    citations,
+			Model:        model,
+			RequestJSON:  capture.RequestBody,
+			ResponseJSON: capture.ResponseBody,
 		}, nil
 	}
 
@@ -389,6 +454,17 @@ func extractCitations(resp *responses.Response, fileIDToFilename map[string]stri
 	return citations
 }
 
+// stripCitationMarkers removes OpenAI's inline file citation markers.
+// These appear as "fileciteturn2file0turn2file1" in GPT-5 File Search responses.
+func stripCitationMarkers(text string) string {
+	return citationMarkerPattern.ReplaceAllString(text, "")
+}
+
+// supportsPromptCacheRetention checks if the model supports extended prompt cache retention.
+func supportsPromptCacheRetention(model string) bool {
+	return strings.HasPrefix(model, "gpt-5.")
+}
+
 // mapReasoningEffort converts string to SDK enum.
 func mapReasoningEffort(effort string) shared.ReasoningEffort {
 	switch strings.ToLower(effort) {
@@ -433,13 +509,38 @@ func isRetryableError(err error) bool {
 		case 400, 401, 403, 404, 422:
 			return false
 		}
+
+		// Check error types
+		if apiErr.Type != "" {
+			switch apiErr.Type {
+			case "rate_limit_error", "server_error", "api_connection_error":
+				return true
+			case "invalid_request_error", "authentication_error", "permission_error", "not_found_error":
+				return false
+			}
+		}
 	}
 
 	errStr := strings.ToLower(err.Error())
-	if strings.Contains(errStr, "connection") ||
-		strings.Contains(errStr, "timeout") ||
-		strings.Contains(errStr, "temporary") {
-		return true
+
+	// Network errors that are retryable
+	networkErrors := []string{
+		"connection",
+		"timeout",
+		"temporary",
+		"no such host",
+		"tls handshake",
+		"eof",
+	}
+	for _, netErr := range networkErrors {
+		if strings.Contains(errStr, netErr) {
+			return true
+		}
+	}
+
+	// Context errors are not retryable
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
 	}
 
 	return false
