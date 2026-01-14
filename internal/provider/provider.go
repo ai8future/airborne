@@ -59,6 +59,9 @@ type GenerateParams struct {
 	// FileIDToFilename maps file IDs to original filenames
 	FileIDToFilename map[string]string
 
+	// InlineImages contains images to include directly in the prompt
+	InlineImages []InlineImage
+
 	// Config contains provider-specific configuration
 	Config ProviderConfig
 
@@ -74,6 +77,13 @@ type Message struct {
 	Role      string
 	Content   string
 	Timestamp time.Time
+}
+
+// InlineImage represents an image to include directly in the prompt
+type InlineImage struct {
+	URI      string
+	MIMEType string
+	Filename string
 }
 
 // ProviderConfig contains provider-specific configuration

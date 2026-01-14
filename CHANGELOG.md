@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.13] - 2026-01-14
+
+### Added
+- **Gemini Provider Enhancements** (Phase 1 of Solstice migration):
+  - Request/response JSON capture for debugging
+  - Debug logging mode via `WithDebugLogging()` client option
+  - Inline images support via `InlineImages` in `GenerateParams`
+  - FileSearch with FileSearchStore integration
+  - Thinking configuration (level, budget, include thoughts) for non-Flash models
+  - Structured output (JSON mode with schema) via `ExtraOptions["structured_output"]`
+  - File ID to filename mapping in system prompt
+  - Block reason detection for safety filter responses
+  - Conversation history truncation (50000 char limit)
+  - Improved retry error detection (resource exhausted, overloaded)
+
+- **Anthropic Provider Enhancements** (Phase 1 of Solstice migration):
+  - Request/response JSON capture for debugging
+  - Debug logging mode via `WithDebugLogging()` client option
+  - Extended thinking support via `ExtraOptions["thinking_enabled"]`
+  - Thinking budget configuration via `ExtraOptions["thinking_budget"]`
+  - Include thoughts option via `ExtraOptions["include_thoughts"]`
+  - Extended timeout (15 min) for thinking operations
+  - Streaming accumulation for thinking responses (required by Anthropic API)
+  - Conversation history truncation (50000 char limit)
+  - Improved retry error detection
+
+- **Provider Interface Updates**:
+  - Added `InlineImage` type to provider package
+  - Added `InlineImages` field to `GenerateParams`
+
+Agent: Claude:Opus 4.5
+
 ## [0.6.12] - 2026-01-14
 
 ### Added

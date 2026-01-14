@@ -3,14 +3,17 @@ package gemini
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
 	"google.golang.org/genai"
 
+	"github.com/ai8future/airborne/internal/httpcapture"
 	"github.com/ai8future/airborne/internal/provider"
 	"github.com/ai8future/airborne/internal/validation"
 )
@@ -19,14 +22,34 @@ const (
 	maxAttempts    = 3
 	requestTimeout = 3 * time.Minute
 	backoffBase    = 250 * time.Millisecond
+	// maxHistoryChars limits conversation history to prevent context overflow
+	maxHistoryChars = 50000
 )
 
 // Client implements the provider.Provider interface using Google's Gemini API.
-type Client struct{}
+type Client struct {
+	debug bool
+}
+
+// ClientOption configures a Client.
+type ClientOption func(*Client)
+
+// WithDebugLogging enables verbose Gemini payload logging.
+func WithDebugLogging(enabled bool) ClientOption {
+	return func(c *Client) {
+		c.debug = enabled
+	}
+}
 
 // NewClient creates a new Gemini provider client.
-func NewClient() *Client {
-	return &Client{}
+func NewClient(opts ...ClientOption) *Client {
+	c := &Client{}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(c)
+		}
+	}
+	return c
 }
 
 // Name returns the provider identifier.
@@ -51,7 +74,6 @@ func (c *Client) SupportsNativeContinuity() bool {
 
 // SupportsStreaming returns false because the current implementation falls back to
 // non-streaming (calls GenerateReply and returns result as single chunk).
-// Set to true once true streaming is implemented.
 func (c *Client) SupportsStreaming() bool {
 	return false
 }
@@ -79,10 +101,14 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		model = params.OverrideModel
 	}
 
+	// Create capturing transport for debug JSON
+	capture := httpcapture.New()
+
 	// Create Gemini client
 	clientConfig := &genai.ClientConfig{
-		APIKey:  cfg.APIKey,
-		Backend: genai.BackendGeminiAPI,
+		APIKey:     cfg.APIKey,
+		Backend:    genai.BackendGeminiAPI,
+		HTTPClient: capture.Client(),
 	}
 	if cfg.BaseURL != "" {
 		// SECURITY: Validate base URL to prevent SSRF attacks
@@ -99,13 +125,24 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		return provider.GenerateResult{}, fmt.Errorf("creating gemini client: %w", err)
 	}
 
-	// Build conversation content
-	contents := buildContents(params.UserInput, params.ConversationHistory)
+	// Build conversation content with inline images
+	contents := buildContents(params.UserInput, params.ConversationHistory, params.InlineImages)
+
+	// Build system instruction with file ID mappings
+	systemInstruction := params.Instructions
+	if len(params.FileIDToFilename) > 0 {
+		var mappings []string
+		for id, name := range params.FileIDToFilename {
+			mappings = append(mappings, fmt.Sprintf("- %s: %s", id, name))
+		}
+		sort.Strings(mappings)
+		systemInstruction += "\n\nThe following files are attached. When referencing them, use the original filename:\n" + strings.Join(mappings, "\n")
+	}
 
 	// Build generation config
 	generateConfig := &genai.GenerateContentConfig{
 		SystemInstruction: &genai.Content{
-			Parts: []*genai.Part{genai.NewPartFromText(params.Instructions)},
+			Parts: []*genai.Part{genai.NewPartFromText(systemInstruction)},
 		},
 	}
 
@@ -127,11 +164,67 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		generateConfig.SafetySettings = buildSafetySettings(threshold)
 	}
 
-	// Configure tools - Google Search grounding (file search requires different API)
-	if params.EnableWebSearch && !params.EnableFileSearch {
-		generateConfig.Tools = []*genai.Tool{{
+	// Configure thinking (not supported on Flash models)
+	modelLower := strings.ToLower(model)
+	isFlashModel := strings.Contains(modelLower, "flash")
+	if !isFlashModel {
+		thinkingLevel := cfg.ExtraOptions["thinking_level"]
+		thinkingBudgetStr := cfg.ExtraOptions["thinking_budget"]
+		includeThoughts := cfg.ExtraOptions["include_thoughts"] == "true"
+
+		if thinkingLevel != "" || thinkingBudgetStr != "" || includeThoughts {
+			thinkingConfig := &genai.ThinkingConfig{
+				IncludeThoughts: includeThoughts,
+			}
+			if thinkingLevel != "" {
+				thinkingConfig.ThinkingLevel = parseThinkingLevel(thinkingLevel)
+			}
+			if thinkingBudgetStr != "" {
+				var budget int
+				fmt.Sscanf(thinkingBudgetStr, "%d", &budget)
+				if budget > 0 {
+					budget32 := int32(budget)
+					thinkingConfig.ThinkingBudget = &budget32
+				}
+			}
+			generateConfig.ThinkingConfig = thinkingConfig
+		}
+	}
+
+	// Build tools - FileSearch and GoogleSearch cannot be used together
+	var tools []*genai.Tool
+	hasFileSearch := params.EnableFileSearch && strings.TrimSpace(params.FileStoreID) != ""
+	if hasFileSearch {
+		tools = append(tools, &genai.Tool{
+			FileSearch: &genai.FileSearch{
+				FileSearchStoreNames: []string{params.FileStoreID},
+			},
+		})
+	}
+	if params.EnableWebSearch && !hasFileSearch {
+		tools = append(tools, &genai.Tool{
 			GoogleSearch: &genai.GoogleSearch{},
-		}}
+		})
+	}
+	if len(tools) > 0 {
+		generateConfig.Tools = tools
+	}
+
+	// Enable structured output (JSON mode) if requested
+	structuredOutputEnabled := cfg.ExtraOptions["structured_output"] == "true"
+	if structuredOutputEnabled {
+		generateConfig.ResponseMIMEType = "application/json"
+		generateConfig.ResponseJsonSchema = structuredOutputSchema()
+	}
+
+	if c.debug {
+		slog.Debug("gemini request",
+			"model", model,
+			"file_store_id", params.FileStoreID,
+			"web_search", params.EnableWebSearch && !hasFileSearch,
+			"structured_output", structuredOutputEnabled,
+			"request_id", params.RequestID,
+		)
 	}
 
 	// Execute with retry
@@ -172,10 +265,23 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 			return provider.GenerateResult{}, lastErr
 		}
 
-		// Extract text from response
-		text := extractText(resp)
+		// Extract text from response (handles both plain text and structured JSON)
+		var text string
+		if structuredOutputEnabled {
+			text = extractStructuredText(resp)
+		} else {
+			text = extractText(resp)
+		}
+
 		if text == "" {
+			// Check if blocked by safety filters
+			if reason := getBlockReason(resp); reason != "" {
+				return provider.GenerateResult{}, fmt.Errorf("gemini response blocked: %s", reason)
+			}
 			lastErr = errors.New("gemini returned empty response")
+			if attempt < maxAttempts {
+				sleepWithBackoff(ctx, attempt)
+			}
 			continue
 		}
 
@@ -189,10 +295,12 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		)
 
 		return provider.GenerateResult{
-			Text:      text,
-			Usage:     usage,
-			Citations: citations,
-			Model:     model,
+			Text:         text,
+			Usage:        usage,
+			Citations:    citations,
+			Model:        model,
+			RequestJSON:  capture.RequestBody,
+			ResponseJSON: capture.ResponseBody,
 		}, nil
 	}
 
@@ -236,26 +344,54 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 	return ch, nil
 }
 
-// buildContents builds conversation content from input and history.
-func buildContents(userInput string, history []provider.Message) []*genai.Content {
+// InlineImage represents an image to include in the prompt.
+type InlineImage struct {
+	URI      string
+	MIMEType string
+	Filename string
+}
+
+// buildContents builds conversation content from input, history, and images.
+func buildContents(userInput string, history []provider.Message, inlineImages []provider.InlineImage) []*genai.Content {
 	var contents []*genai.Content
 
-	// Add conversation history
+	// Add conversation history with size limit
+	totalChars := 0
 	for _, msg := range history {
-		role := "user"
-		if msg.Role == "assistant" {
-			role = "model"
+		trimmed := strings.TrimSpace(msg.Content)
+		if trimmed == "" {
+			continue
 		}
-		contents = append(contents, &genai.Content{
-			Role:  role,
-			Parts: []*genai.Part{genai.NewPartFromText(msg.Content)},
-		})
+		msgLen := len(trimmed)
+		if totalChars+msgLen > maxHistoryChars {
+			slog.Debug("truncating conversation history",
+				"total_chars", totalChars,
+				"max_chars", maxHistoryChars)
+			break
+		}
+		totalChars += msgLen
+
+		var role genai.Role
+		if msg.Role == "assistant" {
+			role = genai.RoleModel
+		} else {
+			role = genai.RoleUser
+		}
+		contents = append(contents, genai.NewContentFromText(trimmed, role))
 	}
 
-	// Add current user input
+	// Build user content with text and optional images
+	var parts []*genai.Part
+	parts = append(parts, genai.NewPartFromText(strings.TrimSpace(userInput)))
+
+	// Add inline images
+	for _, img := range inlineImages {
+		parts = append(parts, genai.NewPartFromURI(img.URI, img.MIMEType))
+	}
+
 	contents = append(contents, &genai.Content{
-		Role:  "user",
-		Parts: []*genai.Part{genai.NewPartFromText(strings.TrimSpace(userInput))},
+		Role:  genai.RoleUser,
+		Parts: parts,
 	})
 
 	return contents
@@ -282,17 +418,65 @@ func extractText(resp *genai.GenerateContentResponse) string {
 	return strings.TrimSpace(text.String())
 }
 
+// extractStructuredText extracts the reply field from structured JSON output.
+func extractStructuredText(resp *genai.GenerateContentResponse) string {
+	rawJSON := extractText(resp)
+	if rawJSON == "" {
+		return ""
+	}
+
+	var parsed struct {
+		Reply string `json:"reply"`
+	}
+	if err := json.Unmarshal([]byte(rawJSON), &parsed); err != nil {
+		slog.Warn("failed to parse structured response, using raw text",
+			"error", err.Error())
+		return rawJSON
+	}
+	return parsed.Reply
+}
+
+// getBlockReason checks if the response was blocked and returns the reason.
+func getBlockReason(resp *genai.GenerateContentResponse) string {
+	if resp == nil || len(resp.Candidates) == 0 {
+		return ""
+	}
+
+	candidate := resp.Candidates[0]
+	switch candidate.FinishReason {
+	case genai.FinishReasonSafety:
+		return "content blocked by safety filters"
+	case genai.FinishReasonRecitation:
+		return "content blocked due to potential recitation"
+	case genai.FinishReasonBlocklist:
+		return "content contains forbidden terms"
+	case genai.FinishReasonProhibitedContent:
+		return "content contains prohibited content"
+	case genai.FinishReasonSPII:
+		return "content contains sensitive personally identifiable information"
+	}
+	return ""
+}
+
 // extractUsage extracts token usage from the response.
 func extractUsage(resp *genai.GenerateContentResponse) *provider.Usage {
 	if resp == nil || resp.UsageMetadata == nil {
-		return nil
+		return &provider.Usage{}
 	}
 
-	return &provider.Usage{
+	usage := &provider.Usage{
 		InputTokens:  int64(resp.UsageMetadata.PromptTokenCount),
 		OutputTokens: int64(resp.UsageMetadata.CandidatesTokenCount),
 		TotalTokens:  int64(resp.UsageMetadata.TotalTokenCount),
 	}
+
+	// Ensure TotalTokens is at least sum of input + output
+	expectedTotal := usage.InputTokens + usage.OutputTokens
+	if usage.TotalTokens < expectedTotal {
+		usage.TotalTokens = expectedTotal
+	}
+
+	return usage
 }
 
 // extractCitations extracts citations from grounding metadata.
@@ -308,7 +492,7 @@ func extractCitations(resp *genai.GenerateContentResponse, fileIDToFilename map[
 			continue
 		}
 
-		// Extract web search citations
+		// Extract from grounding chunks
 		for _, chunk := range candidate.GroundingMetadata.GroundingChunks {
 			if chunk.Web != nil {
 				citations = append(citations, provider.Citation{
@@ -317,6 +501,53 @@ func extractCitations(resp *genai.GenerateContentResponse, fileIDToFilename map[
 					URL:      chunk.Web.URI,
 					Title:    chunk.Web.Title,
 				})
+			}
+			if chunk.RetrievedContext != nil {
+				fileID := chunk.RetrievedContext.Title
+				filename := fileID
+				if fn, ok := fileIDToFilename[fileID]; ok {
+					filename = fn
+				}
+				citations = append(citations, provider.Citation{
+					Type:     provider.CitationTypeFile,
+					Provider: "gemini",
+					FileID:   fileID,
+					Filename: filename,
+					Snippet:  chunk.RetrievedContext.Text,
+				})
+			}
+		}
+
+		// Extract from grounding supports (with position data)
+		for _, support := range candidate.GroundingMetadata.GroundingSupports {
+			if support.Segment == nil || len(support.GroundingChunkIndices) == 0 {
+				continue
+			}
+			for _, chunkIdx := range support.GroundingChunkIndices {
+				if int(chunkIdx) >= len(candidate.GroundingMetadata.GroundingChunks) {
+					continue
+				}
+				chunk := candidate.GroundingMetadata.GroundingChunks[chunkIdx]
+				citation := provider.Citation{
+					Provider:   "gemini",
+					StartIndex: int(support.Segment.StartIndex),
+					EndIndex:   int(support.Segment.EndIndex),
+				}
+				if chunk.Web != nil {
+					citation.Type = provider.CitationTypeURL
+					citation.URL = chunk.Web.URI
+					citation.Title = chunk.Web.Title
+				} else if chunk.RetrievedContext != nil {
+					citation.Type = provider.CitationTypeFile
+					fileID := chunk.RetrievedContext.Title
+					citation.FileID = fileID
+					citation.Filename = fileID
+					if fn, ok := fileIDToFilename[fileID]; ok {
+						citation.Filename = fn
+					}
+					citation.Snippet = chunk.RetrievedContext.Text
+				}
+				citations = append(citations, citation)
 			}
 		}
 	}
@@ -330,11 +561,11 @@ func buildSafetySettings(threshold string) []*genai.SafetySetting {
 	switch strings.ToUpper(threshold) {
 	case "BLOCK_NONE":
 		level = genai.HarmBlockThresholdBlockNone
-	case "LOW_AND_ABOVE":
+	case "LOW_AND_ABOVE", "BLOCK_LOW_AND_ABOVE":
 		level = genai.HarmBlockThresholdBlockLowAndAbove
-	case "MEDIUM_AND_ABOVE":
+	case "MEDIUM_AND_ABOVE", "BLOCK_MEDIUM_AND_ABOVE":
 		level = genai.HarmBlockThresholdBlockMediumAndAbove
-	case "ONLY_HIGH":
+	case "ONLY_HIGH", "BLOCK_ONLY_HIGH":
 		level = genai.HarmBlockThresholdBlockOnlyHigh
 	default:
 		level = genai.HarmBlockThresholdBlockMediumAndAbove
@@ -358,19 +589,110 @@ func buildSafetySettings(threshold string) []*genai.SafetySetting {
 	return settings
 }
 
+// parseThinkingLevel converts config string to genai.ThinkingLevel.
+func parseThinkingLevel(s string) genai.ThinkingLevel {
+	switch strings.ToUpper(s) {
+	case "MINIMAL":
+		return genai.ThinkingLevel("MINIMAL")
+	case "LOW":
+		return genai.ThinkingLevelLow
+	case "MEDIUM":
+		return genai.ThinkingLevel("MEDIUM")
+	case "HIGH":
+		return genai.ThinkingLevelHigh
+	default:
+		return genai.ThinkingLevelUnspecified
+	}
+}
+
+// structuredOutputSchema returns the JSON schema for structured output mode.
+func structuredOutputSchema() *genai.Schema {
+	return &genai.Schema{
+		Type: "object",
+		Properties: map[string]*genai.Schema{
+			"reply": {
+				Type:        "string",
+				Description: "The main response text",
+			},
+			"intent": {
+				Type:        "string",
+				Description: "The detected intent of the user message",
+				Enum:        []string{"question", "request", "task_delegation", "feedback", "complaint", "follow_up", "attachment_analysis"},
+			},
+			"entities": {
+				Type:        "array",
+				Description: "Key entities mentioned in the response",
+				Items: &genai.Schema{
+					Type: "object",
+					Properties: map[string]*genai.Schema{
+						"name": {Type: "string", Description: "Entity name"},
+						"type": {Type: "string", Description: "Entity type", Enum: []string{"person", "organization", "location", "product", "technology", "tool", "service"}},
+					},
+					Required: []string{"name", "type"},
+				},
+			},
+			"topics": {
+				Type:        "array",
+				Description: "2-4 keywords describing the topics discussed",
+				Items:       &genai.Schema{Type: "string"},
+			},
+			"requires_user_action": {
+				Type:        "boolean",
+				Description: "Whether the response requires user action",
+			},
+		},
+		Required: []string{"reply"},
+	}
+}
+
 // isRetryableError checks if an error should trigger a retry.
 func isRetryableError(err error) bool {
 	if err == nil {
 		return false
 	}
-	errStr := strings.ToLower(err.Error())
-	if strings.Contains(errStr, "429") ||
-		strings.Contains(errStr, "500") ||
-		strings.Contains(errStr, "503") ||
-		strings.Contains(errStr, "resource exhausted") ||
-		strings.Contains(errStr, "overloaded") {
+
+	// Don't retry context errors
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
+	errStr := err.Error()
+	errLower := strings.ToLower(errStr)
+
+	// Don't retry auth errors
+	authErrors := []string{"401", "403", "invalid_api_key", "permission_denied", "unauthenticated"}
+	for _, authErr := range authErrors {
+		if strings.Contains(errLower, authErr) {
+			return false
+		}
+	}
+
+	// Don't retry invalid request errors
+	invalidErrors := []string{"400", "invalid_argument", "invalid_request", "malformed"}
+	for _, invErr := range invalidErrors {
+		if strings.Contains(errLower, invErr) {
+			return false
+		}
+	}
+
+	// Retry rate limit and server errors
+	if strings.Contains(errStr, "429") || strings.Contains(errLower, "resource") ||
+		strings.Contains(errLower, "rate") || strings.Contains(errLower, "overloaded") {
 		return true
 	}
+	if strings.Contains(errStr, "500") || strings.Contains(errStr, "502") ||
+		strings.Contains(errStr, "503") || strings.Contains(errStr, "504") {
+		return true
+	}
+
+	// Retry network errors
+	networkErrors := []string{"connection", "timeout", "temporary", "eof"}
+	for _, netErr := range networkErrors {
+		if strings.Contains(errLower, netErr) {
+			return true
+		}
+	}
+
 	return false
 }
 

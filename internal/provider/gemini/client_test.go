@@ -16,7 +16,7 @@ func TestBuildContents(t *testing.T) {
 		{Role: "assistant", Content: "Hi"},
 	}
 
-	contents := buildContents("  Next  ", history)
+	contents := buildContents("  Next  ", history, nil)
 	if len(contents) != 3 {
 		t.Fatalf("expected 3 contents, got %d", len(contents))
 	}
@@ -36,7 +36,7 @@ func TestBuildContents(t *testing.T) {
 }
 
 func TestBuildContents_EmptyHistory(t *testing.T) {
-	contents := buildContents("Hello", nil)
+	contents := buildContents("Hello", nil, nil)
 	if len(contents) != 1 {
 		t.Fatalf("expected 1 content, got %d", len(contents))
 	}
@@ -98,12 +98,21 @@ func TestExtractUsage(t *testing.T) {
 }
 
 func TestExtractUsage_Nil(t *testing.T) {
-	if extractUsage(nil) != nil {
-		t.Fatal("expected nil usage for nil response")
+	// extractUsage returns zero-value usage (not nil) to avoid nil pointer errors
+	usage := extractUsage(nil)
+	if usage == nil {
+		t.Fatal("expected non-nil usage for nil response")
+	}
+	if usage.InputTokens != 0 || usage.OutputTokens != 0 || usage.TotalTokens != 0 {
+		t.Fatal("expected zero values for nil response")
 	}
 
-	if extractUsage(&genai.GenerateContentResponse{}) != nil {
-		t.Fatal("expected nil usage when metadata missing")
+	usage = extractUsage(&genai.GenerateContentResponse{})
+	if usage == nil {
+		t.Fatal("expected non-nil usage when metadata missing")
+	}
+	if usage.InputTokens != 0 || usage.OutputTokens != 0 || usage.TotalTokens != 0 {
+		t.Fatal("expected zero values when metadata missing")
 	}
 }
 
