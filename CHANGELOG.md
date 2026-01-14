@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.10] - 2026-01-14
+
+### Added
+- **Codebase Documentation**: Created `.planning/codebase/` with 7 structured analysis documents
+  - STACK.md - Technology stack and dependencies (Go 1.25, gRPC, LLM SDKs)
+  - ARCHITECTURE.md - Layered architecture, data flow, key abstractions
+  - STRUCTURE.md - Directory layout and module organization
+  - CONVENTIONS.md - Code style, naming patterns, error handling
+  - TESTING.md - Test framework, patterns, coverage approach
+  - INTEGRATIONS.md - External services (OpenAI, Gemini, Anthropic, Redis, RAG stack)
+  - CONCERNS.md - Technical debt and areas for improvement
+
+Agent: Claude:Opus 4.5
+
 ## [0.6.9] - 2026-01-09
 
 ### Changed
