@@ -29,21 +29,88 @@ const (
 	Provider_PROVIDER_OPENAI      Provider = 1
 	Provider_PROVIDER_GEMINI      Provider = 2
 	Provider_PROVIDER_ANTHROPIC   Provider = 3
+	// Tier 1 - High Usage
+	Provider_PROVIDER_DEEPSEEK   Provider = 10
+	Provider_PROVIDER_GROK       Provider = 11
+	Provider_PROVIDER_MISTRAL    Provider = 12
+	Provider_PROVIDER_PERPLEXITY Provider = 13
+	// Tier 2 - Enterprise
+	Provider_PROVIDER_BEDROCK    Provider = 20
+	Provider_PROVIDER_WATSONX    Provider = 21
+	Provider_PROVIDER_DATABRICKS Provider = 22
+	Provider_PROVIDER_COHERE     Provider = 23
+	// Tier 3 - Inference Platforms
+	Provider_PROVIDER_TOGETHER   Provider = 30
+	Provider_PROVIDER_FIREWORKS  Provider = 31
+	Provider_PROVIDER_OPENROUTER Provider = 32
+	Provider_PROVIDER_DEEPINFRA  Provider = 33
+	Provider_PROVIDER_BASETEN    Provider = 34
+	Provider_PROVIDER_HYPERBOLIC Provider = 35
+	// Tier 4 - Specialized
+	Provider_PROVIDER_HUGGINGFACE Provider = 40
+	Provider_PROVIDER_PREDIBASE   Provider = 41
+	Provider_PROVIDER_PARASAIL    Provider = 42
+	Provider_PROVIDER_UPSTAGE     Provider = 43
+	Provider_PROVIDER_NEBIUS      Provider = 44
+	Provider_PROVIDER_CEREBRAS    Provider = 45
+	Provider_PROVIDER_MINIMAX     Provider = 46
 )
 
 // Enum value maps for Provider.
 var (
 	Provider_name = map[int32]string{
-		0: "PROVIDER_UNSPECIFIED",
-		1: "PROVIDER_OPENAI",
-		2: "PROVIDER_GEMINI",
-		3: "PROVIDER_ANTHROPIC",
+		0:  "PROVIDER_UNSPECIFIED",
+		1:  "PROVIDER_OPENAI",
+		2:  "PROVIDER_GEMINI",
+		3:  "PROVIDER_ANTHROPIC",
+		10: "PROVIDER_DEEPSEEK",
+		11: "PROVIDER_GROK",
+		12: "PROVIDER_MISTRAL",
+		13: "PROVIDER_PERPLEXITY",
+		20: "PROVIDER_BEDROCK",
+		21: "PROVIDER_WATSONX",
+		22: "PROVIDER_DATABRICKS",
+		23: "PROVIDER_COHERE",
+		30: "PROVIDER_TOGETHER",
+		31: "PROVIDER_FIREWORKS",
+		32: "PROVIDER_OPENROUTER",
+		33: "PROVIDER_DEEPINFRA",
+		34: "PROVIDER_BASETEN",
+		35: "PROVIDER_HYPERBOLIC",
+		40: "PROVIDER_HUGGINGFACE",
+		41: "PROVIDER_PREDIBASE",
+		42: "PROVIDER_PARASAIL",
+		43: "PROVIDER_UPSTAGE",
+		44: "PROVIDER_NEBIUS",
+		45: "PROVIDER_CEREBRAS",
+		46: "PROVIDER_MINIMAX",
 	}
 	Provider_value = map[string]int32{
 		"PROVIDER_UNSPECIFIED": 0,
 		"PROVIDER_OPENAI":      1,
 		"PROVIDER_GEMINI":      2,
 		"PROVIDER_ANTHROPIC":   3,
+		"PROVIDER_DEEPSEEK":    10,
+		"PROVIDER_GROK":        11,
+		"PROVIDER_MISTRAL":     12,
+		"PROVIDER_PERPLEXITY":  13,
+		"PROVIDER_BEDROCK":     20,
+		"PROVIDER_WATSONX":     21,
+		"PROVIDER_DATABRICKS":  22,
+		"PROVIDER_COHERE":      23,
+		"PROVIDER_TOGETHER":    30,
+		"PROVIDER_FIREWORKS":   31,
+		"PROVIDER_OPENROUTER":  32,
+		"PROVIDER_DEEPINFRA":   33,
+		"PROVIDER_BASETEN":     34,
+		"PROVIDER_HYPERBOLIC":  35,
+		"PROVIDER_HUGGINGFACE": 40,
+		"PROVIDER_PREDIBASE":   41,
+		"PROVIDER_PARASAIL":    42,
+		"PROVIDER_UPSTAGE":     43,
+		"PROVIDER_NEBIUS":      44,
+		"PROVIDER_CEREBRAS":    45,
+		"PROVIDER_MINIMAX":     46,
 	}
 )
 
@@ -506,12 +573,34 @@ const file_airborne_v1_common_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x0e\n" +
 	"\f_temperatureB\b\n" +
 	"\x06_top_pB\x14\n" +
-	"\x12_max_output_tokens*f\n" +
+	"\x12_max_output_tokens*\xc9\x04\n" +
 	"\bProvider\x12\x18\n" +
 	"\x14PROVIDER_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fPROVIDER_OPENAI\x10\x01\x12\x13\n" +
 	"\x0fPROVIDER_GEMINI\x10\x02\x12\x16\n" +
-	"\x12PROVIDER_ANTHROPIC\x10\x03B\xa8\x01\n" +
+	"\x12PROVIDER_ANTHROPIC\x10\x03\x12\x15\n" +
+	"\x11PROVIDER_DEEPSEEK\x10\n" +
+	"\x12\x11\n" +
+	"\rPROVIDER_GROK\x10\v\x12\x14\n" +
+	"\x10PROVIDER_MISTRAL\x10\f\x12\x17\n" +
+	"\x13PROVIDER_PERPLEXITY\x10\r\x12\x14\n" +
+	"\x10PROVIDER_BEDROCK\x10\x14\x12\x14\n" +
+	"\x10PROVIDER_WATSONX\x10\x15\x12\x17\n" +
+	"\x13PROVIDER_DATABRICKS\x10\x16\x12\x13\n" +
+	"\x0fPROVIDER_COHERE\x10\x17\x12\x15\n" +
+	"\x11PROVIDER_TOGETHER\x10\x1e\x12\x16\n" +
+	"\x12PROVIDER_FIREWORKS\x10\x1f\x12\x17\n" +
+	"\x13PROVIDER_OPENROUTER\x10 \x12\x16\n" +
+	"\x12PROVIDER_DEEPINFRA\x10!\x12\x14\n" +
+	"\x10PROVIDER_BASETEN\x10\"\x12\x17\n" +
+	"\x13PROVIDER_HYPERBOLIC\x10#\x12\x18\n" +
+	"\x14PROVIDER_HUGGINGFACE\x10(\x12\x16\n" +
+	"\x12PROVIDER_PREDIBASE\x10)\x12\x15\n" +
+	"\x11PROVIDER_PARASAIL\x10*\x12\x14\n" +
+	"\x10PROVIDER_UPSTAGE\x10+\x12\x13\n" +
+	"\x0fPROVIDER_NEBIUS\x10,\x12\x15\n" +
+	"\x11PROVIDER_CEREBRAS\x10-\x12\x14\n" +
+	"\x10PROVIDER_MINIMAX\x10.B\xa8\x01\n" +
 	"\x0fcom.airborne.v1B\vCommonProtoP\x01Z;github.com/ai8future/airborne/gen/go/airborne/v1;airbornev1\xa2\x02\x03AXX\xaa\x02\vAirborne.V1\xca\x02\vAirborne\\V1\xe2\x02\x17Airborne\\V1\\GPBMetadata\xea\x02\fAirborne::V1b\x06proto3"
 
 var (

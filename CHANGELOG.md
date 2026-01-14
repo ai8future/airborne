@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.15] - 2026-01-14
+
+### Added
+- **Phase 3: Additional Providers** (13 new LLM providers via OpenAI-compatible API):
+  - **Reusable compat client** (`internal/provider/compat/openai_compat.go`):
+    - Shared OpenAI-compatible client base for providers with standard API
+    - Supports streaming, tools, system prompts, and all Generate/GenerateStream operations
+    - Provider-specific configuration (base URL, model, API key env var, features)
+  - **Tier 1 - High Usage Providers**:
+    - `deepseek` - DeepSeek Chat API (deepseek-chat model)
+    - `grok` - xAI Grok API (grok-2-latest model)
+    - `mistral` - Mistral AI API (mistral-large-latest model)
+    - `perplexity` - Perplexity API with web search (llama-3.1-sonar-large-128k-online)
+  - **Tier 2 - Enterprise Provider**:
+    - `cohere` - Cohere Command API (command-r-plus model)
+  - **Tier 3 - Inference Platforms**:
+    - `together` - Together AI (meta-llama/Llama-3.3-70B-Instruct-Turbo)
+    - `fireworks` - Fireworks AI (accounts/fireworks/models/llama-v3p1-70b-instruct)
+    - `openrouter` - OpenRouter multi-provider gateway (anthropic/claude-3.5-sonnet)
+    - `deepinfra` - DeepInfra (meta-llama/Meta-Llama-3.1-70B-Instruct)
+    - `hyperbolic` - Hyperbolic Labs (meta-llama/Meta-Llama-3.1-70B-Instruct)
+  - **Tier 4 - Specialized Providers**:
+    - `cerebras` - Cerebras fast inference (llama3.1-70b)
+    - `nebius` - Nebius AI Studio (meta-llama/Meta-Llama-3.1-70B-Instruct)
+    - `upstage` - Upstage Solar LLM (solar-pro)
+  - **Proto updates** (`api/proto/airborne/v1/common.proto`):
+    - Added 24 new provider enums organized by tier
+    - Tier 1: DEEPSEEK, GROK, MISTRAL, PERPLEXITY
+    - Tier 2: BEDROCK, WATSONX, DATABRICKS, COHERE
+    - Tier 3: TOGETHER, FIREWORKS, OPENROUTER, DEEPINFRA, BASETEN, HYPERBOLIC
+    - Tier 4: HUGGINGFACE, PREDIBASE, PARASAIL, UPSTAGE, NEBIUS, CEREBRAS, MINIMAX
+
+Agent: Claude:Opus 4.5
+
 ## [0.6.14] - 2026-01-14
 
 ### Added
