@@ -200,7 +200,7 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, *Serv
 
 	// Register FileService if RAG is enabled
 	if ragService != nil {
-		fileService := service.NewFileService(ragService)
+		fileService := service.NewFileService(ragService, rateLimiter)
 		pb.RegisterFileServiceServer(server, fileService)
 	}
 

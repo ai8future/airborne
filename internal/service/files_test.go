@@ -27,7 +27,7 @@ func ctxWithFilePermission(clientID string) context.Context {
 
 func TestNewFileService(t *testing.T) {
 	mockRAG := createMockRAGService()
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	if svc == nil {
 		t.Fatal("expected non-nil FileService")
@@ -35,12 +35,15 @@ func TestNewFileService(t *testing.T) {
 	if svc.ragService != mockRAG {
 		t.Error("expected ragService to be set")
 	}
+	if svc.rateLimiter != nil {
+		t.Error("expected rateLimiter to be nil when not provided")
+	}
 }
 
 func TestFileService_CreateFileStore_Success(t *testing.T) {
 	mockStore := testutil.NewMockStore()
 	mockRAG := createRAGServiceWithMocks(mockStore, nil, nil)
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	req := &pb.CreateFileStoreRequest{
 		ClientId: "tenant1",
@@ -71,7 +74,7 @@ func TestFileService_CreateFileStore_Success(t *testing.T) {
 func TestFileService_CreateFileStore_GeneratedName(t *testing.T) {
 	mockStore := testutil.NewMockStore()
 	mockRAG := createRAGServiceWithMocks(mockStore, nil, nil)
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	req := &pb.CreateFileStoreRequest{
 		ClientId: "tenant1",
@@ -93,7 +96,7 @@ func TestFileService_CreateFileStore_GeneratedName(t *testing.T) {
 
 func TestFileService_CreateFileStore_MissingClientID(t *testing.T) {
 	mockRAG := createMockRAGService()
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	req := &pb.CreateFileStoreRequest{
 		Name: "test-store",
@@ -116,7 +119,7 @@ func TestFileService_CreateFileStore_StoreError(t *testing.T) {
 		return fmt.Errorf("collection creation failed")
 	}
 	mockRAG := createRAGServiceWithMocks(mockStore, nil, nil)
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	req := &pb.CreateFileStoreRequest{
 		ClientId: "tenant1",
@@ -136,7 +139,7 @@ func TestFileService_DeleteFileStore_Success(t *testing.T) {
 	mockStore.CreateCollection(context.Background(), "tenant1_test-store", 768)
 
 	mockRAG := createRAGServiceWithMocks(mockStore, nil, nil)
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	req := &pb.DeleteFileStoreRequest{
 		StoreId: "test-store",
@@ -154,7 +157,7 @@ func TestFileService_DeleteFileStore_Success(t *testing.T) {
 
 func TestFileService_DeleteFileStore_MissingStoreID(t *testing.T) {
 	mockRAG := createMockRAGService()
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	req := &pb.DeleteFileStoreRequest{
 		// StoreId missing
@@ -173,7 +176,7 @@ func TestFileService_DeleteFileStore_Error(t *testing.T) {
 		return fmt.Errorf("delete failed")
 	}
 	mockRAG := createRAGServiceWithMocks(mockStore, nil, nil)
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	req := &pb.DeleteFileStoreRequest{
 		StoreId: "test-store",
@@ -200,7 +203,7 @@ func TestFileService_GetFileStore_Success(t *testing.T) {
 	})
 
 	mockRAG := createRAGServiceWithMocks(mockStore, nil, nil)
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	req := &pb.GetFileStoreRequest{
 		StoreId: "test-store",
@@ -224,7 +227,7 @@ func TestFileService_GetFileStore_Success(t *testing.T) {
 
 func TestFileService_GetFileStore_MissingStoreID(t *testing.T) {
 	mockRAG := createMockRAGService()
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	req := &pb.GetFileStoreRequest{
 		// StoreId missing
@@ -243,7 +246,7 @@ func TestFileService_GetFileStore_NotFound(t *testing.T) {
 		return nil, fmt.Errorf("collection not found")
 	}
 	mockRAG := createRAGServiceWithMocks(mockStore, nil, nil)
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	req := &pb.GetFileStoreRequest{
 		StoreId: "nonexistent",
@@ -262,7 +265,7 @@ func TestFileService_GetFileStore_NilInfo_ReturnsNotFound(t *testing.T) {
 		return nil, nil // Store exists but returns nil info
 	}
 	mockRAG := createRAGServiceWithMocks(mockStore, nil, nil)
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	req := &pb.GetFileStoreRequest{
 		StoreId: "nonexistent",
@@ -284,7 +287,7 @@ func TestFileService_GetFileStore_NilInfo_ReturnsNotFound(t *testing.T) {
 
 func TestFileService_ListFileStores_Unimplemented(t *testing.T) {
 	mockRAG := createMockRAGService()
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	req := &pb.ListFileStoresRequest{
 		ClientId: "tenant1",
@@ -344,7 +347,7 @@ func TestFileService_UploadFile_Success(t *testing.T) {
 	mockStore.CreateCollection(context.Background(), "tenant1_test-store", 768)
 
 	mockRAG := createRAGServiceWithMocks(mockStore, mockEmbedder, mockExtractor)
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	stream := &mockUploadFileServer{
 		ctx: ctxWithFilePermission("tenant1"),
@@ -388,7 +391,7 @@ func TestFileService_UploadFile_Success(t *testing.T) {
 
 func TestFileService_UploadFile_MissingMetadata(t *testing.T) {
 	mockRAG := createMockRAGService()
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	stream := &mockUploadFileServer{
 		ctx: ctxWithFilePermission("tenant1"),
@@ -411,7 +414,7 @@ func TestFileService_UploadFile_MissingMetadata(t *testing.T) {
 
 func TestFileService_UploadFile_MissingStoreID(t *testing.T) {
 	mockRAG := createMockRAGService()
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	stream := &mockUploadFileServer{
 		ctx: ctxWithFilePermission("tenant1"),
@@ -436,7 +439,7 @@ func TestFileService_UploadFile_MissingStoreID(t *testing.T) {
 
 func TestFileService_UploadFile_MissingFilename(t *testing.T) {
 	mockRAG := createMockRAGService()
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	stream := &mockUploadFileServer{
 		ctx: ctxWithFilePermission("tenant1"),
@@ -468,7 +471,7 @@ func TestFileService_UploadFile_MultipleChunks(t *testing.T) {
 	mockStore.CreateCollection(context.Background(), "tenant1_test-store", 768)
 
 	mockRAG := createRAGServiceWithMocks(mockStore, mockEmbedder, mockExtractor)
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	stream := &mockUploadFileServer{
 		ctx: ctxWithFilePermission("tenant1"),
@@ -522,7 +525,7 @@ func TestFileService_UploadFile_IngestError(t *testing.T) {
 	mockStore.CreateCollection(context.Background(), "tenant1_test-store", 768)
 
 	mockRAG := createRAGServiceWithMocks(mockStore, mockEmbedder, mockExtractor)
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	stream := &mockUploadFileServer{
 		ctx: ctxWithFilePermission("tenant1"),
@@ -556,7 +559,7 @@ func TestFileService_UploadFile_IngestError(t *testing.T) {
 
 func TestFileService_UploadFile_EmptyStream(t *testing.T) {
 	mockRAG := createMockRAGService()
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	stream := &mockUploadFileServer{
 		ctx:      ctxWithFilePermission("tenant1"),
@@ -572,7 +575,7 @@ func TestFileService_UploadFile_EmptyStream(t *testing.T) {
 
 func TestFileService_UploadFile_MetadataSizeExceedsLimit(t *testing.T) {
 	mockRAG := createMockRAGService()
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	stream := &mockUploadFileServer{
 		ctx: ctxWithFilePermission("tenant1"),
@@ -603,7 +606,7 @@ func TestFileService_UploadFile_StreamingSizeExceedsLimit(t *testing.T) {
 	mockStore := testutil.NewMockStore()
 	mockStore.CreateCollection(context.Background(), "tenant1_test-store", 768)
 	mockRAG := createRAGServiceWithMocks(mockStore, nil, nil)
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	// Create chunks that exceed the limit (100MB)
 	// We'll send enough 10MB chunks to exceed the limit
@@ -649,7 +652,7 @@ func TestFileService_UploadFile_ExactlyAtLimit(t *testing.T) {
 	mockExtractor := testutil.NewMockExtractor()
 	mockStore.CreateCollection(context.Background(), "tenant1_test-store", 768)
 	mockRAG := createRAGServiceWithMocks(mockStore, mockEmbedder, mockExtractor)
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	// Create a chunk exactly at the limit (100MB)
 	// This should succeed
@@ -683,7 +686,7 @@ func TestFileService_UploadFile_ExactlyAtLimit(t *testing.T) {
 
 func TestFileService_AuthRequired(t *testing.T) {
 	mockRAG := createMockRAGService()
-	svc := NewFileService(mockRAG)
+	svc := NewFileService(mockRAG, nil)
 
 	// Test CreateFileStore without auth
 	_, err := svc.CreateFileStore(context.Background(), &pb.CreateFileStoreRequest{

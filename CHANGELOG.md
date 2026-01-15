@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.25] - 2026-01-15
+
+### Security
+- **Add Rate Limiting for File Upload Operations** (`internal/service/files.go`, `internal/server/grpc.go`):
+  - Added `rateLimiter` field to `FileService` struct
+  - Updated `NewFileService` to accept `*auth.RateLimiter` parameter
+  - Added rate limit check in `UploadFile` after permission check
+  - Returns `codes.ResourceExhausted` with "file upload rate limit exceeded" on limit breach
+  - Prevents resource exhaustion through unlimited file upload requests
+  - Uses existing `auth.RateLimiter` infrastructure shared with ChatService
+
+Agent: Claude:Opus 4.5
+
 ## [0.6.24] - 2026-01-15
 
 ### Fixed

@@ -38,13 +38,15 @@ func generateFileID() (string, error) {
 type FileService struct {
 	pb.UnimplementedFileServiceServer
 
-	ragService *rag.Service
+	ragService  *rag.Service
+	rateLimiter *auth.RateLimiter
 }
 
 // NewFileService creates a new file service.
-func NewFileService(ragService *rag.Service) *FileService {
+func NewFileService(ragService *rag.Service, rateLimiter *auth.RateLimiter) *FileService {
 	return &FileService{
-		ragService: ragService,
+		ragService:  ragService,
+		rateLimiter: rateLimiter,
 	}
 }
 
@@ -185,6 +187,16 @@ func (s *FileService) UploadFile(stream pb.FileService_UploadFileServer) error {
 	// Check permission
 	if err := auth.RequirePermission(ctx, auth.PermissionFiles); err != nil {
 		return err
+	}
+
+	// Check rate limit for file uploads
+	if s.rateLimiter != nil {
+		client := auth.ClientFromContext(ctx)
+		if client != nil {
+			if err := s.rateLimiter.Allow(ctx, client); err != nil {
+				return status.Error(codes.ResourceExhausted, "file upload rate limit exceeded")
+			}
+		}
 	}
 
 	// First message should be metadata
