@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.21] - 2026-01-15
+
+### Fixed
+- **Log Rate Limit Recording Errors Instead of Suppressing** (`internal/service/chat.go`):
+  - `RecordTokens` errors from `GenerateReply` now logged with slog.Warn
+  - `RecordTokens` errors from `GenerateReplyStream` now logged with slog.Warn
+  - Previously errors were silently ignored with `_ =`, making Redis issues invisible
+  - Operators can now detect when rate limiting data is not being recorded
+
+Agent: Claude:Opus 4.5
+
 ## [0.6.20] - 2026-01-15
 
 ### Fixed

@@ -227,7 +227,9 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 	if s.rateLimiter != nil && result.Usage != nil {
 		client := auth.ClientFromContext(ctx)
 		if client != nil {
-			_ = s.rateLimiter.RecordTokens(ctx, client.ClientID, result.Usage.TotalTokens, client.RateLimits.TokensPerMinute)
+			if err := s.rateLimiter.RecordTokens(ctx, client.ClientID, result.Usage.TotalTokens, client.RateLimits.TokensPerMinute); err != nil {
+				slog.Warn("failed to record token usage for rate limiting", "client_id", client.ClientID, "error", err)
+			}
 		}
 	}
 
@@ -341,7 +343,9 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 			if s.rateLimiter != nil && chunk.Usage != nil {
 				client := auth.ClientFromContext(ctx)
 				if client != nil {
-					_ = s.rateLimiter.RecordTokens(ctx, client.ClientID, chunk.Usage.TotalTokens, client.RateLimits.TokensPerMinute)
+					if err := s.rateLimiter.RecordTokens(ctx, client.ClientID, chunk.Usage.TotalTokens, client.RateLimits.TokensPerMinute); err != nil {
+						slog.Warn("failed to record stream token usage for rate limiting", "client_id", client.ClientID, "error", err)
+					}
 				}
 			}
 			complete := &pb.StreamComplete{
