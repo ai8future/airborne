@@ -29,6 +29,22 @@ end
 return current
 `
 
+// tokenRecordScript is a Lua script for atomically recording tokens with TTL
+// It increments by the token count and ensures TTL is set
+const tokenRecordScript = `
+local key = KEYS[1]
+local tokens = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+
+local current = redis.call('INCRBY', key, tokens)
+local ttl = redis.call('TTL', key)
+if ttl == -1 then
+    redis.call('EXPIRE', key, window)
+end
+
+return current
+`
+
 // RateLimiter implements Redis-backed rate limiting
 type RateLimiter struct {
 	redis          *redis.Client
@@ -98,15 +114,23 @@ func (r *RateLimiter) RecordTokens(ctx context.Context, clientID string, tokens 
 
 	key := fmt.Sprintf("%s%s:tpm", rateLimitPrefix, clientID)
 
-	// Get current count
-	count, err := r.redis.IncrBy(ctx, key, tokens)
+	// Use Lua script for atomic increment + TTL setting
+	result, err := r.redis.Eval(ctx, tokenRecordScript, []string{key}, tokens, 60)
 	if err != nil {
 		return fmt.Errorf("failed to record tokens: %w", err)
 	}
 
-	// Set expiry if this is first increment
-	if count == tokens {
-		_ = r.redis.Expire(ctx, key, time.Minute)
+	// Parse result (same handling as checkLimit)
+	var count int64
+	switch v := result.(type) {
+	case int64:
+		count = v
+	case int:
+		count = int64(v)
+	case float64:
+		count = int64(v)
+	default:
+		return fmt.Errorf("unexpected result type %T from token record script", result)
 	}
 
 	// Check if over limit (return error but don't block - already processed)

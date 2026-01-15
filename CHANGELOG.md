@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.24] - 2026-01-15
+
+### Fixed
+- **Fix Race Condition in Token Rate Limiter** (`internal/auth/ratelimit.go`):
+  - Added `tokenRecordScript` Lua script for atomic token recording with TTL
+  - `RecordTokens` now uses Lua script instead of separate INCRBY + conditional EXPIRE
+  - Previous implementation had race condition: if two requests incremented simultaneously,
+    neither might see `count == tokens` condition, leaving the key without expiry
+  - New implementation checks TTL in Lua and sets EXPIRE if TTL is -1 (no expiry)
+  - Follows same atomic pattern as existing `rateLimitScript` for request rate limiting
+
+Agent: Claude:Opus 4.5
+
 ## [0.6.23] - 2026-01-15
 
 ### Documentation
