@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.26] - 2026-01-15
+
+### Security
+- **Remove Tenant ID from Error Messages** (`internal/auth/tenant_interceptor.go`):
+  - Changed error message from `tenant %q not found` to generic `tenant not found`
+  - Prevents tenant enumeration attacks by not echoing back the requested tenant ID
+  - Attackers can no longer probe for valid tenant IDs by analyzing error responses
+  - Changed from `status.Errorf` to `status.Error` (no formatting needed)
+
+Agent: Claude:Opus 4.5
+
 ## [0.6.25] - 2026-01-15
 
 ### Security

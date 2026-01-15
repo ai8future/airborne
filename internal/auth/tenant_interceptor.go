@@ -102,7 +102,7 @@ func (t *TenantInterceptor) resolveTenant(tenantID string) (*tenant.TenantConfig
 	// Validate tenant exists
 	cfg, ok := t.manager.Tenant(tenantID)
 	if !ok {
-		return nil, status.Errorf(codes.NotFound, "tenant %q not found", tenantID)
+		return nil, status.Error(codes.NotFound, "tenant not found")
 	}
 
 	return &cfg, nil
