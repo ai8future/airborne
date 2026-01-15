@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.6.26] - 2026-01-15
+## [1.0.1] - 2026-01-15
 
 ### Security
 - **Remove Tenant ID from Error Messages** (`internal/auth/tenant_interceptor.go`):
