@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.6] - 2026-01-16
+
+### Security
+- **Fix Weak Random Entropy** (`internal/auth/keys.go`):
+  - `generateRandomString` generated N bytes, hex-encoded to 2N chars, then truncated to N
+  - This effectively halved entropy: requesting 32 characters only got 128 bits instead of 256 bits
+  - Fixed by calculating exact byte count needed: `(length + 1) / 2` bytes for `length` hex characters
+  - Now provides full entropy for generated random strings (API keys, secrets, etc.)
+
+Agent: Claude:Opus 4.5
+
 ## [1.0.5] - 2026-01-16
 
 ### Fixed

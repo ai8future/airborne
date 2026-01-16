@@ -275,9 +275,13 @@ func parseAPIKey(apiKey string) (keyID, secret string, err error) {
 
 // generateRandomString generates a random hex string
 func generateRandomString(length int) (string, error) {
-	bytes := make([]byte, length)
+	// We need length/2 bytes to produce 'length' hex characters
+	// Round up to handle odd lengths
+	byteLen := (length + 1) / 2
+	bytes := make([]byte, byteLen)
 	if _, err := rand.Read(bytes); err != nil {
 		return "", err
 	}
+	// Hex encode and truncate to exact requested length
 	return hex.EncodeToString(bytes)[:length], nil
 }
