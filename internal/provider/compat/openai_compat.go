@@ -8,21 +8,17 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 
 	"github.com/ai8future/airborne/internal/httpcapture"
 	"github.com/ai8future/airborne/internal/provider"
+	"github.com/ai8future/airborne/internal/retry"
 	"github.com/ai8future/airborne/internal/validation"
 )
 
-const (
-	maxAttempts    = 3
-	requestTimeout = 3 * time.Minute
-	backoffBase    = 250 * time.Millisecond
-)
+// Note: retry.MaxAttempts, retry.RequestTimeout, and backoffBase constants are defined in the retry package
 
 // ProviderConfig contains configuration for an OpenAI-compatible provider.
 type ProviderConfig struct {
@@ -105,7 +101,7 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 	// Ensure request has a timeout
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, requestTimeout)
+		ctx, cancel = context.WithTimeout(ctx, retry.RequestTimeout)
 		defer cancel()
 	}
 
@@ -175,14 +171,14 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 
 	// Execute with retry
 	var lastErr error
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
+	for attempt := 1; attempt <= retry.MaxAttempts; attempt++ {
 		slog.Info(fmt.Sprintf("%s request", c.config.Name),
 			"attempt", attempt,
 			"model", model,
 			"request_id", params.RequestID,
 		)
 
-		reqCtx, reqCancel := context.WithTimeout(ctx, requestTimeout)
+		reqCtx, reqCancel := context.WithTimeout(ctx, retry.RequestTimeout)
 		resp, err := client.Chat.Completions.New(reqCtx, reqParams)
 		reqCancel()
 
@@ -191,8 +187,8 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 			if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
 				lastErr = fmt.Errorf("%s request timeout: %w", c.config.Name, err)
 				slog.Warn(fmt.Sprintf("%s timeout, retrying", c.config.Name), "attempt", attempt)
-				if attempt < maxAttempts {
-					sleepWithBackoff(ctx, attempt)
+				if attempt < retry.MaxAttempts {
+					retry.SleepWithBackoff(ctx, attempt)
 					continue
 				}
 				return provider.GenerateResult{}, lastErr
@@ -204,8 +200,8 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 			}
 
 			slog.Warn(fmt.Sprintf("%s retryable error", c.config.Name), "attempt", attempt, "error", err)
-			if attempt < maxAttempts {
-				sleepWithBackoff(ctx, attempt)
+			if attempt < retry.MaxAttempts {
+				retry.SleepWithBackoff(ctx, attempt)
 				continue
 			}
 			return provider.GenerateResult{}, lastErr
@@ -215,8 +211,8 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		text := extractText(resp)
 		if text == "" {
 			lastErr = fmt.Errorf("%s returned empty response", c.config.Name)
-			if attempt < maxAttempts {
-				sleepWithBackoff(ctx, attempt)
+			if attempt < retry.MaxAttempts {
+				retry.SleepWithBackoff(ctx, attempt)
 			}
 			continue
 		}
@@ -252,7 +248,7 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 	// Ensure request has a timeout
 	var cancel context.CancelFunc
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		ctx, cancel = context.WithTimeout(ctx, requestTimeout)
+		ctx, cancel = context.WithTimeout(ctx, retry.RequestTimeout)
 	}
 
 	cfg := params.Config
@@ -457,13 +453,4 @@ func isRetryableError(err error) bool {
 	}
 
 	return false
-}
-
-// sleepWithBackoff sleeps with exponential backoff.
-func sleepWithBackoff(ctx context.Context, attempt int) {
-	delay := backoffBase * time.Duration(1<<uint(attempt-1))
-	select {
-	case <-ctx.Done():
-	case <-time.After(delay):
-	}
 }

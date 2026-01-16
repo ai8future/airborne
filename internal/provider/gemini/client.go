@@ -9,19 +9,16 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
-	"time"
 
 	"google.golang.org/genai"
 
 	"github.com/ai8future/airborne/internal/httpcapture"
 	"github.com/ai8future/airborne/internal/provider"
+	"github.com/ai8future/airborne/internal/retry"
 	"github.com/ai8future/airborne/internal/validation"
 )
 
 const (
-	maxAttempts    = 3
-	requestTimeout = 3 * time.Minute
-	backoffBase    = 250 * time.Millisecond
 	// maxHistoryChars limits conversation history to prevent context overflow
 	maxHistoryChars = 50000
 )
@@ -82,7 +79,7 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 	// Ensure request has a timeout
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, requestTimeout)
+		ctx, cancel = context.WithTimeout(ctx, retry.RequestTimeout)
 		defer cancel()
 	}
 
@@ -244,14 +241,14 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 
 	// Execute with retry
 	var lastErr error
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
+	for attempt := 1; attempt <= retry.MaxAttempts; attempt++ {
 		slog.Info("gemini request",
 			"attempt", attempt,
 			"model", model,
 			"request_id", params.RequestID,
 		)
 
-		reqCtx, reqCancel := context.WithTimeout(ctx, requestTimeout)
+		reqCtx, reqCancel := context.WithTimeout(ctx, retry.RequestTimeout)
 		resp, err := client.Models.GenerateContent(reqCtx, model, contents, generateConfig)
 		reqCancel()
 
@@ -260,8 +257,8 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 			if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
 				lastErr = fmt.Errorf("gemini request timeout: %w", err)
 				slog.Warn("gemini timeout, retrying", "attempt", attempt)
-				if attempt < maxAttempts {
-					sleepWithBackoff(ctx, attempt)
+				if attempt < retry.MaxAttempts {
+					retry.SleepWithBackoff(ctx, attempt)
 					continue
 				}
 				return provider.GenerateResult{}, lastErr
@@ -273,8 +270,8 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 			}
 
 			slog.Warn("gemini retryable error", "attempt", attempt, "error", err)
-			if attempt < maxAttempts {
-				sleepWithBackoff(ctx, attempt)
+			if attempt < retry.MaxAttempts {
+				retry.SleepWithBackoff(ctx, attempt)
 				continue
 			}
 			return provider.GenerateResult{}, lastErr
@@ -294,8 +291,8 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 				return provider.GenerateResult{}, fmt.Errorf("gemini response blocked: %s", reason)
 			}
 			lastErr = errors.New("gemini returned empty response")
-			if attempt < maxAttempts {
-				sleepWithBackoff(ctx, attempt)
+			if attempt < retry.MaxAttempts {
+				retry.SleepWithBackoff(ctx, attempt)
 			}
 			continue
 		}
@@ -340,7 +337,7 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 	// Ensure request has a timeout
 	var cancel context.CancelFunc
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		ctx, cancel = context.WithTimeout(ctx, requestTimeout)
+		ctx, cancel = context.WithTimeout(ctx, retry.RequestTimeout)
 	}
 
 	// Helper to clean up cancel on error returns
@@ -418,6 +415,45 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 	}
 	if cfg.MaxOutputTokens != nil {
 		generateConfig.MaxOutputTokens = int32(*cfg.MaxOutputTokens)
+	}
+
+	// Configure safety settings
+	if threshold := cfg.ExtraOptions["safety_threshold"]; threshold != "" {
+		generateConfig.SafetySettings = buildSafetySettings(threshold)
+	}
+
+	// Configure thinking (not supported on Flash models)
+	modelLower := strings.ToLower(model)
+	isFlashModel := strings.Contains(modelLower, "flash")
+	if !isFlashModel {
+		thinkingLevel := cfg.ExtraOptions["thinking_level"]
+		thinkingBudgetStr := cfg.ExtraOptions["thinking_budget"]
+		includeThoughts := cfg.ExtraOptions["include_thoughts"] == "true"
+
+		if thinkingLevel != "" || thinkingBudgetStr != "" || includeThoughts {
+			thinkingConfig := &genai.ThinkingConfig{
+				IncludeThoughts: includeThoughts,
+			}
+			if thinkingLevel != "" {
+				thinkingConfig.ThinkingLevel = parseThinkingLevel(thinkingLevel)
+			}
+			if thinkingBudgetStr != "" {
+				var budget int
+				fmt.Sscanf(thinkingBudgetStr, "%d", &budget)
+				if budget > 0 {
+					budget32 := int32(budget)
+					thinkingConfig.ThinkingBudget = &budget32
+				}
+			}
+			generateConfig.ThinkingConfig = thinkingConfig
+		}
+	}
+
+	// Enable structured output (JSON mode) if requested
+	structuredOutputEnabled := cfg.ExtraOptions["structured_output"] == "true"
+	if structuredOutputEnabled {
+		generateConfig.ResponseMIMEType = "application/json"
+		generateConfig.ResponseJsonSchema = structuredOutputSchema()
 	}
 
 	// Build tools
@@ -905,15 +941,6 @@ func isRetryableError(err error) bool {
 	}
 
 	return false
-}
-
-// sleepWithBackoff sleeps with exponential backoff.
-func sleepWithBackoff(ctx context.Context, attempt int) {
-	delay := backoffBase * time.Duration(1<<uint(attempt-1))
-	select {
-	case <-ctx.Done():
-	case <-time.After(delay):
-	}
 }
 
 // buildFunctionDeclaration converts a provider.Tool to a Gemini FunctionDeclaration.

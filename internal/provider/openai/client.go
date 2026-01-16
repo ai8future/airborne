@@ -19,15 +19,13 @@ import (
 
 	"github.com/ai8future/airborne/internal/httpcapture"
 	"github.com/ai8future/airborne/internal/provider"
+	"github.com/ai8future/airborne/internal/retry"
 	"github.com/ai8future/airborne/internal/validation"
 )
 
 const (
-	maxAttempts    = 3
-	pollInitial    = 500 * time.Millisecond
-	pollMax        = 5 * time.Second
-	requestTimeout = 3 * time.Minute
-	backoffBase    = 250 * time.Millisecond
+	pollInitial = 500 * time.Millisecond
+	pollMax     = 5 * time.Second
 )
 
 // citationMarkerPattern matches OpenAI's inline file citation markers like "fileciteturn2file0"
@@ -89,7 +87,7 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 	// Ensure request has a timeout
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, requestTimeout)
+		ctx, cancel = context.WithTimeout(ctx, retry.RequestTimeout)
 		defer cancel()
 	}
 
@@ -236,14 +234,14 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 
 	// Execute with retry
 	var lastErr error
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
+	for attempt := 1; attempt <= retry.MaxAttempts; attempt++ {
 		slog.Info("openai request",
 			"attempt", attempt,
 			"model", model,
 			"request_id", params.RequestID,
 		)
 
-		reqCtx, reqCancel := context.WithTimeout(ctx, requestTimeout)
+		reqCtx, reqCancel := context.WithTimeout(ctx, retry.RequestTimeout)
 		resp, err := client.Responses.New(reqCtx, req)
 		reqCancel()
 
@@ -252,8 +250,8 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 			if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
 				lastErr = fmt.Errorf("openai request timeout: %w", err)
 				slog.Warn("openai timeout, retrying", "attempt", attempt)
-				if attempt < maxAttempts {
-					sleepWithBackoff(ctx, attempt)
+				if attempt < retry.MaxAttempts {
+					retry.SleepWithBackoff(ctx, attempt)
 					continue
 				}
 				return provider.GenerateResult{}, lastErr
@@ -265,8 +263,8 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 			}
 
 			slog.Warn("openai retryable error", "attempt", attempt, "error", err)
-			if attempt < maxAttempts {
-				sleepWithBackoff(ctx, attempt)
+			if attempt < retry.MaxAttempts {
+				retry.SleepWithBackoff(ctx, attempt)
 				continue
 			}
 			return provider.GenerateResult{}, lastErr
@@ -334,7 +332,7 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 	// Ensure request has a timeout
 	var cancel context.CancelFunc
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		ctx, cancel = context.WithTimeout(ctx, requestTimeout)
+		ctx, cancel = context.WithTimeout(ctx, retry.RequestTimeout)
 	}
 
 	// Helper to clean up cancel on error returns
@@ -794,15 +792,6 @@ func isRetryableError(err error) bool {
 	}
 
 	return false
-}
-
-// sleepWithBackoff sleeps with exponential backoff.
-func sleepWithBackoff(ctx context.Context, attempt int) {
-	delay := backoffBase * time.Duration(1<<uint(attempt-1))
-	select {
-	case <-ctx.Done():
-	case <-time.After(delay):
-	}
 }
 
 // buildFunctionTool converts a provider.Tool to an OpenAI function tool.

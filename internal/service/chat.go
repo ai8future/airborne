@@ -21,6 +21,11 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const (
+	// ragSnippetMaxLen is the maximum length for RAG citation snippets.
+	ragSnippetMaxLen = 200
+)
+
 // ChatService implements the AIBoxService gRPC service.
 type ChatService struct {
 	pb.UnimplementedAIBoxServiceServer
@@ -211,7 +216,7 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 				prepared.params.Config = s.buildProviderConfig(ctx, req, fallbackProvider.Name())
 				fallbackResult, fallbackErr := fallbackProvider.GenerateReply(ctx, prepared.params)
 				if fallbackErr == nil {
-					return s.buildResponse(fallbackResult, fallbackProvider.Name(), true, prepared.provider.Name(), err.Error()), nil
+					return s.buildResponse(fallbackResult, fallbackProvider.Name(), true, prepared.provider.Name(), sanitize.SanitizeForClient(err)), nil
 				}
 				// Return original error if fallback also fails
 			}
@@ -266,8 +271,8 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 	// Send RAG citations first if we have them
 	for _, chunk := range prepared.ragChunks {
 		snippet := chunk.Text
-		if len(snippet) > 200 {
-			snippet = snippet[:200] + "..."
+		if len(snippet) > ragSnippetMaxLen {
+			snippet = snippet[:ragSnippetMaxLen] + "..."
 		}
 		citation := provider.Citation{
 			Type:     provider.CitationTypeFile,
@@ -410,7 +415,7 @@ func (s *ChatService) SelectProvider(ctx context.Context, req *pb.SelectProvider
 	// Check for continuity
 	if req.ExistingProvider != "" {
 		return &pb.SelectProviderResponse{
-			Provider: mapProviderFromString(req.ExistingProvider),
+			Provider: mapProviderToProto(req.ExistingProvider),
 			Reason:   "continuity",
 		}, nil
 	}
@@ -598,8 +603,8 @@ func ragChunksToCitations(chunks []rag.RetrieveResult) []provider.Citation {
 	citations := make([]provider.Citation, len(chunks))
 	for i, chunk := range chunks {
 		snippet := chunk.Text
-		if len(snippet) > 200 {
-			snippet = snippet[:200] + "..."
+		if len(snippet) > ragSnippetMaxLen {
+			snippet = snippet[:ragSnippetMaxLen] + "..."
 		}
 		citations[i] = provider.Citation{
 			Type:     provider.CitationTypeFile,
@@ -704,10 +709,6 @@ func mapProviderToProto(name string) pb.Provider {
 	default:
 		return pb.Provider_PROVIDER_UNSPECIFIED
 	}
-}
-
-func mapProviderFromString(name string) pb.Provider {
-	return mapProviderToProto(name)
 }
 
 func convertTools(tools []*pb.Tool) []provider.Tool {

@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.4] - 2026-01-17
+
+### Added
+- **Shared Retry Package** (`internal/retry/`):
+  - Extracted common retry constants (`MaxAttempts`, `RequestTimeout`, `BackoffBase`) and `SleepWithBackoff` function
+  - Reduces code duplication across provider implementations
+
+### Fixed
+- **Gemini Streaming Config Parity**: Added missing safety settings, thinking configuration, and structured output configuration to streaming API (was only in non-streaming)
+- **Compat Provider Debug Logging**: Fixed no-op `WithDebugLogging` in all 13 OpenAI-compatible providers (cerebras, cohere, deepinfra, deepseek, fireworks, grok, hyperbolic, mistral, nebius, openrouter, perplexity, together, upstage) - now properly wires through to underlying compat client
+- **Failover Error Sanitization**: Sanitized error messages in failover responses to prevent leaking sensitive provider details to clients
+
+### Changed
+- **Code Quality Improvements** (`internal/service/chat.go`):
+  - Defined `ragSnippetMaxLen` constant to replace magic number 200
+  - Removed redundant `mapProviderFromString` wrapper function
+
+Agent: Claude:Opus 4.5
+
 ## [1.1.3] - 2026-01-16
 
 ### Fixed

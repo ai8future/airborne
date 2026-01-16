@@ -14,14 +14,12 @@ import (
 
 	"github.com/ai8future/airborne/internal/httpcapture"
 	"github.com/ai8future/airborne/internal/provider"
+	"github.com/ai8future/airborne/internal/retry"
 	"github.com/ai8future/airborne/internal/validation"
 )
 
 const (
-	maxAttempts     = 3
-	requestTimeout  = 3 * time.Minute
 	thinkingTimeout = 15 * time.Minute // Extended timeout for thinking operations
-	backoffBase     = 250 * time.Millisecond
 	defaultModel    = "claude-sonnet-4-20250514"
 	// maxHistoryChars limits conversation history to prevent context overflow
 	maxHistoryChars = 50000
@@ -103,7 +101,7 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 	}
 
 	// Choose timeout based on thinking mode
-	timeout := requestTimeout
+	timeout := retry.RequestTimeout
 	if thinkingEnabled {
 		timeout = thinkingTimeout
 	}
@@ -183,7 +181,7 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 
 	// Execute with retry
 	var lastErr error
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
+	for attempt := 1; attempt <= retry.MaxAttempts; attempt++ {
 		slog.Info("anthropic request",
 			"attempt", attempt,
 			"model", model,
@@ -222,8 +220,8 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 			if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
 				lastErr = fmt.Errorf("anthropic request timeout: %w", err)
 				slog.Warn("anthropic timeout, retrying", "attempt", attempt)
-				if attempt < maxAttempts {
-					sleepWithBackoff(ctx, attempt)
+				if attempt < retry.MaxAttempts {
+					retry.SleepWithBackoff(ctx, attempt)
 					continue
 				}
 				return provider.GenerateResult{}, lastErr
@@ -235,8 +233,8 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 			}
 
 			slog.Warn("anthropic retryable error", "attempt", attempt, "error", err)
-			if attempt < maxAttempts {
-				sleepWithBackoff(ctx, attempt)
+			if attempt < retry.MaxAttempts {
+				retry.SleepWithBackoff(ctx, attempt)
 				continue
 			}
 			return provider.GenerateResult{}, lastErr
@@ -246,8 +244,8 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		text, thinkingText := extractContent(resp, includeThoughts)
 		if text == "" {
 			lastErr = errors.New("anthropic returned empty response")
-			if attempt < maxAttempts {
-				sleepWithBackoff(ctx, attempt)
+			if attempt < retry.MaxAttempts {
+				retry.SleepWithBackoff(ctx, attempt)
 			}
 			continue
 		}
@@ -295,7 +293,7 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 
 	// Check if thinking is enabled - use extended timeout
 	thinkingEnabled := cfg.ExtraOptions["thinking_enabled"] == "true"
-	timeout := requestTimeout
+	timeout := retry.RequestTimeout
 	if thinkingEnabled {
 		timeout = thinkingTimeout
 	}
@@ -585,13 +583,4 @@ func isRetryableError(err error) bool {
 	}
 
 	return false
-}
-
-// sleepWithBackoff sleeps with exponential backoff.
-func sleepWithBackoff(ctx context.Context, attempt int) {
-	delay := backoffBase * time.Duration(1<<uint(attempt-1))
-	select {
-	case <-ctx.Done():
-	case <-time.After(delay):
-	}
 }
