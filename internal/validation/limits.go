@@ -21,16 +21,24 @@ const (
 	// MaxMetadataEntries is the maximum number of metadata key-value pairs
 	MaxMetadataEntries = 50
 
+	// MaxMetadataKeyBytes is the maximum size of a single metadata key (1KB)
+	MaxMetadataKeyBytes = 1024
+
+	// MaxMetadataValueBytes is the maximum size of a single metadata value (10KB)
+	MaxMetadataValueBytes = 10 * 1024
+
 	// MaxRequestIDLength is the maximum length of a request ID
 	MaxRequestIDLength = 128
 )
 
 var (
-	ErrUserInputTooLarge    = errors.New("user_input exceeds maximum size")
-	ErrInstructionsTooLarge = errors.New("instructions exceed maximum size")
-	ErrHistoryTooLong       = errors.New("conversation_history exceeds maximum length")
-	ErrMetadataTooLarge     = errors.New("metadata exceeds maximum entries")
-	ErrInvalidRequestID     = errors.New("invalid request_id format")
+	ErrUserInputTooLarge     = errors.New("user_input exceeds maximum size")
+	ErrInstructionsTooLarge  = errors.New("instructions exceed maximum size")
+	ErrHistoryTooLong        = errors.New("conversation_history exceeds maximum length")
+	ErrMetadataTooLarge      = errors.New("metadata exceeds maximum entries")
+	ErrMetadataKeyTooLarge   = errors.New("metadata key exceeds maximum size")
+	ErrMetadataValueTooLarge = errors.New("metadata value exceeds maximum size")
+	ErrInvalidRequestID      = errors.New("invalid request_id format")
 )
 
 // ValidateGenerateRequest validates size limits for a generate request
@@ -50,10 +58,18 @@ func ValidateGenerateRequest(userInput, instructions string, historyCount int) e
 	return nil
 }
 
-// ValidateMetadata validates metadata size limits
+// ValidateMetadata checks that metadata doesn't exceed limits.
 func ValidateMetadata(metadata map[string]string) error {
 	if len(metadata) > MaxMetadataEntries {
 		return fmt.Errorf("%w: %d entries (max %d)", ErrMetadataTooLarge, len(metadata), MaxMetadataEntries)
+	}
+	for k, v := range metadata {
+		if len(k) > MaxMetadataKeyBytes {
+			return fmt.Errorf("%w: key length %d (max %d)", ErrMetadataKeyTooLarge, len(k), MaxMetadataKeyBytes)
+		}
+		if len(v) > MaxMetadataValueBytes {
+			return fmt.Errorf("%w: value length %d (max %d)", ErrMetadataValueTooLarge, len(v), MaxMetadataValueBytes)
+		}
 	}
 	return nil
 }

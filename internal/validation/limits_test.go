@@ -162,6 +162,36 @@ func makeMetadata(n int) map[string]string {
 	return m
 }
 
+func TestValidateMetadata_KeyTooLarge(t *testing.T) {
+	metadata := map[string]string{
+		strings.Repeat("k", MaxMetadataKeyBytes+1): "value",
+	}
+	err := ValidateMetadata(metadata)
+	if !errors.Is(err, ErrMetadataKeyTooLarge) {
+		t.Errorf("expected ErrMetadataKeyTooLarge, got %v", err)
+	}
+}
+
+func TestValidateMetadata_ValueTooLarge(t *testing.T) {
+	metadata := map[string]string{
+		"key": strings.Repeat("v", MaxMetadataValueBytes+1),
+	}
+	err := ValidateMetadata(metadata)
+	if !errors.Is(err, ErrMetadataValueTooLarge) {
+		t.Errorf("expected ErrMetadataValueTooLarge, got %v", err)
+	}
+}
+
+func TestValidateMetadata_MaxSizesValid(t *testing.T) {
+	metadata := map[string]string{
+		strings.Repeat("k", MaxMetadataKeyBytes): strings.Repeat("v", MaxMetadataValueBytes),
+	}
+	err := ValidateMetadata(metadata)
+	if err != nil {
+		t.Errorf("expected nil error for max-size values, got %v", err)
+	}
+}
+
 func TestValidateOrGenerateRequestID(t *testing.T) {
 	tests := []struct {
 		name        string
