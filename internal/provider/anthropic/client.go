@@ -115,13 +115,14 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		defer cancel()
 	}
 
-	// Create capturing transport for debug JSON
-	capture := httpcapture.New()
-
-	// Create client
+	// Create capturing transport for debug JSON (only when debug enabled)
+	var capture *httpcapture.Transport
 	opts := []option.RequestOption{
 		option.WithAPIKey(cfg.APIKey),
-		option.WithHTTPClient(capture.Client()),
+	}
+	if c.debug {
+		capture = httpcapture.New()
+		opts = append(opts, option.WithHTTPClient(capture.Client()))
 	}
 	if cfg.BaseURL != "" {
 		// SECURITY: Validate base URL to prevent SSRF attacks
@@ -269,13 +270,19 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 			"tokens_out", usage.OutputTokens,
 		)
 
+		var reqJSON, respJSON []byte
+		if capture != nil {
+			reqJSON = capture.RequestBody
+			respJSON = capture.ResponseBody
+		}
+
 		return provider.GenerateResult{
 			Text:         finalText,
 			ResponseID:   resp.ID,
 			Usage:        usage,
 			Model:        model,
-			RequestJSON:  capture.RequestBody,
-			ResponseJSON: capture.ResponseBody,
+			RequestJSON:  reqJSON,
+			ResponseJSON: respJSON,
 		}, nil
 	}
 
@@ -319,13 +326,9 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 		model = params.OverrideModel
 	}
 
-	// Create capturing transport for debug JSON
-	capture := httpcapture.New()
-
-	// Create client
+	// Create client (no HTTP capture needed for streaming)
 	opts := []option.RequestOption{
 		option.WithAPIKey(cfg.APIKey),
-		option.WithHTTPClient(capture.Client()),
 	}
 	if cfg.BaseURL != "" {
 		// SECURITY: Validate base URL to prevent SSRF attacks
@@ -433,29 +436,51 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 func buildMessages(userInput string, history []provider.Message) []anthropic.MessageParam {
 	var messages []anthropic.MessageParam
 
-	// Add conversation history with size limit
-	totalChars := 0
+	// Add conversation history with size limit (keeping newest messages)
+	// First, collect valid messages and calculate what to keep
+	type validMsg struct {
+		role    string
+		content string
+		length  int
+	}
+	var validHistory []validMsg
+
 	for _, msg := range history {
 		trimmed := strings.TrimSpace(msg.Content)
 		if trimmed == "" {
 			continue
 		}
-		msgLen := len(trimmed)
-		if totalChars+msgLen > maxHistoryChars {
+		validHistory = append(validHistory, validMsg{
+			role:    msg.Role,
+			content: trimmed,
+			length:  len(trimmed),
+		})
+	}
+
+	// Calculate which messages to keep (iterate backwards to prioritize newest)
+	var startIndex int
+	currentChars := 0
+	for i := len(validHistory) - 1; i >= 0; i-- {
+		if currentChars+validHistory[i].length > maxHistoryChars {
+			startIndex = i + 1
 			slog.Debug("truncating conversation history",
-				"total_chars", totalChars,
-				"max_chars", maxHistoryChars)
+				"kept_messages", len(validHistory)-startIndex,
+				"dropped_messages", startIndex)
 			break
 		}
-		totalChars += msgLen
+		currentChars += validHistory[i].length
+	}
 
-		if msg.Role == "assistant" {
+	// Build final message list from startIndex onwards
+	for i := startIndex; i < len(validHistory); i++ {
+		msg := validHistory[i]
+		if msg.role == "assistant" {
 			messages = append(messages, anthropic.NewAssistantMessage(
-				anthropic.NewTextBlock(trimmed),
+				anthropic.NewTextBlock(msg.content),
 			))
 		} else {
 			messages = append(messages, anthropic.NewUserMessage(
-				anthropic.NewTextBlock(trimmed),
+				anthropic.NewTextBlock(msg.content),
 			))
 		}
 	}

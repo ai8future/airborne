@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.3] - 2026-01-16
+
+### Fixed
+- **Fix Anthropic History Truncation** (`internal/provider/anthropic/client.go`):
+  - The `buildMessages` function iterated oldest-to-newest and broke when limit reached
+  - This caused the **most recent** messages to be discarded instead of the oldest
+  - Users lost immediate context while keeping stale, less-relevant messages
+  - Fixed by iterating backwards to prioritize newest messages when truncating
+  - Now properly keeps the most recent conversation context
+
+Agent: Claude:Opus 4.5
+
 ## [1.0.2] - 2026-01-16
 
 ### Security
