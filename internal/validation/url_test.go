@@ -2,10 +2,19 @@ package validation
 
 import (
 	"errors"
+	"net"
 	"testing"
 )
 
 func TestValidateProviderURL(t *testing.T) {
+	originalLookup := lookupIP
+	lookupIP = func(host string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("8.8.8.8")}, nil
+	}
+	t.Cleanup(func() {
+		lookupIP = originalLookup
+	})
+
 	tests := []struct {
 		name    string
 		url     string
@@ -316,4 +325,34 @@ func parseIPv4(s string, parts *[4]int) (int, error) {
 		}
 	}
 	return partCount, nil
+}
+
+func TestValidateProviderURL_ResolvesPrivateIP(t *testing.T) {
+	originalLookup := lookupIP
+	lookupIP = func(host string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("10.0.0.1")}, nil
+	}
+	t.Cleanup(func() {
+		lookupIP = originalLookup
+	})
+
+	err := ValidateProviderURL("https://private.example.test")
+	if !errors.Is(err, ErrPrivateIP) {
+		t.Fatalf("expected ErrPrivateIP, got %v", err)
+	}
+}
+
+func TestValidateProviderURL_ResolvesMetadataIP(t *testing.T) {
+	originalLookup := lookupIP
+	lookupIP = func(host string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("169.254.169.254")}, nil
+	}
+	t.Cleanup(func() {
+		lookupIP = originalLookup
+	})
+
+	err := ValidateProviderURL("https://metadata.example.test")
+	if !errors.Is(err, ErrMetadataEndpoint) {
+		t.Fatalf("expected ErrMetadataEndpoint, got %v", err)
+	}
 }

@@ -41,6 +41,34 @@ var dangerousProtocols = map[string]bool{
 	"tftp":       true,
 }
 
+// lookupIP allows tests to stub DNS resolution.
+var lookupIP = net.LookupIP
+
+// validateHostnameResolvesPublic checks that a hostname doesn't resolve to private/metadata IPs.
+func validateHostnameResolvesPublic(hostname string) error {
+	ips, err := lookupIP(hostname)
+	if err != nil {
+		return fmt.Errorf("%w: DNS lookup failed for %s: %v", ErrInvalidURL, hostname, err)
+	}
+	if len(ips) == 0 {
+		return fmt.Errorf("%w: DNS lookup returned no results for %s", ErrInvalidURL, hostname)
+	}
+
+	for _, ip := range ips {
+		if ip == nil {
+			continue
+		}
+		if isMetadataEndpoint(ip.String()) {
+			return fmt.Errorf("%w: %s resolves to metadata IP %s", ErrMetadataEndpoint, hostname, ip.String())
+		}
+		if ip.IsLoopback() || isPrivateIP(ip) {
+			return fmt.Errorf("%w: %s resolves to private IP %s", ErrPrivateIP, hostname, ip.String())
+		}
+	}
+
+	return nil
+}
+
 // ValidateProviderURL validates a URL intended for use as a provider base URL.
 // It performs SSRF protection by:
 // - Rejecting empty URLs
@@ -93,7 +121,8 @@ func ValidateProviderURL(rawURL string) error {
 	}
 
 	// Parse IP address if it's a direct IP
-	if ip := net.ParseIP(hostname); ip != nil {
+	ip := net.ParseIP(hostname)
+	if ip != nil {
 		// Allow localhost IPs for http://
 		if isLocalhost {
 			return nil
@@ -102,6 +131,13 @@ func ValidateProviderURL(rawURL string) error {
 		// Block private IPs
 		if isPrivateIP(ip) {
 			return fmt.Errorf("%w: %s is in a private IP range", ErrPrivateIP, hostname)
+		}
+	}
+
+	// For non-IP hostnames (not localhost), verify they don't resolve to private IPs
+	if ip == nil && !isLocalhost {
+		if err := validateHostnameResolvesPublic(hostname); err != nil {
+			return err
 		}
 	}
 
