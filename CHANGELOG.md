@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.9] - 2026-01-16
+
+### Security
+- **Escape Filename in RAG Context XML** (`internal/service/chat.go`):
+  - `formatRAGContext` didn't escape filenames in the XML `source` attribute
+  - Filenames containing `"`, `<`, `>`, or `&` could break XML structure
+  - Now uses `html.EscapeString()` to properly escape filenames in XML attributes
+
+Agent: Claude:Opus 4.5
+
 ## [1.0.8] - 2026-01-16
 
 ### Security
