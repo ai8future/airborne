@@ -649,8 +649,9 @@ func TestPrepareRequest_BuildsParams(t *testing.T) {
 	if prepared.params.Instructions != "Be helpful" {
 		t.Errorf("expected Instructions 'Be helpful', got %s", prepared.params.Instructions)
 	}
-	if prepared.params.ClientID != "client-123" {
-		t.Errorf("expected ClientID 'client-123', got %s", prepared.params.ClientID)
+	// Security: ClientID should use authenticated client from context, not request field
+	if prepared.params.ClientID != "test-client" {
+		t.Errorf("expected ClientID 'test-client' (from auth context), got %s", prepared.params.ClientID)
 	}
 	if prepared.params.EnableWebSearch != true {
 		t.Error("expected EnableWebSearch true")

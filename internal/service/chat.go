@@ -128,6 +128,12 @@ func (s *ChatService) prepareRequest(ctx context.Context, req *pb.GenerateReplyR
 		}
 	}
 
+	// Use authenticated client ID, falling back to request client_id
+	clientID := req.ClientId
+	if client := auth.ClientFromContext(ctx); client != nil && client.ClientID != "" {
+		clientID = client.ClientID
+	}
+
 	// Build params
 	params := provider.GenerateParams{
 		Instructions:        instructions, // May include RAG context for non-OpenAI
@@ -144,7 +150,7 @@ func (s *ChatService) prepareRequest(ctx context.Context, req *pb.GenerateReplyR
 		ToolResults:         convertToolResults(req.ToolResults),
 		Config:              providerCfg,
 		RequestID:           requestID,
-		ClientID:            req.ClientId,
+		ClientID:            clientID,
 	}
 
 	return &preparedRequest{
@@ -197,7 +203,7 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 		"provider", prepared.provider.Name(),
 		"model", prepared.providerCfg.Model,
 		"request_id", prepared.requestID,
-		"client_id", req.ClientId,
+		"client_id", prepared.params.ClientID,
 	)
 
 	// Generate reply
