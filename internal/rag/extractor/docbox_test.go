@@ -20,13 +20,27 @@ func TestNewDocboxExtractor_Defaults(t *testing.T) {
 }
 
 func TestNewDocboxExtractor_CustomConfig(t *testing.T) {
+	// Use HTTPS for non-localhost URLs (per SSRF validation rules)
 	ext := NewDocboxExtractor(DocboxConfig{
-		BaseURL: "http://custom:8080",
+		BaseURL: "https://custom.example.com:8080",
 		Timeout: 60 * time.Second,
 	})
 
-	if ext.baseURL != "http://custom:8080" {
+	if ext.baseURL != "https://custom.example.com:8080" {
 		t.Errorf("expected custom baseURL, got %s", ext.baseURL)
+	}
+}
+
+func TestNewDocboxExtractor_SSRFValidation(t *testing.T) {
+	// Test that HTTP non-localhost URLs are rejected and fall back to default
+	ext := NewDocboxExtractor(DocboxConfig{
+		BaseURL: "http://malicious.attacker.com:8080",
+		Timeout: 60 * time.Second,
+	})
+
+	// Should fall back to safe localhost due to SSRF validation
+	if ext.baseURL != "http://localhost:41273" {
+		t.Errorf("expected fallback to localhost for unsafe URL, got %s", ext.baseURL)
 	}
 }
 

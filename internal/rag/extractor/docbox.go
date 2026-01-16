@@ -6,11 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/ai8future/airborne/internal/validation"
 )
 
 // DocboxExtractor extracts text using Docbox's Pandoc API.
@@ -31,6 +34,11 @@ type DocboxConfig struct {
 // NewDocboxExtractor creates a new Docbox extractor.
 func NewDocboxExtractor(cfg DocboxConfig) *DocboxExtractor {
 	if cfg.BaseURL == "" {
+		cfg.BaseURL = "http://localhost:41273"
+	}
+	// Validate URL to prevent SSRF
+	if err := validation.ValidateProviderURL(cfg.BaseURL); err != nil {
+		slog.Warn("invalid docbox URL, defaulting to safe localhost", "url", cfg.BaseURL, "error", err)
 		cfg.BaseURL = "http://localhost:41273"
 	}
 	if cfg.Timeout == 0 {

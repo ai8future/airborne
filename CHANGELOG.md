@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.7] - 2026-01-16
+
+### Security
+- **Add Docbox SSRF Validation** (`internal/rag/extractor/docbox.go`):
+  - Docbox extractor accepted arbitrary BaseURL without validation
+  - If config was manipulated, attacker could point Docbox at internal services (SSRF)
+  - Added validation using `ValidateProviderURL` to enforce SSRF protections
+  - Invalid URLs (non-HTTPS to non-localhost) now fall back to safe localhost default
+  - Logs warning when URL is rejected for audit trail
+  - Added test for SSRF validation behavior
+
+Agent: Claude:Opus 4.5
+
 ## [1.0.6] - 2026-01-16
 
 ### Security
