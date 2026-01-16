@@ -170,6 +170,7 @@ func (s *KeyStore) ListKeys(ctx context.Context) ([]*ClientKey, error) {
 			// Skip keys that can't be loaded (may have expired)
 			continue
 		}
+		key.SecretHash = "" // Redact to prevent offline cracking attempts
 		keys = append(keys, key)
 	}
 
