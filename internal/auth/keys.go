@@ -14,6 +14,12 @@ import (
 
 const (
 	defaultKeyPrefix = "aibox:key:"
+
+	// API key format constants
+	apiKeyPrefix    = "aibox_sk_"
+	apiKeyPrefixLen = 9  // len("aibox_sk_")
+	keyIDLength     = 8
+	minAPIKeyLength = apiKeyPrefixLen + keyIDLength + 2 // prefix + keyid + _ + at least 1 char secret
 )
 
 // Permission represents an API key permission
@@ -111,7 +117,7 @@ func (s *KeyStore) GenerateAPIKey(ctx context.Context, clientID, clientName stri
 	}
 
 	// Return the full API key (prefix_keyid_secret)
-	fullKey := fmt.Sprintf("aibox_sk_%s_%s", keyID, secret)
+	fullKey := fmt.Sprintf("%s%s_%s", apiKeyPrefix, keyID, secret)
 	return fullKey, key, nil
 }
 
@@ -250,26 +256,26 @@ func (s *KeyStore) getKey(ctx context.Context, keyID string) (*ClientKey, error)
 // parseAPIKey parses an API key string into keyID and secret
 func parseAPIKey(apiKey string) (keyID, secret string, err error) {
 	// Expected format: aibox_sk_KEYID_SECRET
-	if len(apiKey) < 20 {
+	if len(apiKey) < minAPIKeyLength {
 		return "", "", ErrInvalidKey
 	}
 
 	// Check prefix
-	if apiKey[:9] != "aibox_sk_" {
+	if apiKey[:apiKeyPrefixLen] != apiKeyPrefix {
 		return "", "", ErrInvalidKey
 	}
 
 	// Extract keyID (8 chars) and secret (rest)
-	remainder := apiKey[9:]
-	if len(remainder) < 10 { // keyID(8) + _(1) + secret(1+)
+	remainder := apiKey[apiKeyPrefixLen:]
+	if len(remainder) < keyIDLength+2 { // keyID + _ + at least 1 char secret
 		return "", "", ErrInvalidKey
 	}
 
-	keyID = remainder[:8]
-	if remainder[8] != '_' {
+	keyID = remainder[:keyIDLength]
+	if remainder[keyIDLength] != '_' {
 		return "", "", ErrInvalidKey
 	}
-	secret = remainder[9:]
+	secret = remainder[keyIDLength+1:]
 
 	return keyID, secret, nil
 }
