@@ -50,6 +50,14 @@ func NewFileService(ragService *rag.Service, rateLimiter *auth.RateLimiter) *Fil
 	}
 }
 
+// ensureRAGEnabled returns an error if RAG is not configured.
+func (s *FileService) ensureRAGEnabled() error {
+	if s.ragService == nil {
+		return status.Error(codes.FailedPrecondition, "internal file stores require RAG to be enabled")
+	}
+	return nil
+}
+
 // CreateFileStore creates a new vector store based on provider.
 // - OpenAI: Creates OpenAI Vector Store
 // - Gemini: Creates Gemini FileSearchStore
@@ -140,6 +148,10 @@ func (s *FileService) createGeminiFileSearchStore(ctx context.Context, req *pb.C
 
 // createInternalStore creates an internal Qdrant-based store.
 func (s *FileService) createInternalStore(ctx context.Context, req *pb.CreateFileStoreRequest) (*pb.CreateFileStoreResponse, error) {
+	if err := s.ensureRAGEnabled(); err != nil {
+		return nil, err
+	}
+
 	// Generate store ID if name is provided, otherwise use a UUID-like ID
 	storeID := req.Name
 	if storeID == "" {
@@ -369,6 +381,10 @@ func (s *FileService) uploadToGemini(ctx context.Context, stream pb.FileService_
 
 // uploadToInternal uploads a file to the internal Qdrant store.
 func (s *FileService) uploadToInternal(ctx context.Context, stream pb.FileService_UploadFileServer, metadata *pb.UploadFileMetadata, content io.Reader) error {
+	if err := s.ensureRAGEnabled(); err != nil {
+		return err
+	}
+
 	// Get tenant ID from auth context
 	tenantID := auth.TenantIDFromContext(ctx)
 
@@ -501,6 +517,10 @@ func (s *FileService) deleteGeminiFileSearchStore(ctx context.Context, req *pb.D
 
 // deleteInternalStore deletes an internal Qdrant store.
 func (s *FileService) deleteInternalStore(ctx context.Context, req *pb.DeleteFileStoreRequest) (*pb.DeleteFileStoreResponse, error) {
+	if err := s.ensureRAGEnabled(); err != nil {
+		return nil, err
+	}
+
 	// Get tenant ID from auth context
 	tenantID := auth.TenantIDFromContext(ctx)
 
@@ -600,6 +620,10 @@ func (s *FileService) getGeminiFileSearchStore(ctx context.Context, req *pb.GetF
 
 // getInternalStore retrieves an internal Qdrant store.
 func (s *FileService) getInternalStore(ctx context.Context, req *pb.GetFileStoreRequest) (*pb.GetFileStoreResponse, error) {
+	if err := s.ensureRAGEnabled(); err != nil {
+		return nil, err
+	}
+
 	// Get tenant ID from auth context
 	tenantID := auth.TenantIDFromContext(ctx)
 
