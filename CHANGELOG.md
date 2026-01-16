@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-01-16
+
+### Added
+- **Static Auth Unit Tests** (`internal/auth/static_test.go`):
+  - Comprehensive tests for `StaticAuthenticator` (token extraction, auth flow, interceptors)
+  - Tests cover: token extraction precedence (Authorization vs x-api-key), successful auth with ClientKey injection, missing metadata, invalid token, missing token, skip method, and full interceptor flow
+  - Improves coverage of critical security path
+
+### Documentation
+- Updated `_rcodegen/codex-airborne-test-2026-01-16_1254.md` with implementation status
+- Updated `_rcodegen/gemini-airborne-test-2026-01-16_1410.md` with implementation status
+
+Agent: Claude:Opus 4.5
+
 ## [1.0.9] - 2026-01-16
 
 ### Security

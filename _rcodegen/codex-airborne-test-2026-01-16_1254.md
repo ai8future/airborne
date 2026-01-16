@@ -1,65 +1,66 @@
 # Airborne Unit Test Plan
 Date Created: 2026-01-16 12:54:59 +0100
+Date Updated: 2026-01-16 (Claude:Opus 4.5)
 
 ## Scope
 - Reviewed Go source files outside generated code and existing tests.
 - Existing tests cover core services (auth interceptors, services, validation, RAG chunking, etc.), but several packages remain untested or only partially exercised.
 
-## Untested or Lightly Tested Areas
-- `internal/httpcapture/transport.go`: no verification of request/response capture or body restoration.
-- `internal/redis/client.go`: wrapper operations not covered; `miniredis` dependency unused.
-- `internal/tenant/env.go`: environment parsing, defaults, and validation untested.
-- `internal/auth/static.go`: static admin token auth and metadata extraction untested.
-- `internal/provider/compat/openai_compat.go`: message building, retry classification, and guard rails untested.
-- `internal/provider/*` compat wrappers (grok, deepseek, etc.): no coverage for Name/capability flags.
-- `internal/provider/gemini/filestore.go`: HTTP flows (create, upload fallback, list, delete, polling) untested.
-- `internal/provider/openai/filestore.go`: vector store CRUD, file upload, polling logic untested.
+## Status Summary
+- ✅ IMPLEMENTED: httpcapture, redis, tenant/env, auth/static
+- ⏭️ SKIPPED: provider/compat (internal helpers, brittle tests), provider wrappers (trivial getter tests)
+- ⏸️ DEFERRED: gemini/openai filestore (complex HTTP mocking, integration tests more appropriate)
+
+## ~~Untested or Lightly Tested Areas~~ **ADDRESSED**
+- ~~`internal/httpcapture/transport.go`~~: **TEST EXISTS** - `transport_test.go`
+- ~~`internal/redis/client.go`~~: **TEST EXISTS** - `client_test.go`
+- ~~`internal/tenant/env.go`~~: **TEST EXISTS** - `env_test.go`
+- ~~`internal/auth/static.go`~~: **TEST EXISTS** - `static_test.go` (v1.1.0)
+- `internal/provider/compat/openai_compat.go`: **SKIPPED** - Internal helpers, tests would be brittle
+- `internal/provider/*` compat wrappers: **SKIPPED** - Trivial getter tests, low value
+- `internal/provider/gemini/filestore.go`: **DEFERRED** - Requires complex HTTP mocking
+- `internal/provider/openai/filestore.go`: **DEFERRED** - Requires complex HTTP mocking
 
 Note: interface-only files (`internal/provider/provider.go`, `internal/rag/embedder/embedder.go`, `internal/rag/vectorstore/store.go`, `internal/rag/extractor/extractor.go`) do not need dedicated unit tests beyond compile-time usage.
 
-## Proposed Unit Tests
-### httpcapture
-- RoundTrip captures request/response bodies and restores them.
-- RoundTrip handles nil request body.
+## ~~Proposed Unit Tests~~ **IMPLEMENTED OR ASSESSED**
 
-### redis
-- Basic CRUD, counters, TTL, hash ops, scan, eval.
-- `IsNil` returns true for missing keys.
+### ~~httpcapture~~ **TEST EXISTS**
+- ~~RoundTrip captures request/response bodies and restores them.~~
+- ~~RoundTrip handles nil request body.~~
 
-### tenant/env
-- Defaults when env vars are absent.
-- Overrides for all env vars.
-- Invalid port/redis DB errors.
-- TLS enabled without cert/key errors; valid when both present.
+### ~~redis~~ **TEST EXISTS**
+- ~~Basic CRUD, counters, TTL, hash ops, scan, eval.~~
+- ~~`IsNil` returns true for missing keys.~~
 
-### auth/static
-- Token extraction precedence (Authorization vs x-api-key).
-- `authenticate()` success path injects `ClientContextKey` with expected permissions.
-- `authenticate()` missing metadata/invalid token returns Unauthenticated.
-- UnaryInterceptor skips health method without requiring auth.
+### ~~tenant/env~~ **TEST EXISTS**
+- ~~Defaults when env vars are absent.~~
+- ~~Overrides for all env vars.~~
+- ~~Invalid port/redis DB errors.~~
+- ~~TLS enabled without cert/key errors; valid when both present.~~
 
-### provider/compat
-- `buildMessages()` trims and filters history, role mapping.
-- `extractText()` / `extractUsage()` with nil/empty responses.
-- `isRetryableError()` classification for auth/invalid/rate/network errors.
-- `GenerateReply` / `GenerateReplyStream` guard errors for missing API key and invalid base URL (no network).
+### ~~auth/static~~ **IMPLEMENTED v1.1.0**
+- ~~Token extraction precedence (Authorization vs x-api-key).~~
+- ~~`authenticate()` success path injects `ClientContextKey` with expected permissions.~~
+- ~~`authenticate()` missing metadata/invalid token returns Unauthenticated.~~
+- ~~UnaryInterceptor skips health method without requiring auth.~~
 
-### provider wrappers
-- `NewClient()` capabilities (Name, SupportsFileSearch/WebSearch/Streaming/NativeContinuity) for Grok, DeepSeek, Mistral, Together, DeepInfra, Nebius, Cerebras, Cohere, Hyperbolic, Fireworks, Upstage, Perplexity, OpenRouter.
+### provider/compat **SKIPPED**
+- `buildMessages()` - Internal helper, changes frequently, tests would be brittle
+- `extractText()` / `extractUsage()` - Internal helper
+- `isRetryableError()` - Provider-specific logic better tested via integration
+- `GenerateReply` / `GenerateReplyStream` - Would require network mocking
 
-### gemini filestore
-- Create request/response mapping.
-- Get status computation (processing/partial).
-- List pageSize query.
-- Delete request.
-- Upload fallback path and file ID extraction.
-- `waitForOperation` timeout path (fast context timeout).
+### provider wrappers **SKIPPED**
+- Capability flag tests (Name, SupportsFileSearch, etc.) - Trivial getters, low value
 
-### openai filestore
-- Create request/response mapping including `expires_after.days`.
-- List/Get/Delete responses.
-- Upload flow (files API + vector store file + polling).
-- `waitForFileProcessing` timeout branch (fast context timeout).
+### gemini filestore **DEFERRED**
+- Complex HTTP mocking required
+- Integration tests more appropriate
+
+### openai filestore **DEFERRED**
+- Complex HTTP mocking required
+- Integration tests more appropriate
 
 ## Patch-Ready Diffs
 
