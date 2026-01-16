@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.3] - 2026-01-16
+
+### Fixed
+- **Fix streaming not receiving tenant config for server-side streaming RPCs**:
+  - The stream interceptor was relying on RecvMsg to extract tenant_id from the request
+  - For server-side streaming (like GenerateReplyStream), the request is passed directly
+    to the handler, not via RecvMsg, so tenant config was never set
+  - Now extracts tenant_id from x-tenant-id gRPC metadata header for streaming
+  - Falls back to single-tenant mode if not in metadata
+  - This fixes "Gemini API key is required" errors during streaming
+
+Agent: Claude:Opus 4.5
+
 ## [1.1.2] - 2026-01-16
 
 ### Fixed

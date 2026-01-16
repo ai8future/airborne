@@ -8,6 +8,7 @@ import (
 	"github.com/ai8future/airborne/internal/tenant"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -71,14 +72,41 @@ func (t *TenantInterceptor) StreamInterceptor() grpc.StreamServerInterceptor {
 			return handler(srv, ss)
 		}
 
-		// For streaming, we need to intercept the first message
-		// Since GenerateReplyStream uses the same request as GenerateReply,
-		// we'll use a wrapped stream that extracts tenant from first recv
+		// For server-side streaming (like GenerateReplyStream), the request is passed
+		// directly to the handler, not via RecvMsg. We need to extract tenant_id from
+		// metadata instead. The chatapp sends x-tenant-id header.
+		var tenantCfg *tenant.TenantConfig
+		if md, ok := metadata.FromIncomingContext(ss.Context()); ok {
+			if vals := md.Get("x-tenant-id"); len(vals) > 0 {
+				cfg, err := t.resolveTenant(vals[0])
+				if err != nil {
+					return err
+				}
+				tenantCfg = cfg
+			}
+		}
 
+		// If not in metadata, fall back to single-tenant mode if available
+		if tenantCfg == nil {
+			cfg, err := t.resolveTenant("")
+			if err != nil {
+				// For bidirectional/client streaming, wrap to extract from first message
+				wrapped := &tenantStream{
+					ServerStream: ss,
+					interceptor:  t,
+					tenantSet:    false,
+				}
+				return handler(srv, wrapped)
+			}
+			tenantCfg = cfg
+		}
+
+		// Create wrapped stream with tenant already set
 		wrapped := &tenantStream{
 			ServerStream: ss,
 			interceptor:  t,
-			tenantSet:    false,
+			tenantSet:    true,
+			tenantCfg:    tenantCfg,
 		}
 
 		return handler(srv, wrapped)
