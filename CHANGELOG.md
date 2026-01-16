@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.8] - 2026-01-16
+
+### Security
+- **Mitigate RAG Prompt Injection** (`internal/service/chat.go`):
+  - RAG context was injected directly into prompts without structural protection
+  - Malicious documents could contain prompt injection attacks like "Ignore previous instructions..."
+  - Now wraps RAG context in `<document_context>` and `<chunk>` XML tags
+  - Adds explicit instruction that content within tags is reference material, not instructions
+  - Updated tests to verify new XML-wrapped format
+
+Agent: Claude:Opus 4.5
+
 ## [1.0.7] - 2026-01-16
 
 ### Security
