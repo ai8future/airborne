@@ -401,6 +401,12 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 						Type: provider.ChunkTypeText,
 						Text: deltaVariant.Text,
 					}
+				case anthropic.ThinkingDelta:
+					// Stream thinking content as text so users see model reasoning
+					ch <- provider.StreamChunk{
+						Type: provider.ChunkTypeText,
+						Text: deltaVariant.Thinking,
+					}
 				}
 			}
 		}

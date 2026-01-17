@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.12] - 2026-01-17
+
+### Added
+- **Anthropic ThinkingDelta Streaming Support** (`internal/provider/anthropic/client.go`):
+  - Added `ThinkingDelta` case handler in `GenerateReplyStream` method
+  - When using Claude models with extended thinking enabled (Claude 3.7+), thinking content is now streamed to users in real-time
+  - Previously, ThinkingDelta events were silently ignored, causing a "dead" period before text appeared
+  - Users now see the model's reasoning process as it happens
+
+Agent: Claude:Opus 4.5
+
 ## [1.1.11] - 2026-01-17
 
 ### Fixed
