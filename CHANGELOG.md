@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.14] - 2026-01-17
+
+### Added
+- **imagegen Package Tests** (`internal/imagegen/client_test.go`):
+  - Tests for `DetectImageRequest`: trigger detection, case insensitivity, empty prompts, disabled config
+  - Tests for `truncateForAlt`: truncation logic and edge cases
+  - Tests for `Config` methods: `IsEnabled()`, `GetProvider()`, `GetModel()` with nil handling
+
+- **retry Package Tests** (`internal/retry/retry_test.go`):
+  - Comprehensive tests for `IsRetryable`: 35+ cases covering auth errors, rate limits, server errors, network issues
+  - Tests for `SleepWithBackoff`: context cancellation and exponential delay verification
+  - Tests for default constants: `MaxAttempts`, `RequestTimeout`, `BackoffBase`
+
+Agent: Claude:Opus 4.5
+
 ## [1.1.13] - 2026-01-17
 
 ### Fixed
