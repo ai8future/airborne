@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.10] - 2026-01-17
+
+### Added
+- **Image Generation in Streaming Path** (`internal/service/chat.go`):
+  - Added text accumulation during streaming to enable image generation triggers
+  - `GenerateReplyStream` now calls `processImageGeneration` on stream completion
+  - Generated images are included in the `StreamComplete.images` field
+  - Matches existing unary `GenerateReply` behavior for streaming responses
+
+Agent: Claude:Opus 4.5
+
 ## [1.1.9] - 2026-01-17
 
 ### Changed

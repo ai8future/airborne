@@ -284,6 +284,8 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 		return status.Error(codes.Internal, sanitize.SanitizeForClient(err))
 	}
 
+	var accumulatedText strings.Builder
+
 	// Send RAG citations first if we have them
 	for _, chunk := range prepared.ragChunks {
 		snippet := chunk.Text
@@ -322,6 +324,7 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 					},
 				},
 			}
+			accumulatedText.WriteString(chunk.Text)
 		case provider.ChunkTypeUsage:
 			pbChunk = &pb.GenerateReplyChunk{
 				Chunk: &pb.GenerateReplyChunk_UsageUpdate{
@@ -370,6 +373,10 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 					}
 				}
 			}
+
+			// Check for image generation trigger in accumulated response
+			generatedImages := s.processImageGeneration(ctx, accumulatedText.String())
+
 			complete := &pb.StreamComplete{
 				ResponseId:         chunk.ResponseID,
 				Model:              chunk.Model,
@@ -382,6 +389,9 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 			}
 			for _, ce := range chunk.CodeExecutions {
 				complete.CodeExecutions = append(complete.CodeExecutions, convertCodeExecution(ce))
+			}
+			for _, img := range generatedImages {
+				complete.Images = append(complete.Images, convertGeneratedImage(img))
 			}
 			pbChunk = &pb.GenerateReplyChunk{
 				Chunk: &pb.GenerateReplyChunk_Complete{
