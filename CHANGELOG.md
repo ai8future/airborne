@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.11] - 2026-01-17
+
+### Fixed
+- **tenant_not_found Test** (`internal/auth/tenant_interceptor_test.go`):
+  - Fixed test case that expected NotFound error when tenant doesn't exist
+  - Test now provides metadata context with `x-tenant-id` header so the stream interceptor extracts tenant from metadata (matching production behavior)
+  - Previously the test used `context.Background()` with no metadata, causing fallback to single-tenant mode instead of triggering the expected NotFound error
+
+Agent: Claude:Opus 4.5
+
 ## [1.1.10] - 2026-01-17
 
 ### Added

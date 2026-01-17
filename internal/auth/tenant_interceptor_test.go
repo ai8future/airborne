@@ -8,6 +8,7 @@ import (
 	"github.com/ai8future/airborne/internal/tenant"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -348,6 +349,7 @@ func TestStreamInterceptor_TenantExtraction(t *testing.T) {
 		name         string
 		tenants      map[string]tenant.TenantConfig
 		recvMsg      *pb.GenerateReplyRequest
+		useMetadata  bool // if true, add tenant ID to metadata context
 		wantErr      bool
 		wantCode     codes.Code
 		wantTenantID string
@@ -385,9 +387,10 @@ func TestStreamInterceptor_TenantExtraction(t *testing.T) {
 			tenants: map[string]tenant.TenantConfig{
 				"existing": {TenantID: "existing"},
 			},
-			recvMsg:  &pb.GenerateReplyRequest{TenantId: "nonexistent"},
-			wantErr:  true,
-			wantCode: codes.NotFound,
+			recvMsg:     &pb.GenerateReplyRequest{TenantId: "nonexistent"},
+			useMetadata: true, // Use metadata so interceptor extracts tenant from header
+			wantErr:     true,
+			wantCode:    codes.NotFound,
 		},
 	}
 
@@ -397,9 +400,16 @@ func TestStreamInterceptor_TenantExtraction(t *testing.T) {
 			interceptor := NewTenantInterceptor(mgr)
 			streamInterceptor := interceptor.StreamInterceptor()
 
+			// Build context - with metadata if specified, otherwise plain background
+			ctx := context.Background()
+			if tt.useMetadata && tt.recvMsg != nil && tt.recvMsg.TenantId != "" {
+				md := metadata.Pairs("x-tenant-id", tt.recvMsg.TenantId)
+				ctx = metadata.NewIncomingContext(ctx, md)
+			}
+
 			info := &grpc.StreamServerInfo{FullMethod: "/aibox.v1.ChatService/GenerateReplyStream"}
 			ss := &mockServerStream{
-				ctx:     context.Background(),
+				ctx:     ctx,
 				recvMsg: tt.recvMsg,
 			}
 
