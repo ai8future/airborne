@@ -12,16 +12,33 @@ import (
 
 // Config holds all server configuration
 type Config struct {
-	Server      ServerConfig              `yaml:"server"`
-	TLS         TLSConfig                 `yaml:"tls"`
-	Redis       RedisConfig               `yaml:"redis"`
-	Auth        AuthConfig                `yaml:"auth"`
-	RateLimits  RateLimitConfig           `yaml:"rate_limits"`
-	Providers   map[string]ProviderConfig `yaml:"providers"`
-	Failover    FailoverConfig            `yaml:"failover"`
-	Logging     LoggingConfig             `yaml:"logging"`
-	StartupMode StartupMode               `yaml:"startup_mode"`
-	RAG         RAGConfig                 `yaml:"rag"`
+	Server          ServerConfig              `yaml:"server"`
+	TLS             TLSConfig                 `yaml:"tls"`
+	Redis           RedisConfig               `yaml:"redis"`
+	Database        DatabaseConfig            `yaml:"database"`
+	Admin           AdminConfig               `yaml:"admin"`
+	Auth            AuthConfig                `yaml:"auth"`
+	RateLimits      RateLimitConfig           `yaml:"rate_limits"`
+	Providers       map[string]ProviderConfig `yaml:"providers"`
+	Failover        FailoverConfig            `yaml:"failover"`
+	Logging         LoggingConfig             `yaml:"logging"`
+	StartupMode     StartupMode               `yaml:"startup_mode"`
+	RAG             RAGConfig                 `yaml:"rag"`
+	MarkdownSvcAddr string                    `yaml:"markdown_svc_addr"`
+}
+
+// DatabaseConfig holds PostgreSQL connection settings
+type DatabaseConfig struct {
+	Enabled        bool   `yaml:"enabled"`
+	URL            string `yaml:"url"`
+	MaxConnections int    `yaml:"max_connections"`
+	LogQueries     bool   `yaml:"log_queries"`
+}
+
+// AdminConfig holds HTTP admin server settings
+type AdminConfig struct {
+	Enabled bool `yaml:"enabled"`
+	Port    int  `yaml:"port"`
 }
 
 // RAGConfig holds RAG (Retrieval-Augmented Generation) settings
@@ -138,6 +155,15 @@ func defaultConfig() *Config {
 			Addr: "localhost:6379",
 			DB:   0,
 		},
+		Database: DatabaseConfig{
+			Enabled:        false,
+			MaxConnections: 10,
+			LogQueries:     false,
+		},
+		Admin: AdminConfig{
+			Enabled: false,
+			Port:    50052,
+		},
 		Auth: AuthConfig{
 			AuthMode: "static",
 		},
@@ -227,6 +253,48 @@ func (c *Config) applyEnvOverrides() {
 		}
 	}
 
+	// Database configuration
+	if enabled := os.Getenv("DATABASE_ENABLED"); enabled != "" {
+		if v, err := strconv.ParseBool(enabled); err == nil {
+			c.Database.Enabled = v
+		} else {
+			slog.Warn("invalid DATABASE_ENABLED, using default", "value", enabled, "error", err)
+		}
+	}
+	if url := os.Getenv("DATABASE_URL"); url != "" {
+		c.Database.URL = url
+	}
+	if maxConn := os.Getenv("DATABASE_MAX_CONNECTIONS"); maxConn != "" {
+		if n, err := strconv.Atoi(maxConn); err == nil {
+			c.Database.MaxConnections = n
+		} else {
+			slog.Warn("invalid DATABASE_MAX_CONNECTIONS, using default", "value", maxConn, "error", err)
+		}
+	}
+	if logQueries := os.Getenv("DATABASE_LOG_QUERIES"); logQueries != "" {
+		if v, err := strconv.ParseBool(logQueries); err == nil {
+			c.Database.LogQueries = v
+		} else {
+			slog.Warn("invalid DATABASE_LOG_QUERIES, using default", "value", logQueries, "error", err)
+		}
+	}
+
+	// Admin HTTP server configuration
+	if enabled := os.Getenv("ADMIN_ENABLED"); enabled != "" {
+		if v, err := strconv.ParseBool(enabled); err == nil {
+			c.Admin.Enabled = v
+		} else {
+			slog.Warn("invalid ADMIN_ENABLED, using default", "value", enabled, "error", err)
+		}
+	}
+	if port := os.Getenv("ADMIN_PORT"); port != "" {
+		if p, err := strconv.Atoi(port); err == nil {
+			c.Admin.Port = p
+		} else {
+			slog.Warn("invalid ADMIN_PORT, using default", "value", port, "error", err)
+		}
+	}
+
 	if token := os.Getenv("AIRBORNE_ADMIN_TOKEN"); token != "" {
 		c.Auth.AdminToken = token
 	}
@@ -288,11 +356,17 @@ func (c *Config) applyEnvOverrides() {
 			slog.Warn("invalid RAG_RETRIEVAL_TOP_K, using default", "value", topK, "error", err)
 		}
 	}
+
+	// Markdown service configuration
+	if addr := os.Getenv("MARKDOWN_SVC_ADDR"); addr != "" {
+		c.MarkdownSvcAddr = addr
+	}
 }
 
 // expandEnvVars expands ${VAR} patterns in string fields
 func (c *Config) expandEnvVars() {
 	c.Redis.Password = expandEnv(c.Redis.Password)
+	c.Database.URL = expandEnv(c.Database.URL)
 	c.Auth.AdminToken = expandEnv(c.Auth.AdminToken)
 	c.TLS.CertFile = expandEnv(c.TLS.CertFile)
 	c.TLS.KeyFile = expandEnv(c.TLS.KeyFile)

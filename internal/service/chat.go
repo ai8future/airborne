@@ -9,8 +9,11 @@ import (
 	"time"
 
 	"github.com/ai8future/airborne/internal/auth"
+	"github.com/ai8future/airborne/internal/db"
 	sanitize "github.com/ai8future/airborne/internal/errors"
 	"github.com/ai8future/airborne/internal/imagegen"
+	"github.com/ai8future/airborne/internal/markdownsvc"
+	"github.com/ai8future/airborne/internal/pricing"
 	"github.com/ai8future/airborne/internal/provider"
 	"github.com/ai8future/airborne/internal/provider/anthropic"
 	"github.com/ai8future/airborne/internal/provider/gemini"
@@ -18,6 +21,7 @@ import (
 	"github.com/ai8future/airborne/internal/rag"
 	"github.com/ai8future/airborne/internal/validation"
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
+	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -27,9 +31,9 @@ const (
 	ragSnippetMaxLen = 200
 )
 
-// ChatService implements the AIBoxService gRPC service.
+// ChatService implements the AirborneService gRPC service.
 type ChatService struct {
-	pb.UnimplementedAIBoxServiceServer
+	pb.UnimplementedAirborneServiceServer
 
 	openaiProvider    provider.Provider
 	geminiProvider    provider.Provider
@@ -37,12 +41,14 @@ type ChatService struct {
 	rateLimiter       *auth.RateLimiter
 	ragService        *rag.Service
 	imageGen          *imagegen.Client
+	repo              *db.Repository // Optional: message persistence
 }
 
 // NewChatService creates a new chat service.
 // The ragService parameter is optional - pass nil to disable self-hosted RAG.
 // The imageGen parameter is optional - pass nil to disable image generation.
-func NewChatService(rateLimiter *auth.RateLimiter, ragService *rag.Service, imageGen *imagegen.Client) *ChatService {
+// The repo parameter is optional - pass nil to disable message persistence.
+func NewChatService(rateLimiter *auth.RateLimiter, ragService *rag.Service, imageGen *imagegen.Client, repo *db.Repository) *ChatService {
 	return &ChatService{
 		openaiProvider:    openai.NewClient(),
 		geminiProvider:    gemini.NewClient(),
@@ -50,6 +56,7 @@ func NewChatService(rateLimiter *auth.RateLimiter, ragService *rag.Service, imag
 		rateLimiter:       rateLimiter,
 		ragService:        ragService,
 		imageGen:          imageGen,
+		repo:              repo,
 	}
 }
 
@@ -226,7 +233,17 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 				prepared.params.Config = s.buildProviderConfig(ctx, req, fallbackProvider.Name())
 				fallbackResult, fallbackErr := fallbackProvider.GenerateReply(ctx, prepared.params)
 				if fallbackErr == nil {
-					return s.buildResponse(fallbackResult, fallbackProvider.Name(), true, prepared.provider.Name(), sanitize.SanitizeForClient(err)), nil
+					// Render HTML for fallback result if markdown_svc is enabled
+					var fallbackHTML string
+					if markdownsvc.IsEnabled() {
+						html, renderErr := markdownsvc.RenderHTML(ctx, fallbackResult.Text)
+						if renderErr == nil {
+							fallbackHTML = html
+						} else {
+							slog.Warn("markdown_svc render failed for fallback", "error", renderErr)
+						}
+					}
+					return s.buildResponse(fallbackResult, fallbackProvider.Name(), true, prepared.provider.Name(), sanitize.SanitizeForClient(err), fallbackHTML), nil
 				}
 				// Return original error if fallback also fails
 			}
@@ -260,11 +277,27 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 		result.Images = generatedImages
 	}
 
-	return s.buildResponse(result, prepared.provider.Name(), false, "", ""), nil
+	// Render HTML if markdown_svc is enabled
+	var htmlContent string
+	if markdownsvc.IsEnabled() {
+		html, err := markdownsvc.RenderHTML(ctx, result.Text)
+		if err == nil {
+			htmlContent = html
+		} else {
+			slog.Warn("markdown_svc render failed", "error", err)
+		}
+	}
+
+	// Persist conversation asynchronously (if repository is configured)
+	if s.repo != nil && result.Usage != nil {
+		s.persistConversation(ctx, req, result, prepared.provider.Name(), prepared.providerCfg.Model)
+	}
+
+	return s.buildResponse(result, prepared.provider.Name(), false, "", "", htmlContent), nil
 }
 
 // GenerateReplyStream generates a streaming completion.
-func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream pb.AIBoxService_GenerateReplyStreamServer) error {
+func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream pb.AirborneService_GenerateReplyStreamServer) error {
 	ctx := stream.Context()
 
 	// Check permission
@@ -377,12 +410,24 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 			// Check for image generation trigger in accumulated response
 			generatedImages := s.processImageGeneration(ctx, accumulatedText.String())
 
+			// Render HTML if markdown_svc is enabled
+			var htmlContent string
+			if markdownsvc.IsEnabled() {
+				html, renderErr := markdownsvc.RenderHTML(ctx, accumulatedText.String())
+				if renderErr == nil {
+					htmlContent = html
+				} else {
+					slog.Warn("markdown_svc render failed for stream", "error", renderErr)
+				}
+			}
+
 			complete := &pb.StreamComplete{
 				ResponseId:         chunk.ResponseID,
 				Model:              chunk.Model,
 				Provider:           mapProviderToProto(prepared.provider.Name()),
 				FinalUsage:         convertUsage(chunk.Usage),
 				RequiresToolOutput: chunk.RequiresToolOutput,
+				HtmlContent:        htmlContent,
 			}
 			for _, tc := range chunk.ToolCalls {
 				complete.ToolCalls = append(complete.ToolCalls, convertToolCall(tc))
@@ -643,9 +688,10 @@ func ragChunksToCitations(chunks []rag.RetrieveResult) []provider.Citation {
 }
 
 // buildResponse builds a gRPC response from provider result.
-func (s *ChatService) buildResponse(result provider.GenerateResult, providerName string, failedOver bool, originalProvider, originalError string) *pb.GenerateReplyResponse {
+func (s *ChatService) buildResponse(result provider.GenerateResult, providerName string, failedOver bool, originalProvider, originalError, htmlContent string) *pb.GenerateReplyResponse {
 	resp := &pb.GenerateReplyResponse{
 		Text:               result.Text,
+		HtmlContent:        htmlContent,
 		ResponseId:         result.ResponseID,
 		Usage:              convertUsage(result.Usage),
 		Model:              result.Model,
@@ -885,4 +931,74 @@ func convertGeneratedImage(img provider.GeneratedImage) *pb.GeneratedImage {
 		Height:    int32(img.Height),
 		ContentId: img.ContentID,
 	}
+}
+
+// persistConversation saves the conversation turn to the database asynchronously.
+// This runs in a goroutine to avoid blocking the response.
+func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateReplyRequest, result provider.GenerateResult, providerName, model string) {
+	// Extract tenant and user info from context
+	tenantID := auth.TenantIDFromContext(ctx)
+	if tenantID == "" {
+		tenantID = "default"
+	}
+
+	userID := ""
+	if client := auth.ClientFromContext(ctx); client != nil {
+		userID = client.ClientID
+	}
+	if userID == "" {
+		userID = req.ClientId
+	}
+	if userID == "" {
+		userID = "anonymous"
+	}
+
+	// Generate or use existing thread ID
+	// Use request ID as thread ID for now (can be extended with proper thread management)
+	threadID, err := uuid.Parse(req.RequestId)
+	if err != nil {
+		threadID = uuid.New()
+	}
+
+	// Calculate cost
+	inputTokens := 0
+	outputTokens := 0
+	if result.Usage != nil {
+		inputTokens = int(result.Usage.InputTokens)
+		outputTokens = int(result.Usage.OutputTokens)
+	}
+	costUSD := pricing.CalculateCost(model, inputTokens, outputTokens)
+
+	// Processing time (we don't have this in current flow, use 0)
+	processingTimeMs := 0
+
+	// Run persistence in background goroutine
+	go func() {
+		// Create a new context with timeout for the background operation
+		persistCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		err := s.repo.PersistConversationTurn(
+			persistCtx,
+			threadID,
+			tenantID,
+			userID,
+			req.UserInput,
+			result.Text,
+			providerName,
+			model,
+			result.ResponseID,
+			inputTokens,
+			outputTokens,
+			processingTimeMs,
+			costUSD,
+		)
+		if err != nil {
+			slog.Error("failed to persist conversation",
+				"error", err,
+				"thread_id", threadID,
+				"tenant_id", tenantID,
+			)
+		}
+	}()
 }

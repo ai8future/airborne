@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -13,7 +14,9 @@ import (
 	"time"
 
 	airbornev1 "github.com/ai8future/airborne/gen/go/airborne/v1"
+	"github.com/ai8future/airborne/internal/admin"
 	"github.com/ai8future/airborne/internal/config"
+	"github.com/ai8future/airborne/internal/markdownsvc"
 	"github.com/ai8future/airborne/internal/server"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -60,8 +63,14 @@ func main() {
 		"grpc_port", cfg.Server.GRPCPort,
 	)
 
+	// Initialize markdown_svc client (optional service)
+	if err := markdownsvc.Initialize(cfg.MarkdownSvcAddr); err != nil {
+		slog.Error("markdownsvc init failed", "error", err)
+	}
+	defer markdownsvc.Close()
+
 	// Create gRPC server
-	grpcServer, _, err := server.NewGRPCServer(cfg, server.VersionInfo{
+	grpcServer, components, err := server.NewGRPCServer(cfg, server.VersionInfo{
 		Version:   Version,
 		GitCommit: GitCommit,
 		BuildTime: BuildTime,
@@ -70,6 +79,7 @@ func main() {
 		slog.Error("failed to create gRPC server", "error", err)
 		os.Exit(1)
 	}
+	defer components.Close()
 
 	// Start listening
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.GRPCPort)
@@ -92,13 +102,33 @@ func main() {
 		}
 	}()
 
+	// Start admin HTTP server if enabled
+	var adminServer *admin.Server
+	if cfg.Admin.Enabled {
+		adminServer = admin.NewServer(components.Repository, admin.Config{
+			Port: cfg.Admin.Port,
+		})
+		go func() {
+			if err := adminServer.Start(); err != nil && err != http.ErrServerClosed {
+				slog.Error("admin server error", "error", err)
+			}
+		}()
+	}
+
 	// Wait for shutdown signal
 	<-ctx.Done()
-	slog.Info("shutdown signal received, stopping server...")
+	slog.Info("shutdown signal received, stopping servers...")
 
 	// Graceful shutdown
+	if adminServer != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := adminServer.Shutdown(shutdownCtx); err != nil {
+			slog.Error("admin server shutdown error", "error", err)
+		}
+	}
 	grpcServer.GracefulStop()
-	slog.Info("server stopped")
+	slog.Info("servers stopped")
 }
 
 // configureLogger sets up the default slog logger based on config values

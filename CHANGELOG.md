@@ -2,6 +2,46 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.15] - 2026-01-18
+
+### Added
+- **PostgreSQL Message Persistence** (`internal/db/`):
+  - `postgres.go`: Connection pool management with pgx/v5 driver
+  - `models.go`: Thread, Message, and ActivityEntry data models
+  - `repository.go`: CRUD operations for threads/messages, activity feed queries
+  - Async persistence via goroutines to avoid blocking gRPC responses
+
+- **Database Schema** (`migrations/001_initial_schema.sql`):
+  - `threads` table: Conversation threads with tenant, user, title, token/cost tracking
+  - `messages` table: Individual messages with role, content, provider, model, tokens, cost
+  - Automatic thread cost aggregation via triggers
+  - Performance indexes for tenant/user/time queries
+  - `activity_feed` view for efficient dashboard queries
+
+- **Pricing Module** (`internal/pricing/pricing.go`):
+  - Cost calculation for all supported LLM models
+  - Support for Anthropic (Claude), OpenAI (GPT-4, GPT-3.5), Google (Gemini) models
+  - Per-token pricing based on input/output token counts
+
+- **Admin HTTP Server** (`internal/admin/server.go`):
+  - REST endpoint: `GET /admin/activity` - Returns recent activity with filtering
+  - REST endpoint: `GET /admin/health` - Health check
+  - Configurable via `admin.enabled` and `admin.port` in config
+
+- **Next.js Dashboard** (`dashboard/`):
+  - Next.js 16 + React 19 + Tailwind CSS v4 stack
+  - Live Activity Feed with 3-second polling
+  - Pause/Resume/Clear controls
+  - Provider color coding (Anthropic amber, Gemini cyan, OpenAI emerald)
+  - Content modal for viewing full message details
+  - Displays: tenant, tokens (in/out/total), cost, thread cost, model, duration
+
+- **Configuration Extensions** (`internal/config/config.go`):
+  - `DatabaseConfig`: PostgreSQL connection settings (url, max_connections, log_queries)
+  - `AdminConfig`: HTTP admin server settings (enabled, port)
+
+Agent: Claude:Opus 4.5
+
 ## [1.1.14] - 2026-01-17
 
 ### Added

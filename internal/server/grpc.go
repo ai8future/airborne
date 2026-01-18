@@ -10,6 +10,7 @@ import (
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/auth"
 	"github.com/ai8future/airborne/internal/config"
+	"github.com/ai8future/airborne/internal/db"
 	"github.com/ai8future/airborne/internal/imagegen"
 	"github.com/ai8future/airborne/internal/rag"
 	"github.com/ai8future/airborne/internal/rag/embedder"
@@ -38,6 +39,8 @@ type ServerComponents struct {
 	RateLimiter *auth.RateLimiter
 	TenantMgr   *tenant.Manager
 	RedisClient *redis.Client
+	DBClient    *db.Client
+	Repository  *db.Repository
 }
 
 // NewGRPCServer creates a new gRPC server with all services registered
@@ -190,9 +193,28 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, *Serv
 	// Create image generation client
 	imageGenClient := imagegen.NewClient()
 
+	// Initialize database if enabled
+	var dbClient *db.Client
+	var repo *db.Repository
+	if cfg.Database.Enabled {
+		var dbErr error
+		dbClient, dbErr = db.NewClient(context.Background(), db.Config{
+			URL:            cfg.Database.URL,
+			MaxConnections: cfg.Database.MaxConnections,
+			LogQueries:     cfg.Database.LogQueries,
+		})
+		if dbErr != nil {
+			slog.Error("failed to connect to database", "error", dbErr)
+			// Continue without database - it's optional
+		} else {
+			repo = db.NewRepository(dbClient)
+			slog.Info("database connection established for message persistence")
+		}
+	}
+
 	// Register services
-	chatService := service.NewChatService(rateLimiter, ragService, imageGenClient)
-	pb.RegisterAIBoxServiceServer(server, chatService)
+	chatService := service.NewChatService(rateLimiter, ragService, imageGenClient, repo)
+	pb.RegisterAirborneServiceServer(server, chatService)
 
 	adminService := service.NewAdminService(redisClient, service.AdminServiceConfig{
 		Version:   version.Version,
@@ -225,9 +247,18 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, *Serv
 		RateLimiter: rateLimiter,
 		TenantMgr:   tenantMgr,
 		RedisClient: redisClient,
+		DBClient:    dbClient,
+		Repository:  repo,
 	}
 
 	return server, components, nil
+}
+
+// Close closes all server components that need cleanup.
+func (c *ServerComponents) Close() {
+	if c.DBClient != nil {
+		c.DBClient.Close()
+	}
 }
 
 // recoveryInterceptor recovers from panics in unary handlers
@@ -287,7 +318,7 @@ func loggingInterceptor() grpc.UnaryServerInterceptor {
 		}
 
 		// Skip logging for health checks
-		if info.FullMethod != "/aibox.v1.AdminService/Health" {
+		if info.FullMethod != "/airborne.v1.AdminService/Health" {
 			slog.Info("gRPC request",
 				"method", info.FullMethod,
 				"duration_ms", duration.Milliseconds(),
