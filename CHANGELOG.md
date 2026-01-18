@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.7] - 2026-01-18
+
+### Added
+- **Test AI Connection Panel** for dashboard:
+  - New `POST /admin/test` endpoint sends test messages to AI providers via gRPC
+  - Dashboard API route `/api/test` proxies requests to admin server
+  - `TestPanel.tsx` component with provider selector (Gemini/OpenAI/Anthropic)
+  - Displays response text, model, tokens, and processing time
+  - Gemini is default provider for testing
+
+- **Admin Server Enhancements**:
+  - Admin server now has gRPC client to call back to main service
+  - Lazy initialization of gRPC connection
+  - Auth token passed via gRPC metadata
+
+Agent: Claude:Opus 4.5
+
 ## [1.2.6] - 2026-01-18
 
 ### Added

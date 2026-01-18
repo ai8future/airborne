@@ -105,8 +105,17 @@ func main() {
 	// Start admin HTTP server if enabled
 	var adminServer *admin.Server
 	if cfg.Admin.Enabled {
+		// Build gRPC address for the test endpoint
+		grpcHost := cfg.Server.Host
+		if grpcHost == "" || grpcHost == "0.0.0.0" {
+			grpcHost = "127.0.0.1"
+		}
+		grpcAddr := fmt.Sprintf("%s:%d", grpcHost, cfg.Server.GRPCPort)
+
 		adminServer = admin.NewServer(components.Repository, admin.Config{
-			Port: cfg.Admin.Port,
+			Port:      cfg.Admin.Port,
+			GRPCAddr:  grpcAddr,
+			AuthToken: cfg.Auth.AdminToken,
 		})
 		go func() {
 			if err := adminServer.Start(); err != nil && err != http.ErrServerClosed {

@@ -11,27 +11,39 @@ import (
 	"strings"
 	"time"
 
+	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/db"
 	"github.com/google/uuid"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 // Server is the HTTP admin server for operational endpoints.
 type Server struct {
-	repo   *db.Repository
-	server *http.Server
-	port   int
+	repo       *db.Repository
+	server     *http.Server
+	port       int
+	grpcAddr   string
+	authToken  string
+	grpcConn   *grpc.ClientConn
+	grpcClient pb.AirborneServiceClient
 }
 
 // Config holds admin server configuration.
 type Config struct {
-	Port int
+	Port      int
+	GRPCAddr  string // Address of the gRPC server (e.g., "localhost:50051")
+	AuthToken string // Auth token for gRPC calls
 }
 
 // NewServer creates a new admin HTTP server.
 func NewServer(repo *db.Repository, cfg Config) *Server {
 	s := &Server{
-		repo: repo,
-		port: cfg.Port,
+		repo:      repo,
+		port:      cfg.Port,
+		grpcAddr:  cfg.GRPCAddr,
+		authToken: cfg.AuthToken,
 	}
 
 	mux := http.NewServeMux()
@@ -56,6 +68,7 @@ func NewServer(repo *db.Repository, cfg Config) *Server {
 	mux.HandleFunc("/admin/activity", corsHandler(s.handleActivity))
 	mux.HandleFunc("/admin/debug/", corsHandler(s.handleDebug))
 	mux.HandleFunc("/admin/health", corsHandler(s.handleHealth))
+	mux.HandleFunc("/admin/test", corsHandler(s.handleTest))
 
 	s.server = &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
@@ -76,6 +89,9 @@ func (s *Server) Start() error {
 
 // Shutdown gracefully shuts down the server.
 func (s *Server) Shutdown(ctx context.Context) error {
+	if s.grpcConn != nil {
+		s.grpcConn.Close()
+	}
 	return s.server.Shutdown(ctx)
 }
 
@@ -259,4 +275,150 @@ func (s *Server) handleDebug(w http.ResponseWriter, r *http.Request) {
 	// Return debug data
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(data)
+}
+
+// TestRequest is the request body for the test endpoint.
+type TestRequest struct {
+	Prompt   string `json:"prompt"`
+	TenantID string `json:"tenant_id,omitempty"`
+	Provider string `json:"provider,omitempty"` // "gemini", "openai", "anthropic"
+}
+
+// TestResponse is the response from the test endpoint.
+type TestResponse struct {
+	Reply         string `json:"reply"`
+	Provider      string `json:"provider"`
+	Model         string `json:"model"`
+	InputTokens   int    `json:"input_tokens"`
+	OutputTokens  int    `json:"output_tokens"`
+	ProcessingMs  int64  `json:"processing_ms"`
+	Error         string `json:"error,omitempty"`
+}
+
+// getGRPCClient lazily initializes the gRPC client.
+func (s *Server) getGRPCClient() (pb.AirborneServiceClient, error) {
+	if s.grpcClient != nil {
+		return s.grpcClient, nil
+	}
+
+	if s.grpcAddr == "" {
+		return nil, fmt.Errorf("gRPC address not configured")
+	}
+
+	conn, err := grpc.NewClient(s.grpcAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to gRPC server: %w", err)
+	}
+
+	s.grpcConn = conn
+	s.grpcClient = pb.NewAirborneServiceClient(conn)
+	return s.grpcClient, nil
+}
+
+// handleTest sends a test message to the AI service.
+// POST /admin/test
+// Body: {"prompt": "Hello", "tenant_id": "optional", "provider": "gemini"}
+func (s *Server) handleTest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse request body
+	var req TestRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(TestResponse{
+			Error: "invalid request body: " + err.Error(),
+		})
+		return
+	}
+
+	if strings.TrimSpace(req.Prompt) == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(TestResponse{
+			Error: "prompt is required",
+		})
+		return
+	}
+
+	// Get gRPC client
+	client, err := s.getGRPCClient()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(TestResponse{
+			Error: err.Error(),
+		})
+		return
+	}
+
+	// Build gRPC request
+	grpcReq := &pb.GenerateReplyRequest{
+		Instructions: "You are a helpful assistant. Respond concisely.",
+		UserInput:    req.Prompt,
+		TenantId:     req.TenantID,
+		ClientId:     "dashboard-test",
+		RequestId:    uuid.New().String(),
+	}
+
+	// Set provider if specified
+	switch strings.ToLower(req.Provider) {
+	case "gemini", "":
+		grpcReq.PreferredProvider = pb.Provider_PROVIDER_GEMINI
+	case "openai":
+		grpcReq.PreferredProvider = pb.Provider_PROVIDER_OPENAI
+	case "anthropic":
+		grpcReq.PreferredProvider = pb.Provider_PROVIDER_ANTHROPIC
+	}
+
+	// Add auth token to context
+	ctx := r.Context()
+	if s.authToken != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+s.authToken)
+	}
+
+	// Set timeout
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	start := time.Now()
+
+	// Make gRPC call
+	resp, err := client.GenerateReply(ctx, grpcReq)
+	if err != nil {
+		slog.Error("test gRPC call failed", "error", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK) // Return 200 with error in body
+		json.NewEncoder(w).Encode(TestResponse{
+			Error: "gRPC call failed: " + err.Error(),
+		})
+		return
+	}
+
+	processingMs := time.Since(start).Milliseconds()
+
+	// Extract token usage
+	var inputTokens, outputTokens int
+	if resp.Usage != nil {
+		inputTokens = int(resp.Usage.InputTokens)
+		outputTokens = int(resp.Usage.OutputTokens)
+	}
+
+	// Convert provider enum to friendly string
+	providerName := strings.ToLower(strings.TrimPrefix(resp.Provider.String(), "PROVIDER_"))
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(TestResponse{
+		Reply:        resp.Text,
+		Provider:     providerName,
+		Model:        resp.Model,
+		InputTokens:  inputTokens,
+		OutputTokens: outputTokens,
+		ProcessingMs: processingMs,
+	})
 }
