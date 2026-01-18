@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import DebugModal from "./DebugModal";
 
 interface ActivityEntry {
   id: string;
@@ -27,6 +28,7 @@ export default function ActivityPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<ActivityEntry | null>(null);
+  const [debugMessageId, setDebugMessageId] = useState<string | null>(null);
 
   // Fetch activity from backend
   const fetchActivity = useCallback(async () => {
@@ -149,6 +151,7 @@ export default function ActivityPanel() {
                     Cost
                   </th>
                   <th className="w-28 px-2 py-3 text-center align-bottom">Model</th>
+                  <th className="w-10 px-2 py-3"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -238,6 +241,20 @@ export default function ActivityPanel() {
                           </span>
                         )}
                       </td>
+
+                      {/* Inspect button */}
+                      <td className="px-2 py-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDebugMessageId(entry.id);
+                          }}
+                          className="p-1 text-purple-500 hover:text-purple-700 hover:bg-purple-50 rounded transition-colors"
+                          title="Inspect AI request/response"
+                        >
+                          <InspectIcon />
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -247,8 +264,11 @@ export default function ActivityPanel() {
         </div>
       </div>
 
-      {/* Content Modal */}
+      {/* Content Modal (quick view on row click) */}
       {selectedEntry && <ContentModal entry={selectedEntry} onClose={() => setSelectedEntry(null)} />}
+
+      {/* Debug Modal (full request/response inspector) */}
+      {debugMessageId && <DebugModal messageId={debugMessageId} onClose={() => setDebugMessageId(null)} />}
     </div>
   );
 }
@@ -373,6 +393,20 @@ function CloseIcon() {
   return (
     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  );
+}
+
+function InspectIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+      />
     </svg>
   );
 }

@@ -45,6 +45,11 @@ type Message struct {
 	Citations        *string    `json:"citations,omitempty"` // JSONB stored as string
 	CreatedAt        time.Time  `json:"created_at"`
 	Metadata         *string    `json:"metadata,omitempty"` // JSONB stored as string
+
+	// Debug fields (for request/response inspection)
+	SystemPrompt    *string `json:"system_prompt,omitempty"`
+	RawRequestJSON  *string `json:"raw_request_json,omitempty"`
+	RawResponseJSON *string `json:"raw_response_json,omitempty"`
 }
 
 // MessageRole constants
@@ -73,6 +78,42 @@ type ActivityEntry struct {
 	ProcessingTimeMs int       `json:"processing_time_ms"`
 	Status           string    `json:"status"` // success, failed
 	Timestamp        time.Time `json:"timestamp"`
+}
+
+// DebugData contains the complete request/response data for a conversation turn.
+// Used by the admin dashboard debug inspector modal.
+type DebugData struct {
+	// Metadata
+	MessageID uuid.UUID `json:"message_id"`
+	ThreadID  uuid.UUID `json:"thread_id"`
+	TenantID  string    `json:"tenant_id"`
+	UserID    string    `json:"user_id"`
+	Timestamp time.Time `json:"timestamp"`
+
+	// Request (what was sent to AI)
+	SystemPrompt     string `json:"system_prompt"`
+	UserInput        string `json:"user_input"`
+	RequestModel     string `json:"request_model"`
+	RequestProvider  string `json:"request_provider"`
+	RequestTimestamp string `json:"request_timestamp"`
+
+	// Response (what came back from AI)
+	ResponseText     string  `json:"response_text"`
+	ResponseModel    string  `json:"response_model"`
+	TokensIn         int     `json:"tokens_in"`
+	TokensOut        int     `json:"tokens_out"`
+	CostUSD          float64 `json:"cost_usd"`
+	DurationMs       int     `json:"duration_ms"`
+	ResponseID       string  `json:"response_id,omitempty"`
+	Citations        string  `json:"citations,omitempty"`
+
+	// Raw HTTP payloads (for JSON view)
+	RawRequestJSON  string `json:"raw_request_json,omitempty"`
+	RawResponseJSON string `json:"raw_response_json,omitempty"`
+
+	// Status
+	Status string `json:"status"` // success, failed
+	Error  string `json:"error,omitempty"`
 }
 
 // Citation represents a web or file search citation.

@@ -98,8 +98,9 @@ func (r *Repository) CreateMessage(ctx context.Context, msg *Message) error {
 		INSERT INTO airborne_messages (
 			id, thread_id, role, content, provider, model, response_id,
 			input_tokens, output_tokens, total_tokens, cost_usd,
-			processing_time_ms, citations, created_at, metadata
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+			processing_time_ms, citations, created_at, metadata,
+			system_prompt, raw_request_json, raw_response_json
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 	`
 	r.client.logQuery(query, msg.ID, msg.ThreadID, msg.Role)
 
@@ -119,6 +120,9 @@ func (r *Repository) CreateMessage(ctx context.Context, msg *Message) error {
 		msg.Citations,
 		msg.CreatedAt,
 		msg.Metadata,
+		msg.SystemPrompt,
+		msg.RawRequestJSON,
+		msg.RawResponseJSON,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create message: %w", err)
@@ -311,9 +315,21 @@ func (r *Repository) GetActivityFeedByTenant(ctx context.Context, tenantID strin
 	return entries, nil
 }
 
+// DebugInfo contains debug data to store alongside messages.
+type DebugInfo struct {
+	SystemPrompt    string
+	RawRequestJSON  string
+	RawResponseJSON string
+}
+
 // PersistConversationTurn saves both user and assistant messages in a transaction.
 // This is the main entry point for chat service persistence.
 func (r *Repository) PersistConversationTurn(ctx context.Context, threadID uuid.UUID, tenantID, userID string, userContent, assistantContent, provider, model, responseID string, inputTokens, outputTokens, processingTimeMs int, costUSD float64) error {
+	return r.PersistConversationTurnWithDebug(ctx, threadID, tenantID, userID, userContent, assistantContent, provider, model, responseID, inputTokens, outputTokens, processingTimeMs, costUSD, nil)
+}
+
+// PersistConversationTurnWithDebug saves both user and assistant messages with optional debug data.
+func (r *Repository) PersistConversationTurnWithDebug(ctx context.Context, threadID uuid.UUID, tenantID, userID string, userContent, assistantContent, provider, model, responseID string, inputTokens, outputTokens, processingTimeMs int, costUSD float64, debug *DebugInfo) error {
 	tx, err := r.client.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -349,16 +365,32 @@ func (r *Repository) PersistConversationTurn(ctx context.Context, threadID uuid.
 		return fmt.Errorf("failed to insert user message: %w", err)
 	}
 
-	// Insert assistant message with full metrics
+	// Insert assistant message with full metrics and optional debug data
 	assistantMsgID := uuid.New()
 	totalTokens := inputTokens + outputTokens
+
+	var systemPrompt, rawReqJSON, rawRespJSON *string
+	if debug != nil {
+		if debug.SystemPrompt != "" {
+			systemPrompt = &debug.SystemPrompt
+		}
+		if debug.RawRequestJSON != "" {
+			rawReqJSON = &debug.RawRequestJSON
+		}
+		if debug.RawResponseJSON != "" {
+			rawRespJSON = &debug.RawResponseJSON
+		}
+	}
+
 	_, err = tx.Exec(ctx, `
 		INSERT INTO airborne_messages (
 			id, thread_id, role, content, provider, model, response_id,
-			input_tokens, output_tokens, total_tokens, cost_usd, processing_time_ms, created_at
-		) VALUES ($1, $2, 'assistant', $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+			input_tokens, output_tokens, total_tokens, cost_usd, processing_time_ms, created_at,
+			system_prompt, raw_request_json, raw_response_json
+		) VALUES ($1, $2, 'assistant', $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12, $13, $14)
 	`, assistantMsgID, threadID, assistantContent, provider, model, responseID,
-		inputTokens, outputTokens, totalTokens, costUSD, processingTimeMs)
+		inputTokens, outputTokens, totalTokens, costUSD, processingTimeMs,
+		systemPrompt, rawReqJSON, rawRespJSON)
 	if err != nil {
 		return fmt.Errorf("failed to insert assistant message: %w", err)
 	}
@@ -385,6 +417,82 @@ func (r *Repository) PersistConversationTurn(ctx context.Context, threadID uuid.
 		"cost_usd", costUSD,
 	)
 	return nil
+}
+
+// GetDebugData retrieves the full request/response debug data for a message.
+func (r *Repository) GetDebugData(ctx context.Context, messageID uuid.UUID) (*DebugData, error) {
+	query := `
+		SELECT
+			m.id,
+			m.thread_id,
+			t.tenant_id,
+			t.user_id,
+			m.created_at,
+			COALESCE(m.system_prompt, '') as system_prompt,
+			COALESCE(m.provider, '') as provider,
+			COALESCE(m.model, '') as model,
+			m.content as response_text,
+			COALESCE(m.input_tokens, 0) as tokens_in,
+			COALESCE(m.output_tokens, 0) as tokens_out,
+			COALESCE(m.cost_usd, 0) as cost_usd,
+			COALESCE(m.processing_time_ms, 0) as duration_ms,
+			COALESCE(m.response_id, '') as response_id,
+			COALESCE(m.citations, '') as citations,
+			COALESCE(m.raw_request_json::text, '') as raw_request_json,
+			COALESCE(m.raw_response_json::text, '') as raw_response_json,
+			(
+				SELECT COALESCE(content, '')
+				FROM airborne_messages
+				WHERE thread_id = m.thread_id
+					AND role = 'user'
+					AND created_at < m.created_at
+				ORDER BY created_at DESC
+				LIMIT 1
+			) as user_input
+		FROM airborne_messages m
+		JOIN airborne_threads t ON m.thread_id = t.id
+		WHERE m.id = $1 AND m.role = 'assistant'
+	`
+	r.client.logQuery(query, messageID)
+
+	var data DebugData
+	var userInput *string
+	err := r.client.pool.QueryRow(ctx, query, messageID).Scan(
+		&data.MessageID,
+		&data.ThreadID,
+		&data.TenantID,
+		&data.UserID,
+		&data.Timestamp,
+		&data.SystemPrompt,
+		&data.RequestProvider,
+		&data.ResponseModel,
+		&data.ResponseText,
+		&data.TokensIn,
+		&data.TokensOut,
+		&data.CostUSD,
+		&data.DurationMs,
+		&data.ResponseID,
+		&data.Citations,
+		&data.RawRequestJSON,
+		&data.RawResponseJSON,
+		&userInput,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, fmt.Errorf("message not found")
+		}
+		return nil, fmt.Errorf("failed to get debug data: %w", err)
+	}
+
+	// Set derived fields
+	data.RequestModel = data.ResponseModel // Model requested = model used for now
+	data.RequestTimestamp = data.Timestamp.Format("2006-01-02T15:04:05Z07:00")
+	data.Status = "success"
+	if userInput != nil {
+		data.UserInput = *userInput
+	}
+
+	return &data, nil
 }
 
 // GetOrCreateThread ensures a thread exists for the given tenant/user.

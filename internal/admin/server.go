@@ -8,9 +8,11 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ai8future/airborne/internal/db"
+	"github.com/google/uuid"
 )
 
 // Server is the HTTP admin server for operational endpoints.
@@ -52,6 +54,7 @@ func NewServer(repo *db.Repository, cfg Config) *Server {
 
 	// Register endpoints
 	mux.HandleFunc("/admin/activity", corsHandler(s.handleActivity))
+	mux.HandleFunc("/admin/debug/", corsHandler(s.handleDebug))
 	mux.HandleFunc("/admin/health", corsHandler(s.handleHealth))
 
 	s.server = &http.Server{
@@ -190,4 +193,70 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"status":   status,
 		"database": dbStatus,
 	})
+}
+
+// handleDebug returns full request/response debug data for a message.
+// GET /admin/debug/{message_id}
+func (s *Server) handleDebug(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract message ID from path: /admin/debug/{message_id}
+	path := strings.TrimPrefix(r.URL.Path, "/admin/debug/")
+	if path == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "message_id required",
+		})
+		return
+	}
+
+	messageID, err := uuid.Parse(path)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "invalid message_id format",
+		})
+		return
+	}
+
+	// Check if repository is available
+	if s.repo == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "database not configured",
+		})
+		return
+	}
+
+	// Fetch debug data
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	data, err := s.repo.GetDebugData(ctx, messageID)
+	if err != nil {
+		slog.Warn("failed to fetch debug data", "message_id", messageID, "error", err)
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(err.Error(), "not found") {
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": "debug data not found",
+			})
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+		return
+	}
+
+	// Return debug data
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(data)
 }

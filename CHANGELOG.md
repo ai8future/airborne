@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.4] - 2026-01-18
+
+### Added
+- **Request/Response Debug Inspector** for activity dashboard:
+  - New `GET /admin/debug/{message_id}` endpoint returns full request/response data
+  - Side-by-side "Parsed" view showing system prompt, user input, and AI response
+  - "JSON" view with raw HTTP request/response bodies (dark terminal theme)
+  - Inspect button (eye icon) on each activity row opens the debug modal
+
+- **Database Debug Columns** (`migrations/002_debug_columns.sql`):
+  - `system_prompt` column on airborne_messages
+  - `raw_request_json` and `raw_response_json` JSONB columns
+  - Index for messages with debug data
+
+- **Dashboard Components**:
+  - `DebugModal.tsx`: Full request/response inspector with Parsed/JSON toggle
+  - `api/debug/[id]/route.ts`: API proxy for debug endpoint
+
+- **Backend Support**:
+  - `DebugData` struct in `internal/db/models.go`
+  - `GetDebugData()` repository method with user input correlation
+  - `PersistConversationTurnWithDebug()` for storing debug data
+
+Agent: Claude:Opus 4.5
+
 ## [1.2.3] - 2026-01-18
 
 ### Changed
