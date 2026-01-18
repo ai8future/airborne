@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.3] - 2026-01-18
+
+### Changed
+- **Tenant configs now loaded from Doppler**: When `DOPPLER_TOKEN` is set,
+  tenant configurations are loaded entirely from Doppler instead of local
+  JSON files. This removes the need for `configs/*.json` tenant files.
+
+  **Doppler structure:**
+  - `code_airborne/prod/BRAND_TENANTS` - comma-separated list of brand projects
+  - `brand_email4ai/prod/AIRBORNE_TENANT_CONFIG` - full tenant config as JSON blob
+
+  **Migration:** Tenant config file (`email4ai.json`) removed. Configs now live
+  in Doppler with secrets inline (no more `ENV=` resolution needed since
+  Doppler handles secret management).
+
+- SIGHUP reload now fetches fresh configs from Doppler (clears cache first)
+- Falls back to file-based loading if `DOPPLER_TOKEN` is not set
+- Uses same retry logic as Solstice (15 attempts with exponential backoff)
+
+### Removed
+- `configs/email4ai.json` - migrated to Doppler `brand_email4ai/AIRBORNE_TENANT_CONFIG`
+
+Agent: Claude:Opus 4.5
+
 ## [1.2.2] - 2026-01-18
 
 ### Changed

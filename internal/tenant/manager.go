@@ -23,6 +23,10 @@ type ReloadDiff struct {
 
 // Load builds a Manager by loading environment config plus all tenant config files.
 // The configDir parameter can override the default configs directory.
+//
+// Tenant loading priority:
+// 1. If DOPPLER_TOKEN is set, load from Doppler (BRAND_TENANTS → AIRBORNE_TENANT_CONFIG)
+// 2. Otherwise, load from JSON/YAML files in configs directory
 func Load(configDir string) (*Manager, error) {
 	envCfg, err := loadEnv()
 	if err != nil {
@@ -35,9 +39,20 @@ func Load(configDir string) (*Manager, error) {
 		effectiveDir = envCfg.ConfigsDir
 	}
 
-	tenantCfgs, err := loadTenants(effectiveDir)
-	if err != nil {
-		return nil, err
+	var tenantCfgs map[string]TenantConfig
+
+	// Try Doppler first if configured
+	if DopplerEnabled() {
+		tenantCfgs, err = LoadTenantsFromDoppler()
+		if err != nil {
+			return nil, fmt.Errorf("doppler tenant load: %w", err)
+		}
+	} else {
+		// Fall back to file-based loading
+		tenantCfgs, err = loadTenants(effectiveDir)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &Manager{
@@ -89,14 +104,27 @@ func (m *Manager) DefaultTenant() (TenantConfig, bool) {
 	return m.Tenant(codes[0])
 }
 
-// Reload reloads tenant configurations from disk without changing env config.
+// Reload reloads tenant configurations without changing env config.
+// Uses Doppler if configured, otherwise reloads from disk.
 // Returns a diff of what changed. Thread-safe.
 func (m *Manager) Reload() (ReloadDiff, error) {
-	// Load new configs (this validates them)
-	// Use m.configDir which preserves any override from initial Load()
-	newTenants, err := loadTenants(m.configDir)
-	if err != nil {
-		return ReloadDiff{}, fmt.Errorf("reload failed: %w", err)
+	var newTenants map[string]TenantConfig
+	var err error
+
+	// Use same source as initial load
+	if DopplerEnabled() {
+		ClearDopplerCache() // Clear cache to get fresh data
+		newTenants, err = LoadTenantsFromDoppler()
+		if err != nil {
+			return ReloadDiff{}, fmt.Errorf("doppler reload failed: %w", err)
+		}
+	} else {
+		// Load new configs (this validates them)
+		// Use m.configDir which preserves any override from initial Load()
+		newTenants, err = loadTenants(m.configDir)
+		if err != nil {
+			return ReloadDiff{}, fmt.Errorf("reload failed: %w", err)
+		}
 	}
 
 	m.mu.Lock()
