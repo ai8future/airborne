@@ -291,7 +291,7 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 
 	// Persist conversation asynchronously (if repository is configured)
 	if s.repo != nil && result.Usage != nil {
-		s.persistConversation(ctx, req, result, prepared.provider.Name(), prepared.providerCfg.Model)
+		s.persistConversation(ctx, req, result, prepared.provider.Name(), prepared.providerCfg.Model, htmlContent)
 	}
 
 	return s.buildResponse(result, prepared.provider.Name(), false, "", "", htmlContent), nil
@@ -408,19 +408,6 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 				}
 			}
 
-			// Persist streaming conversation (if repository is configured)
-			if s.repo != nil && chunk.Usage != nil {
-				streamResult := provider.GenerateResult{
-					Text:         accumulatedText.String(),
-					Model:        chunk.Model,
-					Usage:        chunk.Usage,
-					ToolCalls:    chunk.ToolCalls,
-					RequestJSON:  chunk.RequestJSON,
-					ResponseJSON: chunk.ResponseJSON,
-				}
-				s.persistConversation(ctx, req, streamResult, prepared.provider.Name(), chunk.Model)
-			}
-
 			// Check for image generation trigger in accumulated response
 			generatedImages := s.processImageGeneration(ctx, accumulatedText.String())
 
@@ -433,6 +420,19 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 				} else {
 					slog.Warn("markdown_svc render failed for stream", "error", renderErr)
 				}
+			}
+
+			// Persist streaming conversation (if repository is configured)
+			if s.repo != nil && chunk.Usage != nil {
+				streamResult := provider.GenerateResult{
+					Text:         accumulatedText.String(),
+					Model:        chunk.Model,
+					Usage:        chunk.Usage,
+					ToolCalls:    chunk.ToolCalls,
+					RequestJSON:  chunk.RequestJSON,
+					ResponseJSON: chunk.ResponseJSON,
+				}
+				s.persistConversation(ctx, req, streamResult, prepared.provider.Name(), chunk.Model, htmlContent)
 			}
 
 			complete := &pb.StreamComplete{
@@ -978,7 +978,7 @@ func convertStructuredMetadata(m *provider.StructuredMetadata) *pb.StructuredMet
 
 // persistConversation saves the conversation turn to the database asynchronously.
 // This runs in a goroutine to avoid blocking the response.
-func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateReplyRequest, result provider.GenerateResult, providerName, model string) {
+func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateReplyRequest, result provider.GenerateResult, providerName, model, renderedHTML string) {
 	// Extract tenant and user info from context
 	tenantID := auth.TenantIDFromContext(ctx)
 	if tenantID == "" {
@@ -1015,13 +1015,14 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 	// Processing time (we don't have this in current flow, use 0)
 	processingTimeMs := 0
 
-	// Build debug info from captured JSON (if available)
+	// Build debug info from captured JSON and rendered HTML (if available)
 	var debugInfo *db.DebugInfo
-	if len(result.RequestJSON) > 0 || len(result.ResponseJSON) > 0 {
+	if len(result.RequestJSON) > 0 || len(result.ResponseJSON) > 0 || renderedHTML != "" {
 		debugInfo = &db.DebugInfo{
 			SystemPrompt:    req.Instructions,
 			RawRequestJSON:  string(result.RequestJSON),
 			RawResponseJSON: string(result.ResponseJSON),
+			RenderedHTML:    renderedHTML,
 		}
 	}
 

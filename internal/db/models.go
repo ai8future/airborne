@@ -50,6 +50,7 @@ type Message struct {
 	SystemPrompt    *string `json:"system_prompt,omitempty"`
 	RawRequestJSON  *string `json:"raw_request_json,omitempty"`
 	RawResponseJSON *string `json:"raw_response_json,omitempty"`
+	RenderedHTML    *string `json:"rendered_html,omitempty"` // HTML from markdown_svc (TOAST-compressed by PostgreSQL)
 }
 
 // MessageRole constants
@@ -110,6 +111,9 @@ type DebugData struct {
 	// Raw HTTP payloads (for JSON view)
 	RawRequestJSON  string `json:"raw_request_json,omitempty"`
 	RawResponseJSON string `json:"raw_response_json,omitempty"`
+
+	// Rendered HTML (from markdown_svc)
+	RenderedHTML string `json:"rendered_html,omitempty"`
 
 	// Status
 	Status string `json:"status"` // success, failed

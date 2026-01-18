@@ -320,6 +320,7 @@ type DebugInfo struct {
 	SystemPrompt    string
 	RawRequestJSON  string
 	RawResponseJSON string
+	RenderedHTML    string
 }
 
 // PersistConversationTurn saves both user and assistant messages in a transaction.
@@ -369,7 +370,7 @@ func (r *Repository) PersistConversationTurnWithDebug(ctx context.Context, threa
 	assistantMsgID := uuid.New()
 	totalTokens := inputTokens + outputTokens
 
-	var systemPrompt, rawReqJSON, rawRespJSON *string
+	var systemPrompt, rawReqJSON, rawRespJSON, renderedHTML *string
 	if debug != nil {
 		if debug.SystemPrompt != "" {
 			systemPrompt = &debug.SystemPrompt
@@ -380,17 +381,20 @@ func (r *Repository) PersistConversationTurnWithDebug(ctx context.Context, threa
 		if debug.RawResponseJSON != "" {
 			rawRespJSON = &debug.RawResponseJSON
 		}
+		if debug.RenderedHTML != "" {
+			renderedHTML = &debug.RenderedHTML
+		}
 	}
 
 	_, err = tx.Exec(ctx, `
 		INSERT INTO airborne_messages (
 			id, thread_id, role, content, provider, model, response_id,
 			input_tokens, output_tokens, total_tokens, cost_usd, processing_time_ms, created_at,
-			system_prompt, raw_request_json, raw_response_json
-		) VALUES ($1, $2, 'assistant', $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12, $13, $14)
+			system_prompt, raw_request_json, raw_response_json, rendered_html
+		) VALUES ($1, $2, 'assistant', $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12, $13, $14, $15)
 	`, assistantMsgID, threadID, assistantContent, provider, model, responseID,
 		inputTokens, outputTokens, totalTokens, costUSD, processingTimeMs,
-		systemPrompt, rawReqJSON, rawRespJSON)
+		systemPrompt, rawReqJSON, rawRespJSON, renderedHTML)
 	if err != nil {
 		return fmt.Errorf("failed to insert assistant message: %w", err)
 	}
@@ -440,6 +444,7 @@ func (r *Repository) GetDebugData(ctx context.Context, messageID uuid.UUID) (*De
 			COALESCE(m.citations, '') as citations,
 			COALESCE(m.raw_request_json::text, '') as raw_request_json,
 			COALESCE(m.raw_response_json::text, '') as raw_response_json,
+			COALESCE(m.rendered_html, '') as rendered_html,
 			(
 				SELECT COALESCE(content, '')
 				FROM airborne_messages
@@ -475,6 +480,7 @@ func (r *Repository) GetDebugData(ctx context.Context, messageID uuid.UUID) (*De
 		&data.Citations,
 		&data.RawRequestJSON,
 		&data.RawResponseJSON,
+		&data.RenderedHTML,
 		&userInput,
 	)
 	if err != nil {

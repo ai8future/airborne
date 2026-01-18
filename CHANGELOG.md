@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.11] - 2026-01-18
+
+### Added
+- **Rendered HTML Storage**: Store markdown_svc output in database
+  - New `rendered_html TEXT` column in `airborne_messages` (TOAST-compressed by PostgreSQL)
+  - Migration: `003_rendered_html.sql`
+  - Both streaming and non-streaming responses now persist rendered HTML
+  - `DebugData` struct includes `rendered_html` for admin dashboard
+
+Agent: Claude:Opus 4.5
+
 ## [1.2.10] - 2026-01-18
 
 ### Added
