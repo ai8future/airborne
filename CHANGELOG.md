@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.6] - 2026-01-18
+
+### Added
+- **Dashboard Containerization** for K8s deployment:
+  - `dashboard/Dockerfile`: Multi-stage build for Next.js standalone output
+  - Configure standalone output in `next.config.ts` for minimal container size
+  - Dashboard runs as sidecar container in K8s pod
+  - Connects to Airborne admin API on localhost:8473
+
+Agent: Claude:Opus 4.5
+
 ## [1.2.5] - 2026-01-18
 
 ### Changed
