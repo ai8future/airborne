@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.10] - 2026-01-18
+
+### Added
+- **Streaming Response Capture**: Raw request/response JSON now captured for streaming calls
+  - Added `RequestJSON` and `ResponseJSON` fields to `StreamChunk`
+  - Gemini streaming captures request body via httpcapture
+  - Response captured as synthetic JSON with text, usage, and metadata at stream end
+  - Streaming conversations now persisted to database with debug info
+  - Enables full debug inspection for both streaming and non-streaming calls
+
+Agent: Claude:Opus 4.5
+
 ## [1.2.9] - 2026-01-18
 
 ### Changed

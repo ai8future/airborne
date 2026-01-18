@@ -408,6 +408,19 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 				}
 			}
 
+			// Persist streaming conversation (if repository is configured)
+			if s.repo != nil && chunk.Usage != nil {
+				streamResult := provider.GenerateResult{
+					Text:         accumulatedText.String(),
+					Model:        chunk.Model,
+					Usage:        chunk.Usage,
+					ToolCalls:    chunk.ToolCalls,
+					RequestJSON:  chunk.RequestJSON,
+					ResponseJSON: chunk.ResponseJSON,
+				}
+				s.persistConversation(ctx, req, streamResult, prepared.provider.Name(), chunk.Model)
+			}
+
 			// Check for image generation trigger in accumulated response
 			generatedImages := s.processImageGeneration(ctx, accumulatedText.String())
 

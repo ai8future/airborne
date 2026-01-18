@@ -317,21 +317,26 @@ const (
 
 // StreamChunk represents a chunk in a streaming response
 type StreamChunk struct {
-	Type              ChunkType
-	Text              string
-	Index             int
-	Usage             *Usage
-	Citation          *Citation
-	ResponseID        string
-	Model             string
-	Error             error
-	ErrorCode         string
-	Retryable         bool
-	ToolCall          *ToolCall
-	CodeExecution     *CodeExecutionResult
-	ToolCalls         []ToolCall
+	Type               ChunkType
+	Text               string
+	Index              int
+	Usage              *Usage
+	Citation           *Citation
+	ResponseID         string
+	Model              string
+	Error              error
+	ErrorCode          string
+	Retryable          bool
+	ToolCall           *ToolCall
+	CodeExecution      *CodeExecutionResult
+	ToolCalls          []ToolCall
 	RequiresToolOutput bool
-	CodeExecutions    []CodeExecutionResult
+	CodeExecutions     []CodeExecutionResult
+
+	// RequestJSON contains the raw API request for debugging (set on ChunkTypeComplete)
+	RequestJSON []byte
+	// ResponseJSON contains the raw API response for debugging (set on ChunkTypeComplete)
+	ResponseJSON []byte
 }
 
 // ChunkType indicates the type of stream chunk

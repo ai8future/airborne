@@ -376,10 +376,12 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 		model = params.OverrideModel
 	}
 
-	// Create Gemini client
+	// Create capturing transport for debug JSON
+	capture := httpcapture.New()
 	clientConfig := &genai.ClientConfig{
-		APIKey:  cfg.APIKey,
-		Backend: genai.BackendGeminiAPI,
+		APIKey:     cfg.APIKey,
+		Backend:    genai.BackendGeminiAPI,
+		HTTPClient: capture.Client(),
 	}
 	if cfg.BaseURL != "" {
 		if err := validation.ValidateProviderURL(cfg.BaseURL); err != nil {
@@ -606,7 +608,22 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 			}
 		}
 
-		// Send completion chunk
+		// Build synthetic response JSON for debugging (since SSE can't be captured the same way)
+		var respJSON []byte
+		if lastUsage != nil {
+			syntheticResp := map[string]any{
+				"text":            totalText.String(),
+				"model":           model,
+				"input_tokens":    lastUsage.InputTokens,
+				"output_tokens":   lastUsage.OutputTokens,
+				"total_tokens":    lastUsage.TotalTokens,
+				"tool_calls":      len(toolCalls),
+				"code_executions": len(codeExecutions),
+			}
+			respJSON, _ = json.Marshal(syntheticResp)
+		}
+
+		// Send completion chunk with captured debug JSON
 		ch <- provider.StreamChunk{
 			Type:               provider.ChunkTypeComplete,
 			Model:              model,
@@ -614,6 +631,8 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 			ToolCalls:          toolCalls,
 			RequiresToolOutput: len(toolCalls) > 0,
 			CodeExecutions:     codeExecutions,
+			RequestJSON:        capture.RequestBody,
+			ResponseJSON:       respJSON,
 		}
 	}()
 
