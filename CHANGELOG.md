@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.13] - 2026-01-18
+
+### Fixed
+- **Debug Data Query**: Fix JSONB coalesce error for citations column
+  - Changed `COALESCE(m.citations, '')` to `COALESCE(m.citations::text, '')`
+  - JSONB columns must be cast to text before coalescing with empty string
+
+Agent: Claude:Opus 4.5
+
 ## [1.2.12] - 2026-01-18
 
 ### Added

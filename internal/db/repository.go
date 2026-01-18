@@ -441,7 +441,7 @@ func (r *Repository) GetDebugData(ctx context.Context, messageID uuid.UUID) (*De
 			COALESCE(m.cost_usd, 0) as cost_usd,
 			COALESCE(m.processing_time_ms, 0) as duration_ms,
 			COALESCE(m.response_id, '') as response_id,
-			COALESCE(m.citations, '') as citations,
+			COALESCE(m.citations::text, '') as citations,
 			COALESCE(m.raw_request_json::text, '') as raw_request_json,
 			COALESCE(m.raw_response_json::text, '') as raw_response_json,
 			COALESCE(m.rendered_html, '') as rendered_html,
