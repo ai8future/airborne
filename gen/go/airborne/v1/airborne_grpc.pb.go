@@ -19,17 +19,17 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AIBoxService_GenerateReply_FullMethodName       = "/airborne.v1.AIBoxService/GenerateReply"
-	AIBoxService_GenerateReplyStream_FullMethodName = "/airborne.v1.AIBoxService/GenerateReplyStream"
-	AIBoxService_SelectProvider_FullMethodName      = "/airborne.v1.AIBoxService/SelectProvider"
+	AirborneService_GenerateReply_FullMethodName       = "/airborne.v1.AirborneService/GenerateReply"
+	AirborneService_GenerateReplyStream_FullMethodName = "/airborne.v1.AirborneService/GenerateReplyStream"
+	AirborneService_SelectProvider_FullMethodName      = "/airborne.v1.AirborneService/SelectProvider"
 )
 
-// AIBoxServiceClient is the client API for AIBoxService service.
+// AirborneServiceClient is the client API for AirborneService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// AIBoxService provides unified AI provider access
-type AIBoxServiceClient interface {
+// AirborneService provides unified AI provider access
+type AirborneServiceClient interface {
 	// GenerateReply generates a completion (unary request/response)
 	GenerateReply(ctx context.Context, in *GenerateReplyRequest, opts ...grpc.CallOption) (*GenerateReplyResponse, error)
 	// GenerateReplyStream generates a streaming completion
@@ -38,27 +38,27 @@ type AIBoxServiceClient interface {
 	SelectProvider(ctx context.Context, in *SelectProviderRequest, opts ...grpc.CallOption) (*SelectProviderResponse, error)
 }
 
-type aIBoxServiceClient struct {
+type airborneServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewAIBoxServiceClient(cc grpc.ClientConnInterface) AIBoxServiceClient {
-	return &aIBoxServiceClient{cc}
+func NewAirborneServiceClient(cc grpc.ClientConnInterface) AirborneServiceClient {
+	return &airborneServiceClient{cc}
 }
 
-func (c *aIBoxServiceClient) GenerateReply(ctx context.Context, in *GenerateReplyRequest, opts ...grpc.CallOption) (*GenerateReplyResponse, error) {
+func (c *airborneServiceClient) GenerateReply(ctx context.Context, in *GenerateReplyRequest, opts ...grpc.CallOption) (*GenerateReplyResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GenerateReplyResponse)
-	err := c.cc.Invoke(ctx, AIBoxService_GenerateReply_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, AirborneService_GenerateReply_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *aIBoxServiceClient) GenerateReplyStream(ctx context.Context, in *GenerateReplyRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GenerateReplyChunk], error) {
+func (c *airborneServiceClient) GenerateReplyStream(ctx context.Context, in *GenerateReplyRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GenerateReplyChunk], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &AIBoxService_ServiceDesc.Streams[0], AIBoxService_GenerateReplyStream_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &AirborneService_ServiceDesc.Streams[0], AirborneService_GenerateReplyStream_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -73,137 +73,137 @@ func (c *aIBoxServiceClient) GenerateReplyStream(ctx context.Context, in *Genera
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type AIBoxService_GenerateReplyStreamClient = grpc.ServerStreamingClient[GenerateReplyChunk]
+type AirborneService_GenerateReplyStreamClient = grpc.ServerStreamingClient[GenerateReplyChunk]
 
-func (c *aIBoxServiceClient) SelectProvider(ctx context.Context, in *SelectProviderRequest, opts ...grpc.CallOption) (*SelectProviderResponse, error) {
+func (c *airborneServiceClient) SelectProvider(ctx context.Context, in *SelectProviderRequest, opts ...grpc.CallOption) (*SelectProviderResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SelectProviderResponse)
-	err := c.cc.Invoke(ctx, AIBoxService_SelectProvider_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, AirborneService_SelectProvider_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// AIBoxServiceServer is the server API for AIBoxService service.
-// All implementations must embed UnimplementedAIBoxServiceServer
+// AirborneServiceServer is the server API for AirborneService service.
+// All implementations must embed UnimplementedAirborneServiceServer
 // for forward compatibility.
 //
-// AIBoxService provides unified AI provider access
-type AIBoxServiceServer interface {
+// AirborneService provides unified AI provider access
+type AirborneServiceServer interface {
 	// GenerateReply generates a completion (unary request/response)
 	GenerateReply(context.Context, *GenerateReplyRequest) (*GenerateReplyResponse, error)
 	// GenerateReplyStream generates a streaming completion
 	GenerateReplyStream(*GenerateReplyRequest, grpc.ServerStreamingServer[GenerateReplyChunk]) error
 	// SelectProvider determines which provider to use based on content and rules
 	SelectProvider(context.Context, *SelectProviderRequest) (*SelectProviderResponse, error)
-	mustEmbedUnimplementedAIBoxServiceServer()
+	mustEmbedUnimplementedAirborneServiceServer()
 }
 
-// UnimplementedAIBoxServiceServer must be embedded to have
+// UnimplementedAirborneServiceServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedAIBoxServiceServer struct{}
+type UnimplementedAirborneServiceServer struct{}
 
-func (UnimplementedAIBoxServiceServer) GenerateReply(context.Context, *GenerateReplyRequest) (*GenerateReplyResponse, error) {
+func (UnimplementedAirborneServiceServer) GenerateReply(context.Context, *GenerateReplyRequest) (*GenerateReplyResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GenerateReply not implemented")
 }
-func (UnimplementedAIBoxServiceServer) GenerateReplyStream(*GenerateReplyRequest, grpc.ServerStreamingServer[GenerateReplyChunk]) error {
+func (UnimplementedAirborneServiceServer) GenerateReplyStream(*GenerateReplyRequest, grpc.ServerStreamingServer[GenerateReplyChunk]) error {
 	return status.Error(codes.Unimplemented, "method GenerateReplyStream not implemented")
 }
-func (UnimplementedAIBoxServiceServer) SelectProvider(context.Context, *SelectProviderRequest) (*SelectProviderResponse, error) {
+func (UnimplementedAirborneServiceServer) SelectProvider(context.Context, *SelectProviderRequest) (*SelectProviderResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SelectProvider not implemented")
 }
-func (UnimplementedAIBoxServiceServer) mustEmbedUnimplementedAIBoxServiceServer() {}
-func (UnimplementedAIBoxServiceServer) testEmbeddedByValue()                      {}
+func (UnimplementedAirborneServiceServer) mustEmbedUnimplementedAirborneServiceServer() {}
+func (UnimplementedAirborneServiceServer) testEmbeddedByValue()                         {}
 
-// UnsafeAIBoxServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to AIBoxServiceServer will
+// UnsafeAirborneServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to AirborneServiceServer will
 // result in compilation errors.
-type UnsafeAIBoxServiceServer interface {
-	mustEmbedUnimplementedAIBoxServiceServer()
+type UnsafeAirborneServiceServer interface {
+	mustEmbedUnimplementedAirborneServiceServer()
 }
 
-func RegisterAIBoxServiceServer(s grpc.ServiceRegistrar, srv AIBoxServiceServer) {
-	// If the following call panics, it indicates UnimplementedAIBoxServiceServer was
+func RegisterAirborneServiceServer(s grpc.ServiceRegistrar, srv AirborneServiceServer) {
+	// If the following call panics, it indicates UnimplementedAirborneServiceServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&AIBoxService_ServiceDesc, srv)
+	s.RegisterService(&AirborneService_ServiceDesc, srv)
 }
 
-func _AIBoxService_GenerateReply_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _AirborneService_GenerateReply_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GenerateReplyRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(AIBoxServiceServer).GenerateReply(ctx, in)
+		return srv.(AirborneServiceServer).GenerateReply(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: AIBoxService_GenerateReply_FullMethodName,
+		FullMethod: AirborneService_GenerateReply_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AIBoxServiceServer).GenerateReply(ctx, req.(*GenerateReplyRequest))
+		return srv.(AirborneServiceServer).GenerateReply(ctx, req.(*GenerateReplyRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _AIBoxService_GenerateReplyStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+func _AirborneService_GenerateReplyStream_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(GenerateReplyRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(AIBoxServiceServer).GenerateReplyStream(m, &grpc.GenericServerStream[GenerateReplyRequest, GenerateReplyChunk]{ServerStream: stream})
+	return srv.(AirborneServiceServer).GenerateReplyStream(m, &grpc.GenericServerStream[GenerateReplyRequest, GenerateReplyChunk]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type AIBoxService_GenerateReplyStreamServer = grpc.ServerStreamingServer[GenerateReplyChunk]
+type AirborneService_GenerateReplyStreamServer = grpc.ServerStreamingServer[GenerateReplyChunk]
 
-func _AIBoxService_SelectProvider_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _AirborneService_SelectProvider_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SelectProviderRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(AIBoxServiceServer).SelectProvider(ctx, in)
+		return srv.(AirborneServiceServer).SelectProvider(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: AIBoxService_SelectProvider_FullMethodName,
+		FullMethod: AirborneService_SelectProvider_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AIBoxServiceServer).SelectProvider(ctx, req.(*SelectProviderRequest))
+		return srv.(AirborneServiceServer).SelectProvider(ctx, req.(*SelectProviderRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// AIBoxService_ServiceDesc is the grpc.ServiceDesc for AIBoxService service.
+// AirborneService_ServiceDesc is the grpc.ServiceDesc for AirborneService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var AIBoxService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "airborne.v1.AIBoxService",
-	HandlerType: (*AIBoxServiceServer)(nil),
+var AirborneService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "airborne.v1.AirborneService",
+	HandlerType: (*AirborneServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
 			MethodName: "GenerateReply",
-			Handler:    _AIBoxService_GenerateReply_Handler,
+			Handler:    _AirborneService_GenerateReply_Handler,
 		},
 		{
 			MethodName: "SelectProvider",
-			Handler:    _AIBoxService_SelectProvider_Handler,
+			Handler:    _AirborneService_SelectProvider_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "GenerateReplyStream",
-			Handler:       _AIBoxService_GenerateReplyStream_Handler,
+			Handler:       _AirborneService_GenerateReplyStream_Handler,
 			ServerStreams: true,
 		},
 	},

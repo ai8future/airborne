@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-01-18
+
+### Added
+- **StructuredMetadata Feature** (Gemini-only):
+  - Extracts intent, entities, topics, and scheduling signals from LLM responses
+  - Request parameter `enable_structured_output` enables JSON mode with entity extraction
+  - 7 intent types: question, request, task_delegation, feedback, complaint, follow_up, attachment_analysis
+  - 21 entity types across 5 categories (Core, Business, Technology, Operations, Content)
+  - Scheduling intent detection with datetime mention extraction
+
+- **Proto Changes** (`api/proto/airborne/v1/`):
+  - `common.proto`: Added `StructuredMetadata`, `StructuredEntity`, `SchedulingIntent` messages
+  - `airborne.proto`: Added `enable_structured_output` field to `GenerateReplyRequest`
+  - Added `structured_metadata` field to `GenerateReplyResponse` and `StreamComplete`
+
+- **Provider Types** (`internal/provider/provider.go`):
+  - `StructuredMetadata`, `StructuredEntity`, `SchedulingIntent` Go types
+  - `EnableStructuredOutput` field in `GenerateParams`
+  - `StructuredMetadata` field in `GenerateResult`
+
+- **Gemini Implementation** (`internal/provider/gemini/client.go`):
+  - Updated `structuredOutputSchema()` with full 21 entity types and scheduling_intent
+  - `extractStructuredResponse()` parses JSON and returns both text and metadata
+  - Switched trigger from `cfg.ExtraOptions["structured_output"]` to `params.EnableStructuredOutput`
+
+- **Service Integration** (`internal/service/chat.go`):
+  - Wires `enable_structured_output` from request to provider params
+  - `convertStructuredMetadata()` helper for proto conversion
+  - Includes `StructuredMetadata` in response via `buildResponse()`
+
+Agent: Claude:Opus 4.5
+
 ## [1.1.15] - 2026-01-18
 
 ### Added

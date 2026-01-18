@@ -6,8 +6,8 @@ import "airborne/v1/common.proto";
 
 option go_package = "github.com/ai8future/airborne/gen/go/airborne/v1;airbornev1";
 
-// AIBoxService provides unified AI provider access
-service AIBoxService {
+// AirborneService provides unified AI provider access
+service AirborneService {
   // GenerateReply generates a completion (unary request/response)
   rpc GenerateReply(GenerateReplyRequest) returns (GenerateReplyResponse);
 
@@ -65,6 +65,10 @@ message GenerateReplyRequest {
   // Tool/Function calling
   repeated Tool tools = 19;           // Available tools the model can call
   repeated ToolResult tool_results = 20;  // Results from previous tool calls (for multi-turn)
+
+  // Enable structured output mode (Gemini-only)
+  // When true, response includes structured_metadata with intent, entities, topics
+  bool enable_structured_output = 21;
 }
 
 // GenerateReplyResponse contains the generated reply
@@ -90,6 +94,12 @@ message GenerateReplyResponse {
 
   // Generated images (if image generation was triggered)
   repeated GeneratedImage images = 13;
+
+  // HTML-rendered content (if markdown_svc is enabled)
+  string html_content = 14;
+
+  // Structured metadata (when enable_structured_output is true)
+  StructuredMetadata structured_metadata = 15;
 }
 
 // GenerateReplyChunk is a streaming response chunk
@@ -142,6 +152,8 @@ message StreamComplete {
   bool requires_tool_output = 7;
   repeated CodeExecutionResult code_executions = 8;
   repeated GeneratedImage images = 9;
+  string html_content = 10;  // HTML-rendered content (if markdown_svc is enabled)
+  StructuredMetadata structured_metadata = 11;  // Structured metadata (when enable_structured_output is true)
 }
 
 // StreamError signals an error during streaming

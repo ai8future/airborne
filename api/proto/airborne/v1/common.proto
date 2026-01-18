@@ -163,3 +163,41 @@ message GeneratedFile {
   // File content (base64 encoded for binary files)
   bytes content = 3;
 }
+
+// StructuredMetadata contains extracted metadata from structured output mode
+message StructuredMetadata {
+  // Primary intent classification
+  string intent = 1;
+
+  // True if response asks a clarifying question
+  bool requires_user_action = 2;
+
+  // Extracted named entities
+  repeated StructuredEntity entities = 3;
+
+  // 2-4 keyword tags
+  repeated string topics = 4;
+
+  // Calendar/meeting signals
+  SchedulingIntent scheduling = 5;
+}
+
+// StructuredEntity represents an extracted named entity
+message StructuredEntity {
+  // Entity name as it appears in text
+  string name = 1;
+
+  // Entity type: person, organization, location, product, project, document,
+  // event, money, date, investor, advisor, metric, technology, tool, service,
+  // methodology, credential, timeframe, feature, url, email_address
+  string type = 2;
+}
+
+// SchedulingIntent contains calendar/meeting signals
+message SchedulingIntent {
+  // True if scheduling intent was detected
+  bool detected = 1;
+
+  // Raw text like "next Tuesday at 2pm"
+  string datetime_mentioned = 2;
+}

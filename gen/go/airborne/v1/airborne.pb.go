@@ -56,10 +56,13 @@ type GenerateReplyRequest struct {
 	RequestId string            `protobuf:"bytes,15,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`                                                        // Client-provided request ID for tracing
 	Metadata  map[string]string `protobuf:"bytes,16,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Additional metadata (e.g., user tier, project code)
 	// Tool/Function calling
-	Tools         []*Tool       `protobuf:"bytes,19,rep,name=tools,proto3" json:"tools,omitempty"`                                // Available tools the model can call
-	ToolResults   []*ToolResult `protobuf:"bytes,20,rep,name=tool_results,json=toolResults,proto3" json:"tool_results,omitempty"` // Results from previous tool calls (for multi-turn)
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Tools       []*Tool       `protobuf:"bytes,19,rep,name=tools,proto3" json:"tools,omitempty"`                                // Available tools the model can call
+	ToolResults []*ToolResult `protobuf:"bytes,20,rep,name=tool_results,json=toolResults,proto3" json:"tool_results,omitempty"` // Results from previous tool calls (for multi-turn)
+	// Enable structured output mode (Gemini-only)
+	// When true, response includes structured_metadata with intent, entities, topics
+	EnableStructuredOutput bool `protobuf:"varint,21,opt,name=enable_structured_output,json=enableStructuredOutput,proto3" json:"enable_structured_output,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *GenerateReplyRequest) Reset() {
@@ -232,6 +235,13 @@ func (x *GenerateReplyRequest) GetToolResults() []*ToolResult {
 	return nil
 }
 
+func (x *GenerateReplyRequest) GetEnableStructuredOutput() bool {
+	if x != nil {
+		return x.EnableStructuredOutput
+	}
+	return false
+}
+
 // GenerateReplyResponse contains the generated reply
 type GenerateReplyResponse struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
@@ -251,9 +261,13 @@ type GenerateReplyResponse struct {
 	// Code execution results (if code was executed)
 	CodeExecutions []*CodeExecutionResult `protobuf:"bytes,12,rep,name=code_executions,json=codeExecutions,proto3" json:"code_executions,omitempty"`
 	// Generated images (if image generation was triggered)
-	Images        []*GeneratedImage `protobuf:"bytes,13,rep,name=images,proto3" json:"images,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Images []*GeneratedImage `protobuf:"bytes,13,rep,name=images,proto3" json:"images,omitempty"`
+	// HTML-rendered content (if markdown_svc is enabled)
+	HtmlContent string `protobuf:"bytes,14,opt,name=html_content,json=htmlContent,proto3" json:"html_content,omitempty"`
+	// Structured metadata (when enable_structured_output is true)
+	StructuredMetadata *StructuredMetadata `protobuf:"bytes,15,opt,name=structured_metadata,json=structuredMetadata,proto3" json:"structured_metadata,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *GenerateReplyResponse) Reset() {
@@ -373,6 +387,20 @@ func (x *GenerateReplyResponse) GetCodeExecutions() []*CodeExecutionResult {
 func (x *GenerateReplyResponse) GetImages() []*GeneratedImage {
 	if x != nil {
 		return x.Images
+	}
+	return nil
+}
+
+func (x *GenerateReplyResponse) GetHtmlContent() string {
+	if x != nil {
+		return x.HtmlContent
+	}
+	return ""
+}
+
+func (x *GenerateReplyResponse) GetStructuredMetadata() *StructuredMetadata {
+	if x != nil {
+		return x.StructuredMetadata
 	}
 	return nil
 }
@@ -785,6 +813,8 @@ type StreamComplete struct {
 	RequiresToolOutput bool                   `protobuf:"varint,7,opt,name=requires_tool_output,json=requiresToolOutput,proto3" json:"requires_tool_output,omitempty"`
 	CodeExecutions     []*CodeExecutionResult `protobuf:"bytes,8,rep,name=code_executions,json=codeExecutions,proto3" json:"code_executions,omitempty"`
 	Images             []*GeneratedImage      `protobuf:"bytes,9,rep,name=images,proto3" json:"images,omitempty"`
+	HtmlContent        string                 `protobuf:"bytes,10,opt,name=html_content,json=htmlContent,proto3" json:"html_content,omitempty"`                      // HTML-rendered content (if markdown_svc is enabled)
+	StructuredMetadata *StructuredMetadata    `protobuf:"bytes,11,opt,name=structured_metadata,json=structuredMetadata,proto3" json:"structured_metadata,omitempty"` // Structured metadata (when enable_structured_output is true)
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -878,6 +908,20 @@ func (x *StreamComplete) GetCodeExecutions() []*CodeExecutionResult {
 func (x *StreamComplete) GetImages() []*GeneratedImage {
 	if x != nil {
 		return x.Images
+	}
+	return nil
+}
+
+func (x *StreamComplete) GetHtmlContent() string {
+	if x != nil {
+		return x.HtmlContent
+	}
+	return ""
+}
+
+func (x *StreamComplete) GetStructuredMetadata() *StructuredMetadata {
+	if x != nil {
+		return x.StructuredMetadata
 	}
 	return nil
 }
@@ -1240,7 +1284,7 @@ var File_airborne_v1_airborne_proto protoreflect.FileDescriptor
 
 const file_airborne_v1_airborne_proto_rawDesc = "" +
 	"\n" +
-	"\x1aairborne/v1/airborne.proto\x12\vairborne.v1\x1a\x18airborne/v1/common.proto\"\x99\n" +
+	"\x1aairborne/v1/airborne.proto\x12\vairborne.v1\x1a\x18airborne/v1/common.proto\"\xd3\n" +
 	"\n" +
 	"\x14GenerateReplyRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x11 \x01(\tR\btenantId\x12\"\n" +
@@ -1265,7 +1309,8 @@ const file_airborne_v1_airborne_proto_rawDesc = "" +
 	"request_id\x18\x0f \x01(\tR\trequestId\x12K\n" +
 	"\bmetadata\x18\x10 \x03(\v2/.airborne.v1.GenerateReplyRequest.MetadataEntryR\bmetadata\x12'\n" +
 	"\x05tools\x18\x13 \x03(\v2\x11.airborne.v1.ToolR\x05tools\x12:\n" +
-	"\ftool_results\x18\x14 \x03(\v2\x17.airborne.v1.ToolResultR\vtoolResults\x1aC\n" +
+	"\ftool_results\x18\x14 \x03(\v2\x17.airborne.v1.ToolResultR\vtoolResults\x128\n" +
+	"\x18enable_structured_output\x18\x15 \x01(\bR\x16enableStructuredOutput\x1aC\n" +
 	"\x15FileIdToFilenameEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a_\n" +
@@ -1274,7 +1319,7 @@ const file_airborne_v1_airborne_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x1b.airborne.v1.ProviderConfigR\x05value:\x028\x01\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xe8\x04\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xdd\x05\n" +
 	"\x15GenerateReplyResponse\x12\x12\n" +
 	"\x04text\x18\x01 \x01(\tR\x04text\x12\x1f\n" +
 	"\vresponse_id\x18\x02 \x01(\tR\n" +
@@ -1292,7 +1337,9 @@ const file_airborne_v1_airborne_proto_rawDesc = "" +
 	" \x03(\v2\x15.airborne.v1.ToolCallR\ttoolCalls\x120\n" +
 	"\x14requires_tool_output\x18\v \x01(\bR\x12requiresToolOutput\x12I\n" +
 	"\x0fcode_executions\x18\f \x03(\v2 .airborne.v1.CodeExecutionResultR\x0ecodeExecutions\x123\n" +
-	"\x06images\x18\r \x03(\v2\x1b.airborne.v1.GeneratedImageR\x06images\"\xeb\x03\n" +
+	"\x06images\x18\r \x03(\v2\x1b.airborne.v1.GeneratedImageR\x06images\x12!\n" +
+	"\fhtml_content\x18\x0e \x01(\tR\vhtmlContent\x12P\n" +
+	"\x13structured_metadata\x18\x0f \x01(\v2\x1f.airborne.v1.StructuredMetadataR\x12structuredMetadata\"\xeb\x03\n" +
 	"\x12GenerateReplyChunk\x127\n" +
 	"\n" +
 	"text_delta\x18\x01 \x01(\v2\x16.airborne.v1.TextDeltaH\x00R\ttextDelta\x12=\n" +
@@ -1313,7 +1360,7 @@ const file_airborne_v1_airborne_proto_rawDesc = "" +
 	"\vUsageUpdate\x12(\n" +
 	"\x05usage\x18\x01 \x01(\v2\x12.airborne.v1.UsageR\x05usage\"C\n" +
 	"\x0eCitationUpdate\x121\n" +
-	"\bcitation\x18\x01 \x01(\v2\x15.airborne.v1.CitationR\bcitation\"\xcc\x03\n" +
+	"\bcitation\x18\x01 \x01(\v2\x15.airborne.v1.CitationR\bcitation\"\xc1\x04\n" +
 	"\x0eStreamComplete\x12\x1f\n" +
 	"\vresponse_id\x18\x01 \x01(\tR\n" +
 	"responseId\x12\x14\n" +
@@ -1326,7 +1373,10 @@ const file_airborne_v1_airborne_proto_rawDesc = "" +
 	"tool_calls\x18\x06 \x03(\v2\x15.airborne.v1.ToolCallR\ttoolCalls\x120\n" +
 	"\x14requires_tool_output\x18\a \x01(\bR\x12requiresToolOutput\x12I\n" +
 	"\x0fcode_executions\x18\b \x03(\v2 .airborne.v1.CodeExecutionResultR\x0ecodeExecutions\x123\n" +
-	"\x06images\x18\t \x03(\v2\x1b.airborne.v1.GeneratedImageR\x06images\"Y\n" +
+	"\x06images\x18\t \x03(\v2\x1b.airborne.v1.GeneratedImageR\x06images\x12!\n" +
+	"\fhtml_content\x18\n" +
+	" \x01(\tR\vhtmlContent\x12P\n" +
+	"\x13structured_metadata\x18\v \x01(\v2\x1f.airborne.v1.StructuredMetadataR\x12structuredMetadata\"Y\n" +
 	"\vStreamError\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12\x1c\n" +
@@ -1353,8 +1403,8 @@ const file_airborne_v1_airborne_proto_rawDesc = "" +
 	"\x16SelectProviderResponse\x121\n" +
 	"\bprovider\x18\x01 \x01(\x0e2\x15.airborne.v1.ProviderR\bprovider\x12%\n" +
 	"\x0emodel_override\x18\x02 \x01(\tR\rmodelOverride\x12\x16\n" +
-	"\x06reason\x18\x03 \x01(\tR\x06reason2\x9e\x02\n" +
-	"\fAIBoxService\x12V\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason2\xa1\x02\n" +
+	"\x0fAirborneService\x12V\n" +
 	"\rGenerateReply\x12!.airborne.v1.GenerateReplyRequest\x1a\".airborne.v1.GenerateReplyResponse\x12[\n" +
 	"\x13GenerateReplyStream\x12!.airborne.v1.GenerateReplyRequest\x1a\x1f.airborne.v1.GenerateReplyChunk0\x01\x12Y\n" +
 	"\x0eSelectProvider\x12\".airborne.v1.SelectProviderRequest\x1a#.airborne.v1.SelectProviderResponseB\xaa\x01\n" +
@@ -1399,7 +1449,8 @@ var file_airborne_v1_airborne_proto_goTypes = []any{
 	(*Citation)(nil),               // 22: airborne.v1.Citation
 	(*ToolCall)(nil),               // 23: airborne.v1.ToolCall
 	(*CodeExecutionResult)(nil),    // 24: airborne.v1.CodeExecutionResult
-	(*ProviderConfig)(nil),         // 25: airborne.v1.ProviderConfig
+	(*StructuredMetadata)(nil),     // 25: airborne.v1.StructuredMetadata
+	(*ProviderConfig)(nil),         // 26: airborne.v1.ProviderConfig
 }
 var file_airborne_v1_airborne_proto_depIdxs = []int32{
 	17, // 0: airborne.v1.GenerateReplyRequest.conversation_history:type_name -> airborne.v1.Message
@@ -1417,38 +1468,40 @@ var file_airborne_v1_airborne_proto_depIdxs = []int32{
 	23, // 12: airborne.v1.GenerateReplyResponse.tool_calls:type_name -> airborne.v1.ToolCall
 	24, // 13: airborne.v1.GenerateReplyResponse.code_executions:type_name -> airborne.v1.CodeExecutionResult
 	10, // 14: airborne.v1.GenerateReplyResponse.images:type_name -> airborne.v1.GeneratedImage
-	5,  // 15: airborne.v1.GenerateReplyChunk.text_delta:type_name -> airborne.v1.TextDelta
-	6,  // 16: airborne.v1.GenerateReplyChunk.usage_update:type_name -> airborne.v1.UsageUpdate
-	7,  // 17: airborne.v1.GenerateReplyChunk.citation_update:type_name -> airborne.v1.CitationUpdate
-	8,  // 18: airborne.v1.GenerateReplyChunk.complete:type_name -> airborne.v1.StreamComplete
-	9,  // 19: airborne.v1.GenerateReplyChunk.error:type_name -> airborne.v1.StreamError
-	3,  // 20: airborne.v1.GenerateReplyChunk.tool_call_update:type_name -> airborne.v1.ToolCallUpdate
-	4,  // 21: airborne.v1.GenerateReplyChunk.code_execution_update:type_name -> airborne.v1.CodeExecutionUpdate
-	23, // 22: airborne.v1.ToolCallUpdate.tool_call:type_name -> airborne.v1.ToolCall
-	24, // 23: airborne.v1.CodeExecutionUpdate.execution:type_name -> airborne.v1.CodeExecutionResult
-	21, // 24: airborne.v1.UsageUpdate.usage:type_name -> airborne.v1.Usage
-	22, // 25: airborne.v1.CitationUpdate.citation:type_name -> airborne.v1.Citation
-	18, // 26: airborne.v1.StreamComplete.provider:type_name -> airborne.v1.Provider
-	21, // 27: airborne.v1.StreamComplete.final_usage:type_name -> airborne.v1.Usage
-	22, // 28: airborne.v1.StreamComplete.citations:type_name -> airborne.v1.Citation
-	23, // 29: airborne.v1.StreamComplete.tool_calls:type_name -> airborne.v1.ToolCall
-	24, // 30: airborne.v1.StreamComplete.code_executions:type_name -> airborne.v1.CodeExecutionResult
-	10, // 31: airborne.v1.StreamComplete.images:type_name -> airborne.v1.GeneratedImage
-	12, // 32: airborne.v1.SelectProviderRequest.triggers:type_name -> airborne.v1.ProviderTrigger
-	18, // 33: airborne.v1.ProviderTrigger.provider:type_name -> airborne.v1.Provider
-	18, // 34: airborne.v1.SelectProviderResponse.provider:type_name -> airborne.v1.Provider
-	25, // 35: airborne.v1.GenerateReplyRequest.ProviderConfigsEntry.value:type_name -> airborne.v1.ProviderConfig
-	0,  // 36: airborne.v1.AIBoxService.GenerateReply:input_type -> airborne.v1.GenerateReplyRequest
-	0,  // 37: airborne.v1.AIBoxService.GenerateReplyStream:input_type -> airborne.v1.GenerateReplyRequest
-	11, // 38: airborne.v1.AIBoxService.SelectProvider:input_type -> airborne.v1.SelectProviderRequest
-	1,  // 39: airborne.v1.AIBoxService.GenerateReply:output_type -> airborne.v1.GenerateReplyResponse
-	2,  // 40: airborne.v1.AIBoxService.GenerateReplyStream:output_type -> airborne.v1.GenerateReplyChunk
-	13, // 41: airborne.v1.AIBoxService.SelectProvider:output_type -> airborne.v1.SelectProviderResponse
-	39, // [39:42] is the sub-list for method output_type
-	36, // [36:39] is the sub-list for method input_type
-	36, // [36:36] is the sub-list for extension type_name
-	36, // [36:36] is the sub-list for extension extendee
-	0,  // [0:36] is the sub-list for field type_name
+	25, // 15: airborne.v1.GenerateReplyResponse.structured_metadata:type_name -> airborne.v1.StructuredMetadata
+	5,  // 16: airborne.v1.GenerateReplyChunk.text_delta:type_name -> airborne.v1.TextDelta
+	6,  // 17: airborne.v1.GenerateReplyChunk.usage_update:type_name -> airborne.v1.UsageUpdate
+	7,  // 18: airborne.v1.GenerateReplyChunk.citation_update:type_name -> airborne.v1.CitationUpdate
+	8,  // 19: airborne.v1.GenerateReplyChunk.complete:type_name -> airborne.v1.StreamComplete
+	9,  // 20: airborne.v1.GenerateReplyChunk.error:type_name -> airborne.v1.StreamError
+	3,  // 21: airborne.v1.GenerateReplyChunk.tool_call_update:type_name -> airborne.v1.ToolCallUpdate
+	4,  // 22: airborne.v1.GenerateReplyChunk.code_execution_update:type_name -> airborne.v1.CodeExecutionUpdate
+	23, // 23: airborne.v1.ToolCallUpdate.tool_call:type_name -> airborne.v1.ToolCall
+	24, // 24: airborne.v1.CodeExecutionUpdate.execution:type_name -> airborne.v1.CodeExecutionResult
+	21, // 25: airborne.v1.UsageUpdate.usage:type_name -> airborne.v1.Usage
+	22, // 26: airborne.v1.CitationUpdate.citation:type_name -> airborne.v1.Citation
+	18, // 27: airborne.v1.StreamComplete.provider:type_name -> airborne.v1.Provider
+	21, // 28: airborne.v1.StreamComplete.final_usage:type_name -> airborne.v1.Usage
+	22, // 29: airborne.v1.StreamComplete.citations:type_name -> airborne.v1.Citation
+	23, // 30: airborne.v1.StreamComplete.tool_calls:type_name -> airborne.v1.ToolCall
+	24, // 31: airborne.v1.StreamComplete.code_executions:type_name -> airborne.v1.CodeExecutionResult
+	10, // 32: airborne.v1.StreamComplete.images:type_name -> airborne.v1.GeneratedImage
+	25, // 33: airborne.v1.StreamComplete.structured_metadata:type_name -> airborne.v1.StructuredMetadata
+	12, // 34: airborne.v1.SelectProviderRequest.triggers:type_name -> airborne.v1.ProviderTrigger
+	18, // 35: airborne.v1.ProviderTrigger.provider:type_name -> airborne.v1.Provider
+	18, // 36: airborne.v1.SelectProviderResponse.provider:type_name -> airborne.v1.Provider
+	26, // 37: airborne.v1.GenerateReplyRequest.ProviderConfigsEntry.value:type_name -> airborne.v1.ProviderConfig
+	0,  // 38: airborne.v1.AirborneService.GenerateReply:input_type -> airborne.v1.GenerateReplyRequest
+	0,  // 39: airborne.v1.AirborneService.GenerateReplyStream:input_type -> airborne.v1.GenerateReplyRequest
+	11, // 40: airborne.v1.AirborneService.SelectProvider:input_type -> airborne.v1.SelectProviderRequest
+	1,  // 41: airborne.v1.AirborneService.GenerateReply:output_type -> airborne.v1.GenerateReplyResponse
+	2,  // 42: airborne.v1.AirborneService.GenerateReplyStream:output_type -> airborne.v1.GenerateReplyChunk
+	13, // 43: airborne.v1.AirborneService.SelectProvider:output_type -> airborne.v1.SelectProviderResponse
+	41, // [41:44] is the sub-list for method output_type
+	38, // [38:41] is the sub-list for method input_type
+	38, // [38:38] is the sub-list for extension type_name
+	38, // [38:38] is the sub-list for extension extendee
+	0,  // [0:38] is the sub-list for field type_name
 }
 
 func init() { file_airborne_v1_airborne_proto_init() }

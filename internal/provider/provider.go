@@ -79,6 +79,9 @@ type GenerateParams struct {
 
 	// ClientID identifies the calling client
 	ClientID string
+
+	// EnableStructuredOutput enables JSON mode with entity extraction (Gemini-only)
+	EnableStructuredOutput bool
 }
 
 // Tool defines a function that the model can call
@@ -191,6 +194,42 @@ type GeneratedImage struct {
 	ContentID string
 }
 
+// StructuredMetadata contains extracted metadata from structured output mode
+type StructuredMetadata struct {
+	// Intent classification (question, request, task_delegation, feedback, complaint, follow_up, attachment_analysis)
+	Intent string
+
+	// RequiresUserAction is true if the response asks a clarifying question
+	RequiresUserAction bool
+
+	// Entities are named entities extracted from the text
+	Entities []StructuredEntity
+
+	// Topics are 2-4 keyword tags
+	Topics []string
+
+	// Scheduling contains calendar/meeting signals
+	Scheduling *SchedulingIntent
+}
+
+// StructuredEntity represents an extracted named entity
+type StructuredEntity struct {
+	// Name is the entity name as it appears in text
+	Name string
+
+	// Type is the entity type (person, organization, location, product, technology, tool, service, etc.)
+	Type string
+}
+
+// SchedulingIntent contains calendar/meeting signals
+type SchedulingIntent struct {
+	// Detected is true if scheduling intent was detected
+	Detected bool
+
+	// DatetimeMentioned is the raw text like "next Tuesday at 2pm"
+	DatetimeMentioned string
+}
+
 // ProviderConfig contains provider-specific configuration
 type ProviderConfig struct {
 	APIKey          string
@@ -230,6 +269,9 @@ type GenerateResult struct {
 
 	// Images contains AI-generated images
 	Images []GeneratedImage
+
+	// StructuredMetadata contains extracted intent, entities, topics (when structured output enabled)
+	StructuredMetadata *StructuredMetadata
 
 	// RequestJSON contains the raw API request for debugging
 	RequestJSON []byte

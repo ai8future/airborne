@@ -885,6 +885,200 @@ func (x *GeneratedFile) GetContent() []byte {
 	return nil
 }
 
+// StructuredMetadata contains extracted metadata from structured output mode
+type StructuredMetadata struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Primary intent classification
+	Intent string `protobuf:"bytes,1,opt,name=intent,proto3" json:"intent,omitempty"`
+	// True if response asks a clarifying question
+	RequiresUserAction bool `protobuf:"varint,2,opt,name=requires_user_action,json=requiresUserAction,proto3" json:"requires_user_action,omitempty"`
+	// Extracted named entities
+	Entities []*StructuredEntity `protobuf:"bytes,3,rep,name=entities,proto3" json:"entities,omitempty"`
+	// 2-4 keyword tags
+	Topics []string `protobuf:"bytes,4,rep,name=topics,proto3" json:"topics,omitempty"`
+	// Calendar/meeting signals
+	Scheduling    *SchedulingIntent `protobuf:"bytes,5,opt,name=scheduling,proto3" json:"scheduling,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StructuredMetadata) Reset() {
+	*x = StructuredMetadata{}
+	mi := &file_airborne_v1_common_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StructuredMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StructuredMetadata) ProtoMessage() {}
+
+func (x *StructuredMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_airborne_v1_common_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StructuredMetadata.ProtoReflect.Descriptor instead.
+func (*StructuredMetadata) Descriptor() ([]byte, []int) {
+	return file_airborne_v1_common_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *StructuredMetadata) GetIntent() string {
+	if x != nil {
+		return x.Intent
+	}
+	return ""
+}
+
+func (x *StructuredMetadata) GetRequiresUserAction() bool {
+	if x != nil {
+		return x.RequiresUserAction
+	}
+	return false
+}
+
+func (x *StructuredMetadata) GetEntities() []*StructuredEntity {
+	if x != nil {
+		return x.Entities
+	}
+	return nil
+}
+
+func (x *StructuredMetadata) GetTopics() []string {
+	if x != nil {
+		return x.Topics
+	}
+	return nil
+}
+
+func (x *StructuredMetadata) GetScheduling() *SchedulingIntent {
+	if x != nil {
+		return x.Scheduling
+	}
+	return nil
+}
+
+// StructuredEntity represents an extracted named entity
+type StructuredEntity struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Entity name as it appears in text
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// Entity type: person, organization, location, product, project, document,
+	// event, money, date, investor, advisor, metric, technology, tool, service,
+	// methodology, credential, timeframe, feature, url, email_address
+	Type          string `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StructuredEntity) Reset() {
+	*x = StructuredEntity{}
+	mi := &file_airborne_v1_common_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StructuredEntity) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StructuredEntity) ProtoMessage() {}
+
+func (x *StructuredEntity) ProtoReflect() protoreflect.Message {
+	mi := &file_airborne_v1_common_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StructuredEntity.ProtoReflect.Descriptor instead.
+func (*StructuredEntity) Descriptor() ([]byte, []int) {
+	return file_airborne_v1_common_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *StructuredEntity) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *StructuredEntity) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+// SchedulingIntent contains calendar/meeting signals
+type SchedulingIntent struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// True if scheduling intent was detected
+	Detected bool `protobuf:"varint,1,opt,name=detected,proto3" json:"detected,omitempty"`
+	// Raw text like "next Tuesday at 2pm"
+	DatetimeMentioned string `protobuf:"bytes,2,opt,name=datetime_mentioned,json=datetimeMentioned,proto3" json:"datetime_mentioned,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *SchedulingIntent) Reset() {
+	*x = SchedulingIntent{}
+	mi := &file_airborne_v1_common_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SchedulingIntent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SchedulingIntent) ProtoMessage() {}
+
+func (x *SchedulingIntent) ProtoReflect() protoreflect.Message {
+	mi := &file_airborne_v1_common_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SchedulingIntent.ProtoReflect.Descriptor instead.
+func (*SchedulingIntent) Descriptor() ([]byte, []int) {
+	return file_airborne_v1_common_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *SchedulingIntent) GetDetected() bool {
+	if x != nil {
+		return x.Detected
+	}
+	return false
+}
+
+func (x *SchedulingIntent) GetDatetimeMentioned() string {
+	if x != nil {
+		return x.DatetimeMentioned
+	}
+	return ""
+}
+
 var File_airborne_v1_common_proto protoreflect.FileDescriptor
 
 const file_airborne_v1_common_proto_rawDesc = "" +
@@ -956,7 +1150,21 @@ const file_airborne_v1_common_proto_rawDesc = "" +
 	"\rGeneratedFile\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1b\n" +
 	"\tmime_type\x18\x02 \x01(\tR\bmimeType\x12\x18\n" +
-	"\acontent\x18\x03 \x01(\fR\acontent*\xc9\x04\n" +
+	"\acontent\x18\x03 \x01(\fR\acontent\"\xf0\x01\n" +
+	"\x12StructuredMetadata\x12\x16\n" +
+	"\x06intent\x18\x01 \x01(\tR\x06intent\x120\n" +
+	"\x14requires_user_action\x18\x02 \x01(\bR\x12requiresUserAction\x129\n" +
+	"\bentities\x18\x03 \x03(\v2\x1d.airborne.v1.StructuredEntityR\bentities\x12\x16\n" +
+	"\x06topics\x18\x04 \x03(\tR\x06topics\x12=\n" +
+	"\n" +
+	"scheduling\x18\x05 \x01(\v2\x1d.airborne.v1.SchedulingIntentR\n" +
+	"scheduling\":\n" +
+	"\x10StructuredEntity\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
+	"\x04type\x18\x02 \x01(\tR\x04type\"]\n" +
+	"\x10SchedulingIntent\x12\x1a\n" +
+	"\bdetected\x18\x01 \x01(\bR\bdetected\x12-\n" +
+	"\x12datetime_mentioned\x18\x02 \x01(\tR\x11datetimeMentioned*\xc9\x04\n" +
 	"\bProvider\x12\x18\n" +
 	"\x14PROVIDER_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fPROVIDER_OPENAI\x10\x01\x12\x13\n" +
@@ -999,7 +1207,7 @@ func file_airborne_v1_common_proto_rawDescGZIP() []byte {
 }
 
 var file_airborne_v1_common_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_airborne_v1_common_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_airborne_v1_common_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_airborne_v1_common_proto_goTypes = []any{
 	(Provider)(0),               // 0: airborne.v1.Provider
 	(Citation_Type)(0),          // 1: airborne.v1.Citation.Type
@@ -1012,17 +1220,22 @@ var file_airborne_v1_common_proto_goTypes = []any{
 	(*ToolResult)(nil),          // 8: airborne.v1.ToolResult
 	(*CodeExecutionResult)(nil), // 9: airborne.v1.CodeExecutionResult
 	(*GeneratedFile)(nil),       // 10: airborne.v1.GeneratedFile
-	nil,                         // 11: airborne.v1.ProviderConfig.ExtraOptionsEntry
+	(*StructuredMetadata)(nil),  // 11: airborne.v1.StructuredMetadata
+	(*StructuredEntity)(nil),    // 12: airborne.v1.StructuredEntity
+	(*SchedulingIntent)(nil),    // 13: airborne.v1.SchedulingIntent
+	nil,                         // 14: airborne.v1.ProviderConfig.ExtraOptionsEntry
 }
 var file_airborne_v1_common_proto_depIdxs = []int32{
 	1,  // 0: airborne.v1.Citation.type:type_name -> airborne.v1.Citation.Type
-	11, // 1: airborne.v1.ProviderConfig.extra_options:type_name -> airborne.v1.ProviderConfig.ExtraOptionsEntry
+	14, // 1: airborne.v1.ProviderConfig.extra_options:type_name -> airborne.v1.ProviderConfig.ExtraOptionsEntry
 	10, // 2: airborne.v1.CodeExecutionResult.files:type_name -> airborne.v1.GeneratedFile
-	3,  // [3:3] is the sub-list for method output_type
-	3,  // [3:3] is the sub-list for method input_type
-	3,  // [3:3] is the sub-list for extension type_name
-	3,  // [3:3] is the sub-list for extension extendee
-	0,  // [0:3] is the sub-list for field type_name
+	12, // 3: airborne.v1.StructuredMetadata.entities:type_name -> airborne.v1.StructuredEntity
+	13, // 4: airborne.v1.StructuredMetadata.scheduling:type_name -> airborne.v1.SchedulingIntent
+	5,  // [5:5] is the sub-list for method output_type
+	5,  // [5:5] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_airborne_v1_common_proto_init() }
@@ -1037,7 +1250,7 @@ func file_airborne_v1_common_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_airborne_v1_common_proto_rawDesc), len(file_airborne_v1_common_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   10,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -229,8 +229,8 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		generateConfig.Tools = tools
 	}
 
-	// Enable structured output (JSON mode) if requested
-	structuredOutputEnabled := cfg.ExtraOptions["structured_output"] == "true"
+	// Enable structured output (JSON mode) if requested via params
+	structuredOutputEnabled := params.EnableStructuredOutput
 	if structuredOutputEnabled {
 		generateConfig.ResponseMIMEType = "application/json"
 		generateConfig.ResponseJsonSchema = structuredOutputSchema()
@@ -286,8 +286,9 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 
 		// Extract text from response (handles both plain text and structured JSON)
 		var text string
+		var structuredMetadata *provider.StructuredMetadata
 		if structuredOutputEnabled {
-			text = extractStructuredText(resp)
+			text, structuredMetadata = extractStructuredResponse(resp)
 		} else {
 			text = extractText(resp)
 		}
@@ -331,6 +332,7 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 			ToolCalls:          toolCalls,
 			RequiresToolOutput: len(toolCalls) > 0,
 			CodeExecutions:     codeExecutions,
+			StructuredMetadata: structuredMetadata,
 			RequestJSON:        reqJSON,
 			ResponseJSON:       respJSON,
 		}, nil
@@ -463,8 +465,8 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 		}
 	}
 
-	// Enable structured output (JSON mode) if requested
-	structuredOutputEnabled := cfg.ExtraOptions["structured_output"] == "true"
+	// Enable structured output (JSON mode) if requested via params
+	structuredOutputEnabled := params.EnableStructuredOutput
 	if structuredOutputEnabled {
 		generateConfig.ResponseMIMEType = "application/json"
 		generateConfig.ResponseJsonSchema = structuredOutputSchema()
@@ -679,22 +681,55 @@ func extractText(resp *genai.GenerateContentResponse) string {
 	return strings.TrimSpace(text.String())
 }
 
-// extractStructuredText extracts the reply field from structured JSON output.
-func extractStructuredText(resp *genai.GenerateContentResponse) string {
+// extractStructuredResponse extracts text and metadata from structured JSON output.
+func extractStructuredResponse(resp *genai.GenerateContentResponse) (string, *provider.StructuredMetadata) {
 	rawJSON := extractText(resp)
 	if rawJSON == "" {
-		return ""
+		return "", nil
 	}
 
 	var parsed struct {
-		Reply string `json:"reply"`
+		Reply              string `json:"reply"`
+		Intent             string `json:"intent"`
+		RequiresUserAction bool   `json:"requires_user_action"`
+		Entities           []struct {
+			Name string `json:"name"`
+			Type string `json:"type"`
+		} `json:"entities"`
+		Topics           []string `json:"topics"`
+		SchedulingIntent *struct {
+			Detected          bool   `json:"detected"`
+			DatetimeMentioned string `json:"datetime_mentioned"`
+		} `json:"scheduling_intent"`
 	}
+
 	if err := json.Unmarshal([]byte(rawJSON), &parsed); err != nil {
-		slog.Warn("failed to parse structured response, using raw text",
-			"error", err.Error())
-		return rawJSON
+		slog.Warn("failed to parse structured response, falling back to raw text", "error", err)
+		return rawJSON, nil
 	}
-	return parsed.Reply
+
+	// Convert to provider types
+	metadata := &provider.StructuredMetadata{
+		Intent:             parsed.Intent,
+		RequiresUserAction: parsed.RequiresUserAction,
+		Topics:             parsed.Topics,
+	}
+
+	for _, e := range parsed.Entities {
+		metadata.Entities = append(metadata.Entities, provider.StructuredEntity{
+			Name: e.Name,
+			Type: e.Type,
+		})
+	}
+
+	if parsed.SchedulingIntent != nil {
+		metadata.Scheduling = &provider.SchedulingIntent{
+			Detected:          parsed.SchedulingIntent.Detected,
+			DatetimeMentioned: parsed.SchedulingIntent.DatetimeMentioned,
+		}
+	}
+
+	return parsed.Reply, metadata
 }
 
 // getBlockReason checks if the response was blocked and returns the reason.
@@ -867,42 +902,70 @@ func parseThinkingLevel(s string) genai.ThinkingLevel {
 }
 
 // structuredOutputSchema returns the JSON schema for structured output mode.
+// This extracts intent, entities, topics, and scheduling signals alongside the response.
 func structuredOutputSchema() *genai.Schema {
 	return &genai.Schema{
 		Type: "object",
 		Properties: map[string]*genai.Schema{
 			"reply": {
 				Type:        "string",
-				Description: "The main response text",
+				Description: "The conversational response in Markdown format",
 			},
 			"intent": {
 				Type:        "string",
-				Description: "The detected intent of the user message",
-				Enum:        []string{"question", "request", "task_delegation", "feedback", "complaint", "follow_up", "attachment_analysis"},
+				Description: "Primary intent classification",
+				Enum: []string{
+					"question", "request", "task_delegation",
+					"feedback", "complaint", "follow_up", "attachment_analysis",
+				},
+			},
+			"requires_user_action": {
+				Type:        "boolean",
+				Description: "True if response asks a clarifying question",
 			},
 			"entities": {
 				Type:        "array",
-				Description: "Key entities mentioned in the response",
+				Description: "Named entities extracted from the text",
 				Items: &genai.Schema{
 					Type: "object",
 					Properties: map[string]*genai.Schema{
-						"name": {Type: "string", Description: "Entity name"},
-						"type": {Type: "string", Description: "Entity type", Enum: []string{"person", "organization", "location", "product", "technology", "tool", "service"}},
+						"name": {Type: "string", Description: "Entity name as it appears in text"},
+						"type": {
+							Type:        "string",
+							Description: "Entity type",
+							Enum: []string{
+								// Core (9)
+								"person", "organization", "location", "product",
+								"project", "document", "event", "money", "date",
+								// Business (3)
+								"investor", "advisor", "metric",
+								// Technology (3)
+								"technology", "tool", "service",
+								// Operations (3)
+								"methodology", "credential", "timeframe",
+								// Content (3)
+								"feature", "url", "email_address",
+							},
+						},
 					},
 					Required: []string{"name", "type"},
 				},
 			},
 			"topics": {
 				Type:        "array",
-				Description: "2-4 keywords describing the topics discussed",
+				Description: "2-4 keyword tags",
 				Items:       &genai.Schema{Type: "string"},
 			},
-			"requires_user_action": {
-				Type:        "boolean",
-				Description: "Whether the response requires user action",
+			"scheduling_intent": {
+				Type:        "object",
+				Description: "Calendar/meeting signals",
+				Properties: map[string]*genai.Schema{
+					"detected":           {Type: "boolean", Description: "True if scheduling intent was detected"},
+					"datetime_mentioned": {Type: "string", Description: "Raw text like 'next Tuesday at 2pm'"},
+				},
 			},
 		},
-		Required: []string{"reply"},
+		Required: []string{"reply", "intent"},
 	}
 }
 

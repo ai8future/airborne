@@ -147,21 +147,22 @@ func (s *ChatService) prepareRequest(ctx context.Context, req *pb.GenerateReplyR
 
 	// Build params
 	params := provider.GenerateParams{
-		Instructions:        instructions, // May include RAG context for non-OpenAI
-		UserInput:           req.UserInput,
-		ConversationHistory: convertHistory(req.ConversationHistory),
-		FileStoreID:         req.FileStoreId,
-		PreviousResponseID:  req.PreviousResponseId,
-		OverrideModel:       req.ModelOverride,
-		EnableWebSearch:     req.EnableWebSearch,
-		EnableFileSearch:    req.EnableFileSearch,
-		EnableCodeExecution: req.EnableCodeExecution,
-		FileIDToFilename:    req.FileIdToFilename,
-		Tools:               convertTools(req.Tools),
-		ToolResults:         convertToolResults(req.ToolResults),
-		Config:              providerCfg,
-		RequestID:           requestID,
-		ClientID:            clientID,
+		Instructions:           instructions, // May include RAG context for non-OpenAI
+		UserInput:              req.UserInput,
+		ConversationHistory:    convertHistory(req.ConversationHistory),
+		FileStoreID:            req.FileStoreId,
+		PreviousResponseID:     req.PreviousResponseId,
+		OverrideModel:          req.ModelOverride,
+		EnableWebSearch:        req.EnableWebSearch,
+		EnableFileSearch:       req.EnableFileSearch,
+		EnableCodeExecution:    req.EnableCodeExecution,
+		EnableStructuredOutput: req.EnableStructuredOutput,
+		FileIDToFilename:       req.FileIdToFilename,
+		Tools:                  convertTools(req.Tools),
+		ToolResults:            convertToolResults(req.ToolResults),
+		Config:                 providerCfg,
+		RequestID:              requestID,
+		ClientID:               clientID,
 	}
 
 	return &preparedRequest{
@@ -715,6 +716,11 @@ func (s *ChatService) buildResponse(result provider.GenerateResult, providerName
 		resp.Images = append(resp.Images, convertGeneratedImage(img))
 	}
 
+	// Include structured metadata if available
+	if result.StructuredMetadata != nil {
+		resp.StructuredMetadata = convertStructuredMetadata(result.StructuredMetadata)
+	}
+
 	if failedOver {
 		resp.FailedOver = true
 		resp.OriginalProvider = mapProviderToProto(originalProvider)
@@ -931,6 +937,30 @@ func convertGeneratedImage(img provider.GeneratedImage) *pb.GeneratedImage {
 		Height:    int32(img.Height),
 		ContentId: img.ContentID,
 	}
+}
+
+func convertStructuredMetadata(m *provider.StructuredMetadata) *pb.StructuredMetadata {
+	if m == nil {
+		return nil
+	}
+	pm := &pb.StructuredMetadata{
+		Intent:             m.Intent,
+		RequiresUserAction: m.RequiresUserAction,
+		Topics:             m.Topics,
+	}
+	for _, e := range m.Entities {
+		pm.Entities = append(pm.Entities, &pb.StructuredEntity{
+			Name: e.Name,
+			Type: e.Type,
+		})
+	}
+	if m.Scheduling != nil {
+		pm.Scheduling = &pb.SchedulingIntent{
+			Detected:          m.Scheduling.Detected,
+			DatetimeMentioned: m.Scheduling.DatetimeMentioned,
+		}
+	}
+	return pm
 }
 
 // persistConversation saves the conversation turn to the database asynchronously.
