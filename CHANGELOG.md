@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.9] - 2026-01-18
+
+### Changed
+- **Gemini Provider Defaults**: Updated to production-ready settings:
+  - Default model: `gemini-3-pro-preview` (was `gemini-2.5-flash`)
+  - Default temperature: `1.0` (creative but coherent)
+  - Default max output tokens: `32000` (full response length)
+  - Thinking level: `HIGH` for Pro models (unchanged, existing behavior)
+  - TopP: No default (API handles it; only set if explicitly configured)
+
+Agent: Claude:Opus 4.5
+
 ## [1.2.8] - 2026-01-18
 
 ### Changed

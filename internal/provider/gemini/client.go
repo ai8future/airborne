@@ -91,7 +91,7 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 
 	model := cfg.Model
 	if model == "" {
-		model = "gemini-2.5-flash"
+		model = "gemini-3-pro-preview"
 	}
 	if strings.TrimSpace(params.OverrideModel) != "" {
 		model = params.OverrideModel
@@ -140,17 +140,25 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		},
 	}
 
-	// Apply optional parameters
+	// Apply generation parameters with sensible defaults
+	// Temperature: default 1.0 for Pro models (creative but coherent)
 	if cfg.Temperature != nil {
 		temp := float32(*cfg.Temperature)
 		generateConfig.Temperature = &temp
+	} else {
+		defaultTemp := float32(1.0)
+		generateConfig.Temperature = &defaultTemp
 	}
+	// TopP: only set if explicitly configured (not a default, API handles it)
 	if cfg.TopP != nil {
 		topP := float32(*cfg.TopP)
 		generateConfig.TopP = &topP
 	}
+	// MaxOutputTokens: default 32000 for full response length
 	if cfg.MaxOutputTokens != nil {
 		generateConfig.MaxOutputTokens = int32(*cfg.MaxOutputTokens)
+	} else {
+		generateConfig.MaxOutputTokens = 32000
 	}
 
 	// Configure safety settings
@@ -362,7 +370,7 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 
 	model := cfg.Model
 	if model == "" {
-		model = "gemini-2.5-flash"
+		model = "gemini-3-pro-preview"
 	}
 	if strings.TrimSpace(params.OverrideModel) != "" {
 		model = params.OverrideModel
@@ -410,17 +418,25 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 		},
 	}
 
-	// Apply optional parameters
+	// Apply generation parameters with sensible defaults
+	// Temperature: default 1.0 for Pro models (creative but coherent)
 	if cfg.Temperature != nil {
 		temp := float32(*cfg.Temperature)
 		generateConfig.Temperature = &temp
+	} else {
+		defaultTemp := float32(1.0)
+		generateConfig.Temperature = &defaultTemp
 	}
+	// TopP: only set if explicitly configured (not a default, API handles it)
 	if cfg.TopP != nil {
 		topP := float32(*cfg.TopP)
 		generateConfig.TopP = &topP
 	}
+	// MaxOutputTokens: default 32000 for full response length
 	if cfg.MaxOutputTokens != nil {
 		generateConfig.MaxOutputTokens = int32(*cfg.MaxOutputTokens)
+	} else {
+		generateConfig.MaxOutputTokens = 32000
 	}
 
 	// Configure safety settings
