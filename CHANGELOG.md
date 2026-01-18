@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.2] - 2026-01-18
+
+### Changed
+- **Pricing from JSON files**: Replaced hardcoded pricing map with file-based loading
+  - Loads from `configs/*_pricing.json` (same format as Solstice)
+  - Doppler `ai_providers` project is now single source of truth
+  - Added 22 provider pricing files with 175+ models
+  - Lazy initialization with graceful fallback
+  - Maintains backwards-compatible `CalculateCost()` API
+
+Agent: Claude:Opus 4.5
+
 ## [1.2.1] - 2026-01-18
 
 ### Changed

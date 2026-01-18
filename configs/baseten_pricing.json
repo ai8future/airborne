@@ -1,0 +1,21 @@
+{
+  "provider": "baseten",
+  "models": {
+    "deepseek-v3": {
+      "input_per_million": 0.27,
+      "output_per_million": 1.1
+    },
+    "deepseek-r1": {
+      "input_per_million": 0.55,
+      "output_per_million": 2.19
+    },
+    "llama-4-maverick": {
+      "input_per_million": 0.2,
+      "output_per_million": 0.6
+    }
+  },
+  "metadata": {
+    "updated": "2026-01-04",
+    "source": "doppler:ai_providers"
+  }
+}

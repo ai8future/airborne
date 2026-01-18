@@ -1,0 +1,29 @@
+{
+  "provider": "perplexity",
+  "models": {
+    "sonar": {
+      "input_per_million": 1.0,
+      "output_per_million": 1.0
+    },
+    "sonar-pro": {
+      "input_per_million": 3.0,
+      "output_per_million": 15.0
+    },
+    "sonar-reasoning": {
+      "input_per_million": 1.0,
+      "output_per_million": 5.0
+    },
+    "sonar-reasoning-pro": {
+      "input_per_million": 2.0,
+      "output_per_million": 8.0
+    },
+    "sonar-deep-research": {
+      "input_per_million": 2.0,
+      "output_per_million": 8.0
+    }
+  },
+  "metadata": {
+    "updated": "2026-01-04",
+    "source": "doppler:ai_providers"
+  }
+}

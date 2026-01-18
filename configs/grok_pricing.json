@@ -1,0 +1,37 @@
+{
+  "provider": "grok",
+  "models": {
+    "llama-3.1-8b-instant": {
+      "input_per_million": 0.05,
+      "output_per_million": 0.08
+    },
+    "llama-4-scout-17b-16e-instruct": {
+      "input_per_million": 0.11,
+      "output_per_million": 0.34
+    },
+    "gpt-oss-20b": {
+      "input_per_million": 0.1,
+      "output_per_million": 0.5
+    },
+    "qwen-3-32b": {
+      "input_per_million": 0.29,
+      "output_per_million": 0.59
+    },
+    "llama-3.3-70b-versatile": {
+      "input_per_million": 0.59,
+      "output_per_million": 0.79
+    },
+    "gpt-oss-120b": {
+      "input_per_million": 0.15,
+      "output_per_million": 0.75
+    },
+    "kimi-k2-0905": {
+      "input_per_million": 1.0,
+      "output_per_million": 3.0
+    }
+  },
+  "metadata": {
+    "updated": "2026-01-04",
+    "source": "doppler:ai_providers"
+  }
+}

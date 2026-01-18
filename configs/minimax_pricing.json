@@ -1,0 +1,17 @@
+{
+  "provider": "minimax",
+  "models": {
+    "minimax-m2": {
+      "input_per_million": 0.3,
+      "output_per_million": 1.2
+    },
+    "minimax-m2-stable": {
+      "input_per_million": 0.3,
+      "output_per_million": 1.2
+    }
+  },
+  "metadata": {
+    "updated": "2026-01-04",
+    "source": "doppler:ai_providers"
+  }
+}
