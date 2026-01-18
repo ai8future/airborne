@@ -67,6 +67,7 @@ func NewServer(repo *db.Repository, cfg Config) *Server {
 	// Register endpoints
 	mux.HandleFunc("/admin/activity", corsHandler(s.handleActivity))
 	mux.HandleFunc("/admin/debug/", corsHandler(s.handleDebug))
+	mux.HandleFunc("/admin/thread/", corsHandler(s.handleThread))
 	mux.HandleFunc("/admin/health", corsHandler(s.handleHealth))
 	mux.HandleFunc("/admin/test", corsHandler(s.handleTest))
 
@@ -275,6 +276,72 @@ func (s *Server) handleDebug(w http.ResponseWriter, r *http.Request) {
 	// Return debug data
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(data)
+}
+
+// handleThread returns the full conversation for a thread.
+// GET /admin/thread/{thread_id}
+func (s *Server) handleThread(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract thread ID from path: /admin/thread/{thread_id}
+	path := strings.TrimPrefix(r.URL.Path, "/admin/thread/")
+	if path == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "thread_id required",
+		})
+		return
+	}
+
+	threadID, err := uuid.Parse(path)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "invalid thread_id format",
+		})
+		return
+	}
+
+	// Check if repository is available
+	if s.repo == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "database not configured",
+		})
+		return
+	}
+
+	// Fetch thread conversation
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	conv, err := s.repo.GetThreadConversation(ctx, threadID)
+	if err != nil {
+		slog.Warn("failed to fetch thread conversation", "thread_id", threadID, "error", err)
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(err.Error(), "not found") {
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": "thread not found",
+			})
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+		return
+	}
+
+	// Return conversation data
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(conv)
 }
 
 // TestRequest is the request body for the test endpoint.

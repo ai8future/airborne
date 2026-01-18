@@ -202,3 +202,28 @@ func (m *Message) TruncateContent(maxLen int) string {
 	}
 	return m.Content[:maxLen] + "..."
 }
+
+// ConversationMessage represents a message in the conversation view.
+// This is a simplified view for the chat display.
+type ConversationMessage struct {
+	ID           uuid.UUID `json:"id"`
+	Role         string    `json:"role"`
+	Content      string    `json:"content"`
+	RenderedHTML string    `json:"rendered_html,omitempty"`
+	Model        string    `json:"model,omitempty"`
+	Provider     string    `json:"provider,omitempty"`
+	Timestamp    time.Time `json:"timestamp"`
+}
+
+// ThreadConversation contains full thread data with all messages.
+type ThreadConversation struct {
+	ThreadID     uuid.UUID             `json:"thread_id"`
+	TenantID     string                `json:"tenant_id"`
+	UserID       string                `json:"user_id"`
+	Provider     string                `json:"provider,omitempty"`
+	Model        string                `json:"model,omitempty"`
+	MessageCount int                   `json:"message_count"`
+	Messages     []ConversationMessage `json:"messages"`
+	CreatedAt    time.Time             `json:"created_at"`
+	UpdatedAt    time.Time             `json:"updated_at"`
+}

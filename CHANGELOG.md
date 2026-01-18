@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.12] - 2026-01-18
+
+### Added
+- **Conversation Viewer**: Chat-style conversation display in dashboard
+  - New `/admin/thread/{thread_id}` API endpoint
+  - `GetThreadConversation` repository method returns all messages with rendered HTML
+  - `ConversationMessage` and `ThreadConversation` models for conversation view
+  - Enables viewing full conversation threads from Live Activity feed
+
+Agent: Claude:Opus 4.5
+
 ## [1.2.11] - 2026-01-18
 
 ### Added

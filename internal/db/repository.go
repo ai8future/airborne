@@ -520,3 +520,68 @@ func (r *Repository) GetOrCreateThread(ctx context.Context, threadID uuid.UUID, 
 	}
 	return thread, nil
 }
+
+// GetThreadConversation retrieves complete thread data with all messages for conversation view.
+func (r *Repository) GetThreadConversation(ctx context.Context, threadID uuid.UUID) (*ThreadConversation, error) {
+	// First get thread info
+	threadQuery := `
+		SELECT id, tenant_id, user_id, COALESCE(provider, '') as provider, COALESCE(model, '') as model,
+		       message_count, created_at, updated_at
+		FROM airborne_threads
+		WHERE id = $1
+	`
+	r.client.logQuery(threadQuery, threadID)
+
+	var conv ThreadConversation
+	err := r.client.pool.QueryRow(ctx, threadQuery, threadID).Scan(
+		&conv.ThreadID,
+		&conv.TenantID,
+		&conv.UserID,
+		&conv.Provider,
+		&conv.Model,
+		&conv.MessageCount,
+		&conv.CreatedAt,
+		&conv.UpdatedAt,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, fmt.Errorf("thread not found")
+		}
+		return nil, fmt.Errorf("failed to get thread: %w", err)
+	}
+
+	// Get all messages in chronological order
+	messagesQuery := `
+		SELECT id, role, content, COALESCE(rendered_html, '') as rendered_html,
+		       COALESCE(model, '') as model, COALESCE(provider, '') as provider, created_at
+		FROM airborne_messages
+		WHERE thread_id = $1
+		ORDER BY created_at ASC
+	`
+	r.client.logQuery(messagesQuery, threadID)
+
+	rows, err := r.client.pool.Query(ctx, messagesQuery, threadID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get messages: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var msg ConversationMessage
+		err := rows.Scan(
+			&msg.ID,
+			&msg.Role,
+			&msg.Content,
+			&msg.RenderedHTML,
+			&msg.Model,
+			&msg.Provider,
+			&msg.Timestamp,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan message: %w", err)
+		}
+		conv.Messages = append(conv.Messages, msg)
+	}
+
+	return &conv, nil
+}
