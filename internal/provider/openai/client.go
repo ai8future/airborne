@@ -105,14 +105,11 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		model = params.OverrideModel
 	}
 
-	// Create capturing transport for debug JSON (only when debug enabled)
-	var capture *httpcapture.Transport
+	// Create capturing transport for debug JSON (always enabled for admin dashboard)
+	capture := httpcapture.New()
 	clientOpts := []option.RequestOption{
 		option.WithAPIKey(cfg.APIKey),
-	}
-	if c.debug {
-		capture = httpcapture.New()
-		clientOpts = append(clientOpts, option.WithHTTPClient(capture.Client()))
+		option.WithHTTPClient(capture.Client()),
 	}
 	if cfg.BaseURL != "" {
 		// SECURITY: Validate base URL to prevent SSRF attacks

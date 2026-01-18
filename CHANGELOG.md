@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.5] - 2026-01-18
+
+### Changed
+- **Enable raw JSON capture for debug inspector**:
+  - All providers (OpenAI, Anthropic, Gemini, OpenAI-compat) now capture raw HTTP
+    request/response bodies for every request
+  - Captured JSON is stored in `raw_request_json` and `raw_response_json` columns
+  - Debug inspector now shows full API payloads in JSON view
+  - System prompt is also captured and stored
+
+- **Files modified**:
+  - `internal/provider/openai/client.go`: Always enable httpcapture transport
+  - `internal/provider/anthropic/client.go`: Always enable httpcapture transport
+  - `internal/provider/gemini/client.go`: Always enable httpcapture transport
+  - `internal/provider/compat/openai_compat.go`: Always enable httpcapture transport
+  - `internal/service/chat.go`: Pass debug info to PersistConversationTurnWithDebug()
+
+Agent: Claude:Opus 4.5
+
 ## [1.2.4] - 2026-01-18
 
 ### Added

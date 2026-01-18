@@ -128,15 +128,12 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		baseURL = cfg.BaseURL
 	}
 
-	// Create capturing transport for debug JSON (only when debug enabled)
-	var capture *httpcapture.Transport
+	// Create capturing transport for debug JSON (always enabled for admin dashboard)
+	capture := httpcapture.New()
 	opts := []option.RequestOption{
 		option.WithAPIKey(cfg.APIKey),
 		option.WithBaseURL(baseURL),
-	}
-	if c.debug {
-		capture = httpcapture.New()
-		opts = append(opts, option.WithHTTPClient(capture.Client()))
+		option.WithHTTPClient(capture.Client()),
 	}
 
 	client := openai.NewClient(opts...)

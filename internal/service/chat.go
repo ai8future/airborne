@@ -1002,13 +1002,23 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 	// Processing time (we don't have this in current flow, use 0)
 	processingTimeMs := 0
 
+	// Build debug info from captured JSON (if available)
+	var debugInfo *db.DebugInfo
+	if len(result.RequestJSON) > 0 || len(result.ResponseJSON) > 0 {
+		debugInfo = &db.DebugInfo{
+			SystemPrompt:    req.Instructions,
+			RawRequestJSON:  string(result.RequestJSON),
+			RawResponseJSON: string(result.ResponseJSON),
+		}
+	}
+
 	// Run persistence in background goroutine
 	go func() {
 		// Create a new context with timeout for the background operation
 		persistCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		err := s.repo.PersistConversationTurn(
+		err := s.repo.PersistConversationTurnWithDebug(
 			persistCtx,
 			threadID,
 			tenantID,
@@ -1022,6 +1032,7 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 			outputTokens,
 			processingTimeMs,
 			costUSD,
+			debugInfo,
 		)
 		if err != nil {
 			slog.Error("failed to persist conversation",
