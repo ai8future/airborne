@@ -1,0 +1,144 @@
+{
+  "grades": [
+    {
+      "date": "2026-01-16T14:45:00Z",
+      "tool": "gemini",
+      "task": "audit",
+      "grade": 88,
+      "reportFile": "gemini-airborne-audit-2026-01-16_1445.md"
+    },
+    {
+      "date": "2026-01-16T14:56:00Z",
+      "tool": "gemini",
+      "task": "fix",
+      "grade": 82,
+      "reportFile": "gemini-airborne-fix-2026-01-16_1456.md"
+    },
+    {
+      "date": "2026-01-16T15:22:00Z",
+      "tool": "gemini",
+      "task": "refactor",
+      "grade": 84,
+      "reportFile": "gemini-airborne-refactor-2026-01-16_1522.md"
+    },
+    {
+      "date": "2026-01-16T22:12:00Z",
+      "tool": "gemini",
+      "task": "test",
+      "grade": 85,
+      "reportFile": "gemini-airborne-test-2026-01-16_2212.md"
+    },
+    {
+      "date": "2026-01-16T22:16:00Z",
+      "tool": "gemini",
+      "task": "quick",
+      "grade": 90,
+      "reportFile": "gemini-airborne-quick-2026-01-16_2216.md"
+    },
+    {
+      "date": "2026-01-16T22:36:00Z",
+      "tool": "codex",
+      "task": "audit",
+      "grade": 82,
+      "reportFile": "codex-airborne-audit-2026-01-16_2236.md"
+    },
+    {
+      "date": "2026-01-16T22:56:00Z",
+      "tool": "codex",
+      "task": "test",
+      "grade": 72,
+      "reportFile": "codex-airborne-test-2026-01-16_2256.md"
+    },
+    {
+      "date": "2026-01-16T23:13:00Z",
+      "tool": "codex",
+      "task": "fix",
+      "grade": 85,
+      "reportFile": "codex-airborne-fix-2026-01-16_2313.md"
+    },
+    {
+      "date": "2026-01-16T23:17:00Z",
+      "tool": "codex",
+      "task": "refactor",
+      "grade": 78,
+      "reportFile": "codex-airborne-refactor-2026-01-16_2317.md"
+    },
+    {
+      "date": "2026-01-16T23:26:00Z",
+      "tool": "codex",
+      "task": "quick",
+      "grade": 84,
+      "reportFile": "codex-airborne-quick-2026-01-16_2326.md"
+    },
+    {
+      "date": "2026-01-16T23:32:00Z",
+      "tool": "claude",
+      "task": "audit",
+      "grade": 72,
+      "reportFile": "claude-airborne-audit-2026-01-16_2332.md"
+    },
+    {
+      "date": "2026-01-16T23:36:00Z",
+      "tool": "claude",
+      "task": "test",
+      "grade": 72,
+      "reportFile": "claude-airborne-test-2026-01-16_2336.md"
+    },
+    {
+      "date": "2026-01-16T23:37:00Z",
+      "tool": "claude",
+      "task": "audit",
+      "grade": 78,
+      "reportFile": "claude-airborne-audit-2026-01-16_2337.md"
+    },
+    {
+      "date": "2026-01-16T23:41:00Z",
+      "tool": "claude",
+      "task": "fix",
+      "grade": 78,
+      "reportFile": "claude-airborne-fix-2026-01-16_2341.md"
+    },
+    {
+      "date": "2026-01-16T23:45:00Z",
+      "tool": "claude",
+      "task": "refactor",
+      "grade": 78,
+      "reportFile": "claude-airborne-refactor-2026-01-16_2345.md"
+    },
+    {
+      "date": "2026-01-16T23:49:00Z",
+      "tool": "claude",
+      "task": "quick",
+      "grade": 72,
+      "reportFile": "claude-airborne-quick-2026-01-16_2349.md"
+    },
+    {
+      "date": "2026-01-16T23:50:00Z",
+      "tool": "claude",
+      "task": "test",
+      "grade": 68,
+      "reportFile": "claude-airborne-test-2026-01-16_2350.md"
+    },
+    {
+      "date": "2026-01-16T23:55:00Z",
+      "tool": "claude",
+      "task": "refactor",
+      "grade": 82,
+      "reportFile": "claude-airborne-refactor-2026-01-16_2355.md"
+    },
+    {
+      "date": "2026-01-17T00:43:00Z",
+      "tool": "claude",
+      "task": "fix",
+      "grade": 87,
+      "reportFile": "claude-airborne-fix-2026-01-17_0043.md"
+    },
+    {
+      "date": "2026-01-17T01:10:00Z",
+      "tool": "claude",
+      "task": "quick",
+      "grade": 72,
+      "reportFile": "claude-airborne-quick-2026-01-17_0110.md"
+    }
+  ]
+}

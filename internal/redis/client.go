@@ -8,7 +8,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// Client wraps the Redis client with AIBox-specific operations
+// Client wraps the Redis client with Airborne-specific operations
 type Client struct {
 	rdb *redis.Client
 }

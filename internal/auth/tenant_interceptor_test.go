@@ -83,14 +83,14 @@ func TestNewTenantInterceptor(t *testing.T) {
 
 	// Verify skip methods are populated
 	expectedSkips := []string{
-		"/aibox.v1.AdminService/Health",
-		"/aibox.v1.AdminService/Ready",
-		"/aibox.v1.AdminService/Version",
-		"/aibox.v1.FileService/CreateFileStore",
-		"/aibox.v1.FileService/UploadFile",
-		"/aibox.v1.FileService/DeleteFileStore",
-		"/aibox.v1.FileService/GetFileStore",
-		"/aibox.v1.FileService/ListFileStores",
+		"/airborne.v1.AdminService/Health",
+		"/airborne.v1.AdminService/Ready",
+		"/airborne.v1.AdminService/Version",
+		"/airborne.v1.FileService/CreateFileStore",
+		"/airborne.v1.FileService/UploadFile",
+		"/airborne.v1.FileService/DeleteFileStore",
+		"/airborne.v1.FileService/GetFileStore",
+		"/airborne.v1.FileService/ListFileStores",
 	}
 
 	for _, method := range expectedSkips {
@@ -154,14 +154,14 @@ func TestUnaryInterceptor_SkipMethods(t *testing.T) {
 	unary := interceptor.UnaryInterceptor()
 
 	skipMethods := []string{
-		"/aibox.v1.AdminService/Health",
-		"/aibox.v1.AdminService/Ready",
-		"/aibox.v1.AdminService/Version",
-		"/aibox.v1.FileService/CreateFileStore",
-		"/aibox.v1.FileService/UploadFile",
-		"/aibox.v1.FileService/DeleteFileStore",
-		"/aibox.v1.FileService/GetFileStore",
-		"/aibox.v1.FileService/ListFileStores",
+		"/airborne.v1.AdminService/Health",
+		"/airborne.v1.AdminService/Ready",
+		"/airborne.v1.AdminService/Version",
+		"/airborne.v1.FileService/CreateFileStore",
+		"/airborne.v1.FileService/UploadFile",
+		"/airborne.v1.FileService/DeleteFileStore",
+		"/airborne.v1.FileService/GetFileStore",
+		"/airborne.v1.FileService/ListFileStores",
 	}
 
 	for _, method := range skipMethods {
@@ -275,7 +275,7 @@ func TestUnaryInterceptor_TenantExtraction(t *testing.T) {
 			unary := interceptor.UnaryInterceptor()
 
 			ctx := context.Background()
-			info := &grpc.UnaryServerInfo{FullMethod: "/aibox.v1.ChatService/GenerateReply"}
+			info := &grpc.UnaryServerInfo{FullMethod: "/airborne.v1.ChatService/GenerateReply"}
 
 			resp, err := unary(ctx, tt.req, info, mockUnaryHandler)
 
@@ -315,11 +315,11 @@ func TestStreamInterceptor_SkipMethods(t *testing.T) {
 	stream := interceptor.StreamInterceptor()
 
 	skipMethods := []string{
-		"/aibox.v1.AdminService/Health",
-		"/aibox.v1.AdminService/Ready",
-		"/aibox.v1.AdminService/Version",
-		"/aibox.v1.FileService/CreateFileStore",
-		"/aibox.v1.FileService/UploadFile",
+		"/airborne.v1.AdminService/Health",
+		"/airborne.v1.AdminService/Ready",
+		"/airborne.v1.AdminService/Version",
+		"/airborne.v1.FileService/CreateFileStore",
+		"/airborne.v1.FileService/UploadFile",
 	}
 
 	for _, method := range skipMethods {
@@ -407,7 +407,7 @@ func TestStreamInterceptor_TenantExtraction(t *testing.T) {
 				ctx = metadata.NewIncomingContext(ctx, md)
 			}
 
-			info := &grpc.StreamServerInfo{FullMethod: "/aibox.v1.ChatService/GenerateReplyStream"}
+			info := &grpc.StreamServerInfo{FullMethod: "/airborne.v1.ChatService/GenerateReplyStream"}
 			ss := &mockServerStream{
 				ctx:     ctx,
 				recvMsg: tt.recvMsg,
@@ -633,9 +633,9 @@ func TestUnaryInterceptor_NonSkippedMethodRequiresTenant(t *testing.T) {
 	unary := interceptor.UnaryInterceptor()
 
 	nonSkippedMethods := []string{
-		"/aibox.v1.ChatService/GenerateReply",
-		"/aibox.v1.ChatService/SelectProvider",
-		"/aibox.v1.SomeOtherService/SomeMethod",
+		"/airborne.v1.ChatService/GenerateReply",
+		"/airborne.v1.ChatService/SelectProvider",
+		"/airborne.v1.SomeOtherService/SomeMethod",
 	}
 
 	for _, method := range nonSkippedMethods {

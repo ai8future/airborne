@@ -128,7 +128,7 @@ func TestStaticUnaryInterceptorSkipMethod(t *testing.T) {
 		return "ok", nil
 	}
 
-	_, err := interceptor(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: "/aibox.v1.AdminService/Health"}, handler)
+	_, err := interceptor(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: "/airborne.v1.AdminService/Health"}, handler)
 	if err != nil {
 		t.Fatalf("interceptor error: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestStaticUnaryInterceptorRequiresAuth(t *testing.T) {
 	}
 
 	// No auth context - should fail
-	_, err := interceptor(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: "/aibox.v1.ChatService/Chat"}, handler)
+	_, err := interceptor(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: "/airborne.v1.ChatService/Chat"}, handler)
 	if status.Code(err) != codes.Unauthenticated {
 		t.Errorf("expected Unauthenticated error, got %v", err)
 	}
@@ -172,7 +172,7 @@ func TestStaticUnaryInterceptorWithValidAuth(t *testing.T) {
 	md := metadata.Pairs("authorization", "Bearer secret")
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 
-	_, err := interceptor(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/aibox.v1.ChatService/Chat"}, handler)
+	_, err := interceptor(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/airborne.v1.ChatService/Chat"}, handler)
 	if err != nil {
 		t.Fatalf("interceptor error: %v", err)
 	}

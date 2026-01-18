@@ -14,21 +14,21 @@ func TestParseAPIKey(t *testing.T) {
 	}{
 		{
 			name:      "valid key",
-			apiKey:    "aibox_sk_12345678_secretsecret123",
+			apiKey:    "airborne_sk_12345678_secretsecret123",
 			wantKeyID: "12345678",
 			wantSec:   "secretsecret123",
 			wantErr:   false,
 		},
 		{
 			name:      "valid key with long secret",
-			apiKey:    "aibox_sk_abcdefgh_verylongsecretvalue1234567890",
+			apiKey:    "airborne_sk_abcdefgh_verylongsecretvalue1234567890",
 			wantKeyID: "abcdefgh",
 			wantSec:   "verylongsecretvalue1234567890",
 			wantErr:   false,
 		},
 		{
 			name:    "too short",
-			apiKey:  "aibox_sk_123",
+			apiKey:  "airborne_sk_123",
 			wantErr: true,
 		},
 		{
@@ -38,7 +38,7 @@ func TestParseAPIKey(t *testing.T) {
 		},
 		{
 			name:    "missing underscore after keyID",
-			apiKey:  "aibox_sk_12345678secretsecret123",
+			apiKey:  "airborne_sk_12345678secretsecret123",
 			wantErr: true,
 		},
 		{
@@ -48,7 +48,7 @@ func TestParseAPIKey(t *testing.T) {
 		},
 		{
 			name:    "key ID too short",
-			apiKey:  "aibox_sk_1234567_secret",
+			apiKey:  "airborne_sk_1234567_secret",
 			wantErr: true,
 		},
 	}

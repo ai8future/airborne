@@ -16,7 +16,7 @@ type contextKey string
 
 const (
 	// ClientContextKey is the context key for client info
-	ClientContextKey contextKey = "aibox_client"
+	ClientContextKey contextKey = "airborne_client"
 )
 
 // Authenticator handles API key authentication
@@ -32,7 +32,7 @@ func NewAuthenticator(keyStore *KeyStore, rateLimiter *RateLimiter) *Authenticat
 		keyStore:    keyStore,
 		rateLimiter: rateLimiter,
 		skipMethods: map[string]bool{
-			"/aibox.v1.AdminService/Health": true,
+			"/airborne.v1.AdminService/Health": true,
 			// Version removed - requires authentication with PermissionAdmin
 		},
 	}

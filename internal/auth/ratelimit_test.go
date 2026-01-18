@@ -176,9 +176,9 @@ func TestGetUsage_MalformedValue(t *testing.T) {
 	clientID := "test-client"
 
 	// Inject malformed (non-numeric) values directly into Redis
-	s.Set("aibox:ratelimit:"+clientID+":rpm", "not-a-number")
-	s.Set("aibox:ratelimit:"+clientID+":rpd", "garbage")
-	s.Set("aibox:ratelimit:"+clientID+":tpm", "xyz123")
+	s.Set("airborne:ratelimit:"+clientID+":rpm", "not-a-number")
+	s.Set("airborne:ratelimit:"+clientID+":rpd", "garbage")
+	s.Set("airborne:ratelimit:"+clientID+":tpm", "xyz123")
 
 	usage, err := rl.GetUsage(ctx, clientID)
 	if err != nil {
@@ -217,9 +217,9 @@ func TestGetUsage_ValidValues(t *testing.T) {
 	clientID := "test-client"
 
 	// Inject valid numeric values directly into Redis
-	s.Set("aibox:ratelimit:"+clientID+":rpm", "42")
-	s.Set("aibox:ratelimit:"+clientID+":rpd", "123")
-	s.Set("aibox:ratelimit:"+clientID+":tpm", "9999")
+	s.Set("airborne:ratelimit:"+clientID+":rpm", "42")
+	s.Set("airborne:ratelimit:"+clientID+":rpd", "123")
+	s.Set("airborne:ratelimit:"+clientID+":tpm", "9999")
 
 	usage, err := rl.GetUsage(ctx, clientID)
 	if err != nil {

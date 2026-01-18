@@ -10,7 +10,7 @@ import (
 // AllowedSecretDirs contains the allowed directories for FILE= secret paths.
 // Paths outside these directories will be rejected to prevent path traversal.
 var AllowedSecretDirs = []string{
-	"/etc/aibox/secrets",
+	"/etc/airborne/secrets",
 	"/run/secrets",
 	"/var/run/secrets",
 }

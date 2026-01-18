@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   output: "standalone",
   // Configure environment variables
   env: {
-    AIRBORNE_ADMIN_URL: process.env.AIRBORNE_ADMIN_URL || "http://localhost:8473",
+    AIRBORNE_ADMIN_URL: process.env.AIRBORNE_ADMIN_URL || "http://localhost:50054",
   },
 };
 

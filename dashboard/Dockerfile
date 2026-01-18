@@ -10,7 +10,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm install --frozen-lockfile 2>/dev/null || npm install
 
 # Copy source
 COPY . .

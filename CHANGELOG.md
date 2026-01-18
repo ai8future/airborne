@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.8] - 2026-01-18
+
+### Changed
+- **Dashboard Activity Panel**: Simplified to Solstice-style side-by-side viewer
+  - Click any row to open full request/response inspector
+  - Removed separate eyeball icon column
+  - Removed redundant ContentModal (quick view)
+  - DebugModal shows side-by-side: Request (left) | Response (right)
+  - Supports Parsed view and raw JSON view toggle
+
+Agent: Claude:Opus 4.5
+
 ## [1.2.7] - 2026-01-18
 
 ### Added

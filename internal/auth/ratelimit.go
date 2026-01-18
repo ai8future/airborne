@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	rateLimitPrefix = "aibox:ratelimit:"
+	rateLimitPrefix = "airborne:ratelimit:"
 )
 
 // rateLimitScript is a Lua script for atomic rate limiting

@@ -27,7 +27,6 @@ export default function ActivityPanel() {
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedEntry, setSelectedEntry] = useState<ActivityEntry | null>(null);
   const [debugMessageId, setDebugMessageId] = useState<string | null>(null);
 
   // Fetch activity from backend
@@ -151,7 +150,6 @@ export default function ActivityPanel() {
                     Cost
                   </th>
                   <th className="w-28 px-2 py-3 text-center align-bottom">Model</th>
-                  <th className="w-10 px-2 py-3"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -164,7 +162,7 @@ export default function ActivityPanel() {
                   return (
                     <tr
                       key={entry.id || idx}
-                      onClick={() => setSelectedEntry(entry)}
+                      onClick={() => setDebugMessageId(entry.id)}
                       className={`hover:bg-gray-50 cursor-pointer transition-colors ${
                         isFailed ? "bg-red-50/30" : ""
                       }`}
@@ -241,20 +239,6 @@ export default function ActivityPanel() {
                           </span>
                         )}
                       </td>
-
-                      {/* Inspect button */}
-                      <td className="px-2 py-2">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDebugMessageId(entry.id);
-                          }}
-                          className="p-1 text-purple-500 hover:text-purple-700 hover:bg-purple-50 rounded transition-colors"
-                          title="Inspect AI request/response"
-                        >
-                          <InspectIcon />
-                        </button>
-                      </td>
                     </tr>
                   );
                 })}
@@ -264,150 +248,9 @@ export default function ActivityPanel() {
         </div>
       </div>
 
-      {/* Content Modal (quick view on row click) */}
-      {selectedEntry && <ContentModal entry={selectedEntry} onClose={() => setSelectedEntry(null)} />}
-
-      {/* Debug Modal (full request/response inspector) */}
+      {/* Debug Modal (side-by-side request/response inspector) */}
       {debugMessageId && <DebugModal messageId={debugMessageId} onClose={() => setDebugMessageId(null)} />}
     </div>
-  );
-}
-
-// Content Modal - shows full message content
-function ContentModal({ entry, onClose }: { entry: ActivityEntry; onClose: () => void }) {
-  // Close on escape key
-  useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handleEsc);
-    return () => window.removeEventListener("keydown", handleEsc);
-  }, [onClose]);
-
-  // Close on backdrop click
-  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) onClose();
-  };
-
-  const formatTimestamp = (ts: string) => {
-    if (!ts) return "N/A";
-    return new Date(ts).toLocaleString();
-  };
-
-  return (
-    <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-      onClick={handleBackdropClick}
-    >
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-800">Message Content</h2>
-          <button
-            onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <CloseIcon />
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-hidden flex flex-col">
-          {/* Basic Details */}
-          <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-              <div>
-                <span className="text-gray-500">Tenant:</span>
-                <div className="font-medium text-gray-800">{entry.tenant}</div>
-              </div>
-              <div>
-                <span className="text-gray-500">User:</span>
-                <div className="font-medium text-gray-800">{entry.user_id}</div>
-              </div>
-              <div>
-                <span className="text-gray-500">Provider:</span>
-                <div className="font-medium text-gray-800">{entry.provider || "N/A"}</div>
-              </div>
-              <div>
-                <span className="text-gray-500">Model:</span>
-                <div className="font-medium text-gray-800 font-mono text-xs">
-                  {entry.model || "N/A"}
-                </div>
-              </div>
-              <div>
-                <span className="text-gray-500">Time:</span>
-                <div className="font-medium text-gray-800">{formatTimestamp(entry.timestamp)}</div>
-              </div>
-              <div>
-                <span className="text-gray-500">Duration:</span>
-                <div className="font-medium text-gray-800">
-                  {entry.processing_time_ms ? `${(entry.processing_time_ms / 1000).toFixed(1)}s` : "N/A"}
-                </div>
-              </div>
-              <div>
-                <span className="text-gray-500">Tokens In/Out:</span>
-                <div className="font-medium text-gray-800">
-                  {entry.input_tokens || 0} / {entry.output_tokens || 0}
-                </div>
-              </div>
-              <div>
-                <span className="text-gray-500">Cost:</span>
-                <div className="font-medium text-green-600">
-                  {entry.cost_usd > 0 ? `$${entry.cost_usd.toFixed(4)}` : "-"}
-                </div>
-              </div>
-            </div>
-            <div className="mt-3">
-              <span className="text-gray-500 text-sm">Thread ID:</span>
-              <div className="font-medium text-gray-800 font-mono text-xs">
-                {entry.thread_id || "N/A"}
-              </div>
-            </div>
-          </div>
-
-          {/* Full Content */}
-          <div className="flex-1 overflow-auto p-6">
-            <h3 className="text-sm font-medium text-gray-600 mb-3">Response Content</h3>
-            <pre className="bg-gray-100 rounded p-4 text-sm whitespace-pre-wrap font-mono overflow-x-auto">
-              {entry.full_content || entry.content || "(No content)"}
-            </pre>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 py-3 border-t border-gray-200 bg-gray-50 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Icons
-function CloseIcon() {
-  return (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-    </svg>
-  );
-}
-
-function InspectIcon() {
-  return (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-      />
-    </svg>
   );
 }
 

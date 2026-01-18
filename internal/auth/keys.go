@@ -13,11 +13,11 @@ import (
 )
 
 const (
-	defaultKeyPrefix = "aibox:key:"
+	defaultKeyPrefix = "airborne:key:"
 
 	// API key format constants
-	apiKeyPrefix    = "aibox_sk_"
-	apiKeyPrefixLen = 9  // len("aibox_sk_")
+	apiKeyPrefix    = "airborne_sk_"
+	apiKeyPrefixLen = 12 // len("airborne_sk_")
 	keyIDLength     = 8
 	minAPIKeyLength = apiKeyPrefixLen + keyIDLength + 2 // prefix + keyid + _ + at least 1 char secret
 )
@@ -71,7 +71,7 @@ func NewKeyStore(redis *redis.Client) *KeyStore {
 func NewTenantKeyStore(redis *redis.Client, tenantID string) *KeyStore {
 	prefix := defaultKeyPrefix
 	if tenantID != "" {
-		prefix = fmt.Sprintf("aibox:%s:key:", tenantID)
+		prefix = fmt.Sprintf("airborne:%s:key:", tenantID)
 	}
 	return &KeyStore{
 		redis:     redis,
@@ -255,7 +255,7 @@ func (s *KeyStore) getKey(ctx context.Context, keyID string) (*ClientKey, error)
 
 // parseAPIKey parses an API key string into keyID and secret
 func parseAPIKey(apiKey string) (keyID, secret string, err error) {
-	// Expected format: aibox_sk_KEYID_SECRET
+	// Expected format: airborne_sk_KEYID_SECRET
 	if len(apiKey) < minAPIKeyLength {
 		return "", "", ErrInvalidKey
 	}

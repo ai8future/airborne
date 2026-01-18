@@ -15,7 +15,7 @@ import (
 
 const (
 	// TenantContextKey is the context key for tenant config
-	TenantContextKey contextKey = "aibox_tenant"
+	TenantContextKey contextKey = "airborne_tenant"
 )
 
 // TenantInterceptor validates tenant_id and injects tenant config into context.
@@ -29,14 +29,14 @@ func NewTenantInterceptor(mgr *tenant.Manager) *TenantInterceptor {
 	return &TenantInterceptor{
 		manager: mgr,
 		skipMethods: map[string]bool{
-			"/aibox.v1.AdminService/Health":         true,
-			"/aibox.v1.AdminService/Ready":          true,
-			"/aibox.v1.AdminService/Version":        true,
-			"/aibox.v1.FileService/CreateFileStore": true,
-			"/aibox.v1.FileService/UploadFile":      true,
-			"/aibox.v1.FileService/DeleteFileStore": true,
-			"/aibox.v1.FileService/GetFileStore":    true,
-			"/aibox.v1.FileService/ListFileStores":  true,
+			"/airborne.v1.AdminService/Health":         true,
+			"/airborne.v1.AdminService/Ready":          true,
+			"/airborne.v1.AdminService/Version":        true,
+			"/airborne.v1.FileService/CreateFileStore": true,
+			"/airborne.v1.FileService/UploadFile":      true,
+			"/airborne.v1.FileService/DeleteFileStore": true,
+			"/airborne.v1.FileService/GetFileStore":    true,
+			"/airborne.v1.FileService/ListFileStores":  true,
 		},
 	}
 }

@@ -24,7 +24,7 @@ func NewStaticAuthenticator(adminToken string) *StaticAuthenticator {
 	return &StaticAuthenticator{
 		adminToken: adminToken,
 		skipMethods: map[string]bool{
-			"/aibox.v1.AdminService/Health": true,
+			"/airborne.v1.AdminService/Health": true,
 		},
 	}
 }

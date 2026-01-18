@@ -105,7 +105,7 @@ func TestResolveSecrets_MultipleProviders(t *testing.T) {
 
 func TestValidateSecretPath_TraversalBlocked(t *testing.T) {
 	tests := []string{
-		"/etc/aibox/secrets/../../../etc/passwd",
+		"/etc/airborne/secrets/../../../etc/passwd",
 		"../secrets/key",
 		"/foo/../bar",
 	}
@@ -120,7 +120,7 @@ func TestValidateSecretPath_TraversalBlocked(t *testing.T) {
 func TestValidateSecretPath_AllowedPaths(t *testing.T) {
 	// These would only pass if the directories existed on the system
 	// This test validates the logic at least runs without panic
-	_ = validateSecretPath("/etc/aibox/secrets/mykey")
+	_ = validateSecretPath("/etc/airborne/secrets/mykey")
 	_ = validateSecretPath("/run/secrets/api_key")
 	_ = validateSecretPath("/var/run/secrets/token")
 }
@@ -144,8 +144,8 @@ func TestValidateSecretPath_SymlinkAttack(t *testing.T) {
 	// This test verifies that symlinks inside an "allowed" directory
 	// pointing to files outside are properly rejected.
 	//
-	// Attack scenario: If /etc/aibox/secrets exists, an attacker could
-	// create /etc/aibox/secrets/evil -> /etc/passwd, bypassing validation
+	// Attack scenario: If /etc/airborne/secrets exists, an attacker could
+	// create /etc/airborne/secrets/evil -> /etc/passwd, bypassing validation
 	// that only checks the path prefix without resolving symlinks.
 
 	// Create a temp structure simulating the attack
