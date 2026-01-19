@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.12] - 2026-01-19
+
+### Changed
+- **Compact Activity header**: Reduced padding (py-3 to py-1.5), added whitespace-nowrap to prevent wrapping
+
+Agent: Claude:Opus 4.5
+
 ## [1.3.11] - 2026-01-19
 
 ### Added

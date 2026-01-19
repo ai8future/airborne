@@ -113,18 +113,18 @@ export default function ActivityPanel({
           ) : (
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-gray-50 border-b border-gray-200 z-10">
-                <tr className="text-xs text-gray-500 uppercase tracking-wider">
-                  <th className="w-6 px-2 py-3"></th>
-                  <th className="w-20 px-2 py-3 text-left align-bottom">Time</th>
-                  <th className="w-24 px-2 py-3 text-left align-bottom">Tenant</th>
-                  <th className="px-2 py-3 text-left align-bottom">Content</th>
-                  <th className="w-14 px-2 py-3 text-right align-bottom">Dur</th>
-                  <th className="w-16 px-2 py-3 text-right align-bottom">In</th>
-                  <th className="w-16 px-2 py-3 text-right align-bottom">Out</th>
-                  <th className="w-16 px-2 py-3 text-right align-bottom">Total</th>
-                  <th className="w-16 px-2 py-3 text-right align-bottom">Cost</th>
-                  <th className="w-14 px-2 py-3 text-right align-bottom" title="Thread Cost">Thr$</th>
-                  <th className="w-36 px-2 py-3 text-center align-bottom">Model</th>
+                <tr className="text-xs text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                  <th className="w-6 px-2 py-1.5"></th>
+                  <th className="w-20 px-2 py-1.5 text-left">Time</th>
+                  <th className="w-24 px-2 py-1.5 text-left">Tenant</th>
+                  <th className="px-2 py-1.5 text-left">Content</th>
+                  <th className="w-12 px-2 py-1.5 text-right">Dur</th>
+                  <th className="w-14 px-2 py-1.5 text-right">In</th>
+                  <th className="w-14 px-2 py-1.5 text-right">Out</th>
+                  <th className="w-14 px-2 py-1.5 text-right">Total</th>
+                  <th className="w-14 px-2 py-1.5 text-right">Cost</th>
+                  <th className="w-12 px-2 py-1.5 text-right" title="Thread Cost">Thr$</th>
+                  <th className="w-32 px-2 py-1.5 text-center">Model</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
