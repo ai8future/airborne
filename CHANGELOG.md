@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.15] - 2026-01-19
+
+### Changed
+- **Dashboard Layout**: Removed TestPanel, added search input to Conversations header
+  - Removed "Test AI Connection" box from dashboard
+  - Added search text input to the right of "Conversations" title
+
+Agent: Claude:Opus 4.5
+
 ## [1.2.14] - 2026-01-19
 
 ### Added

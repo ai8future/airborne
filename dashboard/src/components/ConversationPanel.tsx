@@ -161,8 +161,13 @@ export default function ConversationPanel({ activity }: ConversationPanelProps) 
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-200">
+      <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
         <h3 className="font-semibold text-gray-800">Conversations</h3>
+        <input
+          type="text"
+          placeholder="Search threads..."
+          className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-64"
+        />
       </div>
 
       <div className="flex h-[500px]">

@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import ActivityPanel from "@/components/ActivityPanel";
 import ConversationPanel from "@/components/ConversationPanel";
-import TestPanel from "@/components/TestPanel";
 
 interface ActivityEntry {
   id: string;
@@ -67,7 +66,6 @@ export default function Home() {
 
   return (
     <div className="space-y-6">
-      <TestPanel />
       <ActivityPanel
         activity={activity}
         loading={loading}
