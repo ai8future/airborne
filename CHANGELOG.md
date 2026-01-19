@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.10] - 2026-01-19
+
+### Fixed
+- **Request JSON now loads**: Fixed field names to match backend (`raw_request_json`/`raw_response_json`)
+- **Tighter Activity header**: Changed "Thread Cost" (2 lines) to "Thr$" (1 line) with tooltip
+
+Agent: Claude:Opus 4.5
+
 ## [1.3.9] - 2026-01-19
 
 ### Changed

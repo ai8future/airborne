@@ -68,26 +68,26 @@ function MessageBubble({ message }: { message: ThreadMessage }) {
       const res = await fetch(`/api/debug/${message.id}`);
       const data = await res.json();
 
-      // Parse and format request JSON
-      if (data.request_json) {
+      // Parse and format request JSON (backend field is raw_request_json)
+      if (data.raw_request_json) {
         try {
-          setRequestJson(JSON.stringify(JSON.parse(data.request_json), null, 2));
+          setRequestJson(JSON.stringify(JSON.parse(data.raw_request_json), null, 2));
         } catch {
-          setRequestJson(data.request_json);
+          setRequestJson(data.raw_request_json);
         }
       }
 
-      // Parse and format response JSON
-      if (data.response_json) {
+      // Parse and format response JSON (backend field is raw_response_json)
+      if (data.raw_response_json) {
         try {
-          setResponseJson(JSON.stringify(JSON.parse(data.response_json), null, 2));
+          setResponseJson(JSON.stringify(JSON.parse(data.raw_response_json), null, 2));
         } catch {
-          setResponseJson(data.response_json);
+          setResponseJson(data.raw_response_json);
         }
       }
 
       // Fallback if no data
-      if (!data.request_json && !data.response_json) {
+      if (!data.raw_request_json && !data.raw_response_json) {
         const fallback = {
           provider: message.provider,
           model: message.model,

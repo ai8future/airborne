@@ -123,11 +123,7 @@ export default function ActivityPanel({
                   <th className="w-16 px-2 py-3 text-right align-bottom">Out</th>
                   <th className="w-16 px-2 py-3 text-right align-bottom">Total</th>
                   <th className="w-16 px-2 py-3 text-right align-bottom">Cost</th>
-                  <th className="w-16 px-2 py-3 text-center align-bottom leading-tight">
-                    Thread
-                    <br />
-                    Cost
-                  </th>
+                  <th className="w-14 px-2 py-3 text-right align-bottom" title="Thread Cost">Thr$</th>
                   <th className="w-36 px-2 py-3 text-center align-bottom">Model</th>
                 </tr>
               </thead>
