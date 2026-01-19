@@ -777,6 +777,37 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
                   <h5 className="text-xs font-medium text-gray-700 mb-2">Thread ID</h5>
                   <code className="text-[10px] text-gray-500 break-all">{selectedThreadId}</code>
                 </div>
+
+                {/* Files */}
+                <div>
+                  <h5 className="text-xs font-medium text-gray-700 mb-2">Files</h5>
+                  {selectedFile ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg">
+                        <svg className="w-4 h-4 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-medium text-gray-700 truncate">{selectedFile.name}</p>
+                          <p className="text-[9px] text-gray-400">
+                            {(selectedFile.size / 1024).toFixed(1)} KB • Pending upload
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedFile(null)}
+                          className="text-gray-400 hover:text-red-500 transition-colors"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-gray-400 italic">No files attached</p>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="text-xs text-gray-400 text-center py-4">

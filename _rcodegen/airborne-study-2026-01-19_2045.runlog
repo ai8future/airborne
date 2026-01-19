@@ -1,0 +1,14 @@
+Tool:      rgemini
+Model: gemini-3-pro-preview
+Codebase:  airborne
+Output:    /Users/cliff/Desktop/_code/airborne/_rcodegen
+Command:   rgemini study
+Started:   2026-01-19 20:45:06
+Ended:     2026-01-19 20:46:24
+Duration:  1m 18s
+Exit Code: 0
+
+--- Token Usage ---
+Input:     188246
+Output:    2667
+Cache Read: 133849
