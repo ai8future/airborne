@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.14] - 2026-01-19
+
+### Added
+- **Details panel**: Collapsible right sidebar showing thread statistics
+  - Thread Info: tenant, message count, last active
+  - Token Usage: input, output, total tokens
+  - Cost: thread total cost
+  - Models Used: badges for each model in thread
+  - Thread ID: copyable UUID
+  - Collapses to vertical "Details" tab (like ChatApp Context panel)
+
+Agent: Claude:Opus 4.5
+
 ## [1.3.13] - 2026-01-19
 
 ### Changed
