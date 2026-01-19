@@ -222,7 +222,7 @@ function MessageBubble({ message }: { message: ThreadMessage }) {
   if (message.role === "assistant") {
     return (
       <div className="flex justify-center">
-        <div className="w-full max-w-2xl">
+        <div className="w-[80%]">
           <div className="flex items-center gap-2 mb-1 justify-center">
             <span className="text-xs text-slate-400">{formatTime(message.timestamp)}</span>
             {message.provider && (
