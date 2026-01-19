@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.5] - 2026-01-19
+
+### Fixed
+- **Conversations panel height**: Adjusted calculation to prevent page scrolling
+  - Changed from `calc(100vh-12rem)` to `calc(100vh-16rem)`
+  - Panel now fits within viewport without overflow
+
+Agent: Claude:Opus 4.5
+
 ## [1.3.4] - 2026-01-19
 
 ### Changed
