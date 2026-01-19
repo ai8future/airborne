@@ -348,6 +348,36 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 		return err
 	}
 
+	// Handle slash commands
+	if prepared.commandResult != nil {
+		// Handle /image command - generate image and return immediately
+		if prepared.commandResult.ImagePrompt != "" {
+			images := s.generateImageFromCommand(ctx, prepared.commandResult.ImagePrompt)
+			complete := &pb.StreamComplete{
+				Provider: pb.Provider_PROVIDER_UNSPECIFIED,
+			}
+			for _, img := range images {
+				complete.Images = append(complete.Images, convertGeneratedImage(img))
+			}
+			return stream.Send(&pb.GenerateReplyChunk{
+				Chunk: &pb.GenerateReplyChunk_Complete{
+					Complete: complete,
+				},
+			})
+		}
+
+		// Handle empty input after /ignore processing
+		if prepared.commandResult.SkipAI {
+			return stream.Send(&pb.GenerateReplyChunk{
+				Chunk: &pb.GenerateReplyChunk_Complete{
+					Complete: &pb.StreamComplete{
+						Provider: pb.Provider_PROVIDER_UNSPECIFIED,
+					},
+				},
+			})
+		}
+	}
+
 	// Generate streaming reply
 	streamChunks, err := prepared.provider.GenerateReplyStream(ctx, prepared.params)
 	if err != nil {

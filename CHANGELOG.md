@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.9] - 2026-01-19
+
+### Fixed
+- Add missing slash command handling to `GenerateReplyStream` (was only in `GenerateReply`)
+- Both streaming and non-streaming endpoints now properly handle `/image` and `/ignore` commands
+
+Agent: Claude:Opus 4.5
+
 ## [1.5.8] - 2026-01-19
 
 ### Added
