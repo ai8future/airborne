@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.14] - 2026-01-19
+
+### Added
+- **Conversation Panel**: Added chat-style conversation display to dashboard
+  - New `ConversationPanel` component with thread list sidebar and message display
+  - Glass-morphism styling matching chatapp design (glass-bubble-user, glass-bubble-ai)
+  - Thread grouping from activity data with cost totals
+  - API route `/api/threads/[threadId]` for fetching thread conversations
+  - Lifted activity state to page level for sharing between ActivityPanel and ConversationPanel
+
+Agent: Claude:Opus 4.5
+
 ## [1.2.13] - 2026-01-18
 
 ### Fixed

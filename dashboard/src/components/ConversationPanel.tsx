@@ -1,0 +1,250 @@
+"use client";
+
+import { useState, useEffect, useRef, useCallback } from "react";
+
+interface ThreadMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+  provider?: string;
+  model?: string;
+  tokens_in?: number;
+  tokens_out?: number;
+  cost_usd?: number;
+}
+
+interface Thread {
+  thread_id: string;
+  tenant: string;
+  last_message: string;
+  last_timestamp: string;
+  message_count: number;
+  total_cost: number;
+}
+
+interface ActivityEntry {
+  id: string;
+  thread_id: string;
+  tenant: string;
+  user_id: string;
+  content: string;
+  full_content?: string;
+  provider: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  tokens_used: number;
+  cost_usd: number;
+  thread_cost_usd: number;
+  processing_time_ms: number;
+  status: string;
+  timestamp: string;
+}
+
+interface ConversationPanelProps {
+  activity: ActivityEntry[];
+}
+
+export default function ConversationPanel({ activity }: ConversationPanelProps) {
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ThreadMessage[]>([]);
+  const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Group activity by thread_id to create thread list
+  const threads = activity.reduce((acc, entry) => {
+    if (!entry.thread_id) return acc;
+
+    if (!acc[entry.thread_id]) {
+      acc[entry.thread_id] = {
+        thread_id: entry.thread_id,
+        tenant: entry.tenant,
+        last_message: entry.content,
+        last_timestamp: entry.timestamp,
+        message_count: 1,
+        total_cost: entry.thread_cost_usd || 0,
+      };
+    } else {
+      acc[entry.thread_id].message_count++;
+      // Update if this is a newer message
+      if (new Date(entry.timestamp) > new Date(acc[entry.thread_id].last_timestamp)) {
+        acc[entry.thread_id].last_message = entry.content;
+        acc[entry.thread_id].last_timestamp = entry.timestamp;
+        acc[entry.thread_id].total_cost = entry.thread_cost_usd || acc[entry.thread_id].total_cost;
+      }
+    }
+    return acc;
+  }, {} as Record<string, Thread>);
+
+  const threadList = Object.values(threads).sort(
+    (a, b) => new Date(b.last_timestamp).getTime() - new Date(a.last_timestamp).getTime()
+  );
+
+  // Fetch thread messages when a thread is selected
+  const fetchThreadMessages = useCallback(async (threadId: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/threads/${threadId}`);
+      const data = await res.json();
+      if (data.messages) {
+        setMessages(data.messages);
+      } else {
+        // Fallback: construct messages from activity data
+        const threadActivity = activity
+          .filter(a => a.thread_id === threadId)
+          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+        const fallbackMessages: ThreadMessage[] = [];
+        threadActivity.forEach(entry => {
+          // Add user message (the input/content)
+          fallbackMessages.push({
+            id: `${entry.id}-user`,
+            role: "user",
+            content: entry.full_content || entry.content || "...",
+            timestamp: entry.timestamp,
+          });
+          // Add assistant response
+          fallbackMessages.push({
+            id: `${entry.id}-assistant`,
+            role: "assistant",
+            content: `[Response from ${entry.provider}/${entry.model}]\n\nTokens: ${entry.input_tokens} in / ${entry.output_tokens} out\nCost: $${entry.cost_usd?.toFixed(4) || '0.0000'}`,
+            timestamp: entry.timestamp,
+            provider: entry.provider,
+            model: entry.model,
+            tokens_in: entry.input_tokens,
+            tokens_out: entry.output_tokens,
+            cost_usd: entry.cost_usd,
+          });
+        });
+        setMessages(fallbackMessages);
+      }
+    } catch (error) {
+      console.error("Failed to fetch thread messages:", error);
+      setMessages([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [activity]);
+
+  // Auto-select first thread if none selected
+  useEffect(() => {
+    if (!selectedThreadId && threadList.length > 0) {
+      setSelectedThreadId(threadList[0].thread_id);
+    }
+  }, [selectedThreadId, threadList]);
+
+  // Fetch messages when thread changes
+  useEffect(() => {
+    if (selectedThreadId) {
+      fetchThreadMessages(selectedThreadId);
+    }
+  }, [selectedThreadId, fetchThreadMessages]);
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const formatTime = (timestamp: string) => {
+    return new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const formatDate = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const today = new Date();
+    if (date.toDateString() === today.toDateString()) {
+      return formatTime(timestamp);
+    }
+    return date.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + formatTime(timestamp);
+  };
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-200">
+        <h3 className="font-semibold text-gray-800">Conversations</h3>
+      </div>
+
+      <div className="flex h-[500px]">
+        {/* Thread list - left sidebar */}
+        <div className="w-72 border-r border-gray-200 overflow-y-auto bg-gray-50">
+          {threadList.length === 0 ? (
+            <div className="p-4 text-center text-gray-500 text-sm">
+              No conversations yet
+            </div>
+          ) : (
+            threadList.map((thread) => (
+              <button
+                key={thread.thread_id}
+                onClick={() => setSelectedThreadId(thread.thread_id)}
+                className={`w-full p-3 text-left border-b border-gray-100 hover:bg-gray-100 transition-colors ${
+                  selectedThreadId === thread.thread_id ? "bg-blue-50 border-l-2 border-l-blue-500" : ""
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <code className="text-xs bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">
+                    {thread.tenant}
+                  </code>
+                  <span className="text-xs text-gray-400">{formatDate(thread.last_timestamp)}</span>
+                </div>
+                <p className="text-sm text-gray-800 truncate">{thread.last_message}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-xs text-gray-400">{thread.message_count} msgs</span>
+                  {thread.total_cost > 0 && (
+                    <span className="text-xs text-green-600">${thread.total_cost.toFixed(4)}</span>
+                  )}
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+
+        {/* Messages area - right */}
+        <div className="flex-1 flex flex-col bg-gradient-to-b from-slate-50 to-slate-100">
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4">
+            {loading ? (
+              <div className="flex items-center justify-center h-full text-gray-400">
+                Loading messages...
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-gray-400">
+                {selectedThreadId ? "No messages in this thread" : "Select a conversation"}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div className={`max-w-[70%] ${message.role === "user" ? "order-2" : ""}`}>
+                      <div className={`flex items-center gap-2 mb-1 ${message.role === "user" ? "justify-end" : ""}`}>
+                        <span className="text-xs text-slate-400">{formatTime(message.timestamp)}</span>
+                        {message.role === "assistant" && message.provider && (
+                          <span className="text-xs text-slate-400">
+                            {message.provider}/{message.model}
+                          </span>
+                        )}
+                      </div>
+                      <div
+                        className={`px-4 py-3 rounded-2xl ${
+                          message.role === "user"
+                            ? "glass-bubble-user text-white"
+                            : "glass-bubble-ai border border-white/50"
+                        }`}
+                      >
+                        <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <div ref={messagesEndRef} />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

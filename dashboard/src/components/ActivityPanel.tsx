@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import DebugModal from "./DebugModal";
 
 interface ActivityEntry {
@@ -22,45 +22,24 @@ interface ActivityEntry {
   timestamp: string;
 }
 
-export default function ActivityPanel() {
-  const [paused, setPaused] = useState(false);
-  const [activity, setActivity] = useState<ActivityEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+interface ActivityPanelProps {
+  activity: ActivityEntry[];
+  loading: boolean;
+  error: string | null;
+  paused: boolean;
+  onPauseToggle: () => void;
+  onClear: () => void;
+}
+
+export default function ActivityPanel({
+  activity,
+  loading,
+  error,
+  paused,
+  onPauseToggle,
+  onClear,
+}: ActivityPanelProps) {
   const [debugMessageId, setDebugMessageId] = useState<string | null>(null);
-
-  // Fetch activity from backend
-  const fetchActivity = useCallback(async () => {
-    try {
-      const res = await fetch("/api/activity?limit=50");
-      const data = await res.json();
-
-      if (data.error) {
-        setError(data.error);
-      } else {
-        setActivity(data.activity || []);
-        setError(null);
-      }
-    } catch (e) {
-      setError(`Failed to fetch activity: ${e instanceof Error ? e.message : "Unknown error"}`);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Initial fetch and polling
-  useEffect(() => {
-    fetchActivity();
-
-    // Poll every 3 seconds when not paused
-    const interval = setInterval(() => {
-      if (!paused) {
-        fetchActivity();
-      }
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [paused, fetchActivity]);
 
   // Format token counts
   const formatTokens = (n: number | undefined): string => {
@@ -103,7 +82,7 @@ export default function ActivityPanel() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setPaused(!paused)}
+              onClick={onPauseToggle}
               className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
                 paused
                   ? "bg-green-100 text-green-700 hover:bg-green-200"
@@ -113,7 +92,7 @@ export default function ActivityPanel() {
               {paused ? "Resume" : "Pause"}
             </button>
             <button
-              onClick={() => setActivity([])}
+              onClick={onClear}
               className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded text-sm font-medium hover:bg-gray-200 transition-colors"
             >
               Clear
