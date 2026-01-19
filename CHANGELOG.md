@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.11] - 2026-01-19
+
+### Fixed
+- **Tenant context for chat**: Created `TenantContext` to share tenant selection across components
+  - Dashboard now sends `tenant_id` with chat requests (fixes "tenant_id is required" error)
+  - TenantSelector updated to use shared context
+  - ConversationPanel reads tenant from context and sends with API calls
+
+Agent: Claude:Opus 4.5
+
 ## [1.5.10] - 2026-01-19
 
 ### Added

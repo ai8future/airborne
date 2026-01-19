@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useTenant } from "@/context/TenantContext";
 
 interface ThreadMessage {
   id: string;
@@ -433,6 +434,7 @@ function generateUUID(): string {
 }
 
 export default function ConversationPanel({ activity, selectedThreadId, onSelectThread }: ConversationPanelProps) {
+  const { tenant } = useTenant();
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [inputValue, setInputValue] = useState("");
@@ -606,6 +608,7 @@ Guidelines:
           thread_id: threadId,
           message: messageContent,
           system_prompt: getActivePrompt(),
+          tenant_id: tenant,
         }),
       });
 
