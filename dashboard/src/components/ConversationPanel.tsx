@@ -590,9 +590,9 @@ export default function ConversationPanel({ activity }: ConversationPanelProps) 
 
       <div className="flex flex-1 min-h-0">
         {/* Thread list - left sidebar */}
-        <div className="w-72 border-r border-gray-200 overflow-y-auto bg-gray-50">
+        <div className="w-56 border-r border-gray-200 overflow-y-auto bg-gray-50">
           {threadList.length === 0 ? (
-            <div className="p-4 text-center text-gray-500 text-sm">
+            <div className="p-3 text-center text-gray-500 text-xs">
               No conversations yet
             </div>
           ) : (
@@ -600,22 +600,23 @@ export default function ConversationPanel({ activity }: ConversationPanelProps) 
               <button
                 key={thread.thread_id}
                 onClick={() => setSelectedThreadId(thread.thread_id)}
-                className={`w-full p-3 text-left border-b border-gray-100 hover:bg-gray-100 transition-colors ${
-                  selectedThreadId === thread.thread_id ? "bg-blue-50 border-l-2 border-l-blue-500" : ""
+                className={`w-full px-2.5 py-2 text-left border-b border-gray-100 hover:bg-gray-100 transition-colors ${
+                  selectedThreadId === thread.thread_id
+                    ? "bg-blue-100 border-l-3 border-l-blue-500"
+                    : "border-l-3 border-l-transparent"
                 }`}
               >
-                <div className="flex items-center justify-between mb-1">
-                  <code className="text-xs bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">
-                    {thread.tenant}
-                  </code>
-                  <span className="text-xs text-gray-400">{formatDate(thread.last_timestamp)}</span>
-                </div>
-                <p className="text-sm text-gray-800 truncate">{thread.last_message}</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs text-gray-400">{thread.message_count} msgs</span>
-                  {thread.total_cost > 0 && (
-                    <span className="text-xs text-green-600">${thread.total_cost.toFixed(4)}</span>
-                  )}
+                <p className="text-sm text-gray-800 truncate leading-tight">{thread.last_message}</p>
+                <div className="flex items-center justify-between mt-1">
+                  <span className="text-[10px] text-gray-400">
+                    {thread.message_count} msg{thread.message_count !== 1 ? 's' : ''}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {thread.total_cost > 0 && (
+                      <span className="text-[10px] text-green-600 font-mono">${thread.total_cost.toFixed(3)}</span>
+                    )}
+                    <span className="text-[10px] text-gray-400">{formatDate(thread.last_timestamp)}</span>
+                  </div>
                 </div>
               </button>
             ))

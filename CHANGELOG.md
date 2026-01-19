@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.1] - 2026-01-19
+
+### Changed
+- **Compact thread sidebar**: Simplified left sidebar layout
+  - Removed tenant display for cleaner look
+  - Narrower width (w-56 from w-72)
+  - Message preview, count, cost, and time in tight 2-line layout
+  - Stronger selection highlight (bg-blue-100 with blue left border)
+
+Agent: Claude:Opus 4.5
+
 ## [1.4.0] - 2026-01-19
 
 ### Changed
