@@ -4,61 +4,27 @@ All notable changes to this project will be documented in this file.
 
 ## [1.5.8] - 2026-01-19
 
-### Removed
-- **Removed `processImageGeneration` function**: Deleted dead code from chat service
-  - Function was no longer called after Tasks 3 and 4 moved image generation to command parser
-  - Also removed lingering call in ChunkTypeComplete case that was missed in Task 4
-  - Image generation now exclusively uses `generateImageFromCommand()` via slash commands
-
-Agent: Claude:Opus 4.5
-
-## [1.5.7] - 2026-01-19
-
 ### Added
-- **Handle image and ignore commands in GenerateReplyStream**: Added command handling logic for streaming endpoint
-  - Early return for `/image` command - generates image and sends Complete chunk immediately (skips AI call)
-  - Early return for `/ignore` processing when SkipAI=true - sends empty Complete chunk
-  - Reuses `generateImageFromCommand()` helper function created in Task 3
-  - Removed `processImageGeneration` call from ChunkTypeComplete handling (image triggers now handled on user input)
+- **Slash command support**: New `/image` and `/ignore` commands for user input processing
+  - `/image <prompt>` - Generates an image directly from user input, bypassing AI text generation
+  - `/ignore <text>` - Strips text from `/ignore` to end-of-line (useful for instructions to the AI)
+  - Case-insensitive command matching
+  - Configurable image triggers via tenant config (defaults to `/image` and `@image`)
 
-Agent: Claude:Opus 4.5
-
-## [1.5.6] - 2026-01-19
-
-### Added
-- **Handle image and ignore commands in GenerateReply**: Added command handling logic after prepareRequest
-  - Early return for `/image` command - generates image and returns immediately (skips AI call)
-  - Early return for `/ignore` processing when SkipAI=true - returns empty response
-  - New `generateImageFromCommand()` helper function for slash command image generation
-  - New `convertGeneratedImages()` helper function for batch image conversion
-  - Removed `processImageGeneration` call from GenerateReply (image triggers now handled on user input)
-
-Agent: Claude:Opus 4.5
-
-## [1.5.5] - 2026-01-19
-
-### Added
-- **Command parser integration in chat service**: Integrated slash command parsing into `prepareRequest`
-  - Added `commands` import to `internal/service/chat.go`
-  - Added `commandResult *commands.Result` field to `preparedRequest` struct
-  - Parser runs after input validation, before provider selection
-  - Builds image triggers list from tenant config + default `/image` command
-  - Updates `req.UserInput` with processed text (after `/ignore` removal)
-  - Stores command result for later handling in GenerateReply/GenerateReplyStream
-
-Agent: Claude:Opus 4.5
-
-## [1.5.4] - 2026-01-19
-
-### Added
-- **Command parser package**: New `internal/commands` package for parsing slash commands in user input
+- **New `internal/commands` package**: Command parser for slash commands
   - `Parser` struct with `NewParser(imageTriggers []string)` constructor
   - `Parse(input string)` method returns `Result` with ProcessedText, ImagePrompt, and SkipAI fields
-  - `/image` or `@image` triggers extract image prompts and signal to skip AI text processing
-  - `/ignore` command strips text from `/ignore` to end-of-line
-  - Case-insensitive command matching
-  - Configurable image triggers (can be disabled with empty/nil slice)
   - Full test coverage with 17 test cases
+
+- **Chat service integration**: Commands processed on user input instead of AI responses
+  - Command parsing runs in `prepareRequest` after input validation
+  - `GenerateReply` and `GenerateReplyStream` handle commands with early returns
+  - Helper functions: `generateImageFromCommand()` and `convertGeneratedImages()`
+
+### Removed
+- **`processImageGeneration` function**: Deleted dead code from chat service
+  - Image generation now exclusively uses slash commands via `generateImageFromCommand()`
+  - Moved from trigger-on-AI-response to trigger-on-user-input for better UX
 
 Agent: Claude:Opus 4.5
 
