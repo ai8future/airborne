@@ -128,15 +128,16 @@ export default function ActivityPanel({
                     <br />
                     Cost
                   </th>
-                  <th className="w-28 px-2 py-3 text-center align-bottom">Model</th>
+                  <th className="w-36 px-2 py-3 text-center align-bottom">Model</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {activity.map((entry, idx) => {
+                {[...activity].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).map((entry, idx) => {
                   const isSuccess = entry.status === "success";
                   const isFailed = entry.status === "failed";
                   const timestamp = new Date(entry.timestamp).toLocaleTimeString();
                   const totalTokens = entry.input_tokens + entry.output_tokens;
+                  const durationSec = entry.processing_time_ms ? (entry.processing_time_ms / 1000).toFixed(1) : "-";
 
                   return (
                     <tr
@@ -177,7 +178,7 @@ export default function ActivityPanel({
 
                       {/* Duration */}
                       <td className="px-2 py-2 text-xs text-right whitespace-nowrap text-gray-500">
-                        {(entry.processing_time_ms / 1000).toFixed(1)}s
+                        {durationSec !== "-" ? `${durationSec}s` : "-"}
                       </td>
 
                       {/* Input tokens */}

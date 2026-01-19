@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.8] - 2026-01-19
+
+### Changed
+- **Activity Feed improvements**:
+  - Sort by newest first (descending timestamp)
+  - Widened Model column from w-28 to w-36 to fit "3-pro-preview" on one line
+  - Duration now shows "-" when processing_time_ms is missing/zero
+
+Agent: Claude:Opus 4.5
+
 ## [1.3.7] - 2026-01-19
 
 ### Changed
