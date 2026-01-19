@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.3] - 2026-01-19
+
+### Added
+- **Files section in Details panel**: Added "Files" display below Thread ID in the conversation details
+  - Shows attached files with name, size, and status
+  - Displays file icon and "Pending upload" indicator for queued files
+  - X button to remove attached file
+  - Shows "No files attached" when empty
+
+Agent: Claude:Opus 4.5
+
 ## [1.5.2] - 2026-01-19
 
 ### Changed
