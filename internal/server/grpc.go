@@ -40,6 +40,7 @@ type ServerComponents struct {
 	TenantMgr   *tenant.Manager
 	RedisClient *redis.Client
 	DBClient    *db.Client
+	Repository  *db.Repository
 }
 
 // NewGRPCServer creates a new gRPC server with all services registered
@@ -194,6 +195,7 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, *Serv
 
 	// Initialize database if enabled
 	var dbClient *db.Client
+	var repo *db.Repository
 	if cfg.Database.Enabled {
 		var dbErr error
 		dbClient, dbErr = db.NewClient(context.Background(), db.Config{
@@ -206,12 +208,13 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, *Serv
 			slog.Error("failed to connect to database", "error", dbErr)
 			// Continue without database - it's optional
 		} else {
+			repo = db.NewRepository(dbClient)
 			slog.Info("database connection established for message persistence")
 		}
 	}
 
 	// Register services
-	chatService := service.NewChatService(rateLimiter, ragService, imageGenClient, dbClient)
+	chatService := service.NewChatService(rateLimiter, ragService, imageGenClient, repo)
 	pb.RegisterAirborneServiceServer(server, chatService)
 
 	adminService := service.NewAdminService(redisClient, service.AdminServiceConfig{
@@ -246,6 +249,7 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, *Serv
 		TenantMgr:   tenantMgr,
 		RedisClient: redisClient,
 		DBClient:    dbClient,
+		Repository:  repo,
 	}
 
 	return server, components, nil

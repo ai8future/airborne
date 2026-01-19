@@ -112,7 +112,7 @@ func main() {
 		}
 		grpcAddr := fmt.Sprintf("%s:%d", grpcHost, cfg.Server.GRPCPort)
 
-		adminServer = admin.NewServer(components.DBClient, admin.Config{
+		adminServer = admin.NewServer(components.Repository, admin.Config{
 			Port:      cfg.Admin.Port,
 			GRPCAddr:  grpcAddr,
 			AuthToken: cfg.Auth.AdminToken,
