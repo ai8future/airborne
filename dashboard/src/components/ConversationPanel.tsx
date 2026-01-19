@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface ThreadMessage {
   id: string;
@@ -181,7 +182,54 @@ function MessageBubble({ message }: { message: ThreadMessage }) {
     }
     return (
       <div className="text-sm leading-relaxed prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 text-slate-700">
-        <ReactMarkdown>{message.content}</ReactMarkdown>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            table({ children }) {
+              return (
+                <div className="overflow-x-auto my-3 rounded-lg border border-gray-200">
+                  <table className="min-w-full border-collapse text-sm">
+                    {children}
+                  </table>
+                </div>
+              );
+            },
+            thead({ children }) {
+              return <thead className="bg-gray-100">{children}</thead>;
+            },
+            th({ children }) {
+              return (
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide border-b border-gray-200">
+                  {children}
+                </th>
+              );
+            },
+            td({ children }) {
+              return (
+                <td className="px-3 py-2 text-sm text-gray-700 border-b border-gray-100">
+                  {children}
+                </td>
+              );
+            },
+            code({ className, children, ...props }) {
+              const isInline = !className;
+              if (isInline) {
+                return (
+                  <code className="px-1.5 py-0.5 bg-gray-100 text-gray-800 rounded text-xs font-mono" {...props}>
+                    {children}
+                  </code>
+                );
+              }
+              return (
+                <code className={className} {...props}>
+                  {children}
+                </code>
+              );
+            },
+          }}
+        >
+          {message.content}
+        </ReactMarkdown>
       </div>
     );
   };

@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.15] - 2026-01-19
+
+### Added
+- **Markdown table support**: Added remark-gfm for GitHub Flavored Markdown
+  - Tables render with styled headers, borders, and proper spacing
+  - Strikethrough, task lists, and autolinks also now supported
+  - Inline code blocks styled with gray background
+
+Agent: Claude:Opus 4.5
+
 ## [1.3.14] - 2026-01-19
 
 ### Added
