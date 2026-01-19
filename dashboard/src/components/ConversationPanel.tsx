@@ -48,26 +48,33 @@ interface ConversationPanelProps {
   activity: ActivityEntry[];
 }
 
-type ViewMode = "formatted" | "raw" | "request" | "response";
+type ViewMode = "formatted" | "markdown" | "raw" | "request" | "response";
 
 // Message bubble component with view mode toggle
 function MessageBubble({ message }: { message: ThreadMessage }) {
   const [viewMode, setViewMode] = useState<ViewMode>("formatted");
   const [requestJson, setRequestJson] = useState<string | null>(null);
   const [responseJson, setResponseJson] = useState<string | null>(null);
-  const [loadingJson, setLoadingJson] = useState(false);
+  const [renderedHtml, setRenderedHtml] = useState<string | null>(null);
+  const [loadingData, setLoadingData] = useState(false);
+  const [dataFetched, setDataFetched] = useState(false);
 
   const formatTime = (timestamp: string) => {
     return new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
-  // Fetch JSON data from debug endpoint when JSON view is requested
-  const fetchJsonData = async () => {
-    if (requestJson || responseJson) return; // Already fetched
-    setLoadingJson(true);
+  // Fetch debug data from endpoint (includes rendered_html, request/response JSON)
+  const fetchDebugData = async () => {
+    if (dataFetched) return; // Already fetched
+    setLoadingData(true);
     try {
       const res = await fetch(`/api/debug/${message.id}`);
       const data = await res.json();
+
+      // Get rendered HTML from markdown_svc
+      if (data.rendered_html) {
+        setRenderedHtml(data.rendered_html);
+      }
 
       // Parse and format request JSON (backend field is raw_request_json)
       if (data.raw_request_json) {
@@ -87,7 +94,7 @@ function MessageBubble({ message }: { message: ThreadMessage }) {
         }
       }
 
-      // Fallback if no data
+      // Fallback if no JSON data
       if (!data.raw_request_json && !data.raw_response_json) {
         const fallback = {
           provider: message.provider,
@@ -101,6 +108,8 @@ function MessageBubble({ message }: { message: ThreadMessage }) {
         };
         setResponseJson(JSON.stringify(fallback, null, 2));
       }
+
+      setDataFetched(true);
     } catch {
       // Fallback to constructed JSON
       const fallback = {
@@ -114,17 +123,26 @@ function MessageBubble({ message }: { message: ThreadMessage }) {
         cost_usd: message.cost_usd,
       };
       setResponseJson(JSON.stringify(fallback, null, 2));
+      setDataFetched(true);
     } finally {
-      setLoadingJson(false);
+      setLoadingData(false);
     }
   };
 
   const handleViewChange = (mode: ViewMode) => {
     setViewMode(mode);
-    if ((mode === "request" || mode === "response") && !requestJson && !responseJson) {
-      fetchJsonData();
+    // Fetch debug data for formatted (rendered_html), request, or response views
+    if ((mode === "formatted" || mode === "request" || mode === "response") && !dataFetched) {
+      fetchDebugData();
     }
   };
+
+  // Fetch rendered HTML on mount for "formatted" mode (default)
+  useEffect(() => {
+    if (message.role === "assistant" && !dataFetched) {
+      fetchDebugData();
+    }
+  }, [message.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const TokenSummary = () => {
     if (message.role !== "assistant") return null;
@@ -148,7 +166,7 @@ function MessageBubble({ message }: { message: ThreadMessage }) {
 
   const renderContent = () => {
     if (viewMode === "request") {
-      if (loadingJson) {
+      if (loadingData) {
         return <div className="text-xs text-slate-400">Loading...</div>;
       }
       return (
@@ -161,7 +179,7 @@ function MessageBubble({ message }: { message: ThreadMessage }) {
       );
     }
     if (viewMode === "response") {
-      if (loadingJson) {
+      if (loadingData) {
         return <div className="text-xs text-slate-400">Loading...</div>;
       }
       return (
@@ -180,6 +198,74 @@ function MessageBubble({ message }: { message: ThreadMessage }) {
         </pre>
       );
     }
+    if (viewMode === "markdown") {
+      // Client-side remark-gfm rendering
+      return (
+        <div className="text-sm leading-relaxed prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 text-slate-700">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              table({ children }) {
+                return (
+                  <div className="overflow-x-auto my-3 rounded-lg border border-gray-200">
+                    <table className="min-w-full border-collapse text-sm">
+                      {children}
+                    </table>
+                  </div>
+                );
+              },
+              thead({ children }) {
+                return <thead className="bg-gray-100">{children}</thead>;
+              },
+              th({ children }) {
+                return (
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide border-b border-gray-200">
+                    {children}
+                  </th>
+                );
+              },
+              td({ children }) {
+                return (
+                  <td className="px-3 py-2 text-sm text-gray-700 border-b border-gray-100">
+                    {children}
+                  </td>
+                );
+              },
+              code({ className, children, ...props }) {
+                const isInline = !className;
+                if (isInline) {
+                  return (
+                    <code className="px-1.5 py-0.5 bg-gray-100 text-gray-800 rounded text-xs font-mono" {...props}>
+                      {children}
+                    </code>
+                  );
+                }
+                return (
+                  <code className={className} {...props}>
+                    {children}
+                  </code>
+                );
+              },
+            }}
+          >
+            {message.content}
+          </ReactMarkdown>
+        </div>
+      );
+    }
+    // Default: "formatted" - server-rendered HTML from markdown_svc
+    if (loadingData) {
+      return <div className="text-xs text-slate-400">Loading formatted content...</div>;
+    }
+    if (renderedHtml) {
+      return (
+        <div
+          className="text-sm leading-relaxed prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 text-slate-700"
+          dangerouslySetInnerHTML={{ __html: renderedHtml }}
+        />
+      );
+    }
+    // Fallback to client-side markdown if no rendered HTML available
     return (
       <div className="text-sm leading-relaxed prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 text-slate-700">
         <ReactMarkdown
@@ -241,6 +327,13 @@ function MessageBubble({ message }: { message: ThreadMessage }) {
         className={`text-xs transition-colors ${viewMode === "formatted" ? "font-medium" : "opacity-60 hover:opacity-100"}`}
       >
         Formatted
+      </button>
+      <span className="text-xs opacity-30">|</span>
+      <button
+        onClick={() => handleViewChange("markdown")}
+        className={`text-xs transition-colors ${viewMode === "markdown" ? "font-medium" : "opacity-60 hover:opacity-100"}`}
+      >
+        Markdown
       </button>
       <span className="text-xs opacity-30">|</span>
       <button

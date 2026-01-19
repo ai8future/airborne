@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.0] - 2026-01-19
+
+### Changed
+- **View mode refactor**: Three distinct content rendering modes
+  - **Formatted**: Server-rendered HTML from markdown_svc (default)
+  - **Markdown**: Client-side remark-gfm rendering
+  - **Raw**: Plain text with no markdown processing
+- Added auto-fetch of rendered HTML on assistant message mount
+- Fixed loadingJson → loadingData state reference
+
+Agent: Claude:Opus 4.5
+
 ## [1.3.15] - 2026-01-19
 
 ### Added
