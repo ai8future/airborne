@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.3] - 2026-01-19
+
+### Added
+- **Chat input functionality**: Send button now works with Enter key support
+  - Added `/api/chat` endpoint for sending messages through Airborne
+  - Optimistic UI updates with loading spinner
+  - Falls back to test endpoint if chat endpoint unavailable
+
+### Changed
+- **Fixed chat input position**: Chat input now fixed to bottom of browser window
+  - Changed from `absolute` to `fixed` positioning with z-index
+  - Added bottom padding to layout to prevent content overlap
+  - Shows "Select a conversation first..." when no thread selected
+
+### Fixed
+- **Message styling**: Enhanced view toggle with three modes (Formatted, Raw, JSON)
+  - LLM responses: white background, centered, max-w-2xl
+  - User responses: light blue background (bg-blue-100), right-aligned, dark text
+
+Agent: Claude:Opus 4.5
+
 ## [1.3.2] - 2026-01-19
 
 ### Fixed

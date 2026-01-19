@@ -17,7 +17,7 @@ export default function RootLayout({
         <header className="bg-white border-b border-gray-200 px-6 py-4">
           <h1 className="text-xl font-semibold text-gray-800">Airborne</h1>
         </header>
-        <main className="p-6">
+        <main className="p-6 pb-24">
           {children}
         </main>
       </body>

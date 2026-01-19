@@ -199,7 +199,10 @@ export default function ConversationPanel({ activity }: ConversationPanelProps) 
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [loading, setLoading] = useState(false);
+  const [inputValue, setInputValue] = useState("");
+  const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const activityRef = useRef(activity);
 
   // Keep activity ref updated
@@ -296,6 +299,76 @@ export default function ConversationPanel({ activity }: ConversationPanelProps) 
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Send message handler
+  const sendMessage = async () => {
+    if (!inputValue.trim() || !selectedThreadId || sending) return;
+
+    const messageContent = inputValue.trim();
+    setSending(true);
+    setInputValue("");
+
+    // Reset textarea height
+    if (textareaRef.current) {
+      textareaRef.current.style.height = '24px';
+    }
+
+    // Optimistically add user message to UI
+    const tempUserMessage: ThreadMessage = {
+      id: `temp-${Date.now()}`,
+      role: "user",
+      content: messageContent,
+      timestamp: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, tempUserMessage]);
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          thread_id: selectedThreadId,
+          message: messageContent,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        console.error('Failed to send message:', data.error);
+        // Remove optimistic message on error
+        setMessages(prev => prev.filter(m => m.id !== tempUserMessage.id));
+      } else {
+        // Add assistant response
+        const assistantMessage: ThreadMessage = {
+          id: data.id || `resp-${Date.now()}`,
+          role: "assistant",
+          content: data.content || data.response || "No response",
+          timestamp: new Date().toISOString(),
+          provider: data.provider,
+          model: data.model,
+          tokens_in: data.tokens_in,
+          tokens_out: data.tokens_out,
+          cost_usd: data.cost_usd,
+        };
+        setMessages(prev => [...prev, assistantMessage]);
+      }
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      // Remove optimistic message on error
+      setMessages(prev => prev.filter(m => m.id !== tempUserMessage.id));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Handle Enter key to send
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
   const formatDate = (timestamp: string) => {
     const date = new Date(timestamp);
     const today = new Date();
@@ -368,31 +441,46 @@ export default function ConversationPanel({ activity }: ConversationPanelProps) 
             )}
           </div>
 
-          {/* Chat input - centered at bottom */}
-          <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-slate-100 to-transparent">
-            <div className="max-w-2xl mx-auto">
-              <div className="glass-input-container flex items-center gap-3 p-3 rounded-2xl">
-                <textarea
-                  placeholder="Ask anything..."
-                  rows={1}
-                  className="flex-1 resize-none min-h-[24px] max-h-[120px] leading-6 bg-transparent outline-none text-slate-800 placeholder:text-slate-400 text-sm"
-                  style={{ height: '24px' }}
-                  onInput={(e) => {
-                    const target = e.target as HTMLTextAreaElement;
-                    target.style.height = '24px';
-                    target.style.height = Math.min(target.scrollHeight, 120) + 'px';
-                  }}
-                />
-                <button
-                  type="button"
-                  className="size-9 flex items-center justify-center rounded-xl bg-slate-800 text-white hover:bg-blue-600 transition-colors"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                  </svg>
-                </button>
-              </div>
-            </div>
+        </div>
+      </div>
+
+      {/* Chat input - fixed to bottom of browser */}
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-slate-100 via-slate-100/95 to-transparent z-50">
+        <div className="max-w-2xl mx-auto">
+          <div className="glass-input-container flex items-center gap-3 p-3 rounded-2xl">
+            <textarea
+              ref={textareaRef}
+              placeholder={selectedThreadId ? "Ask anything..." : "Select a conversation first..."}
+              rows={1}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={!selectedThreadId || sending}
+              className="flex-1 resize-none min-h-[24px] max-h-[120px] leading-6 bg-transparent outline-none text-slate-800 placeholder:text-slate-400 text-sm disabled:opacity-50"
+              style={{ height: '24px' }}
+              onInput={(e) => {
+                const target = e.target as HTMLTextAreaElement;
+                target.style.height = '24px';
+                target.style.height = Math.min(target.scrollHeight, 120) + 'px';
+              }}
+            />
+            <button
+              type="button"
+              onClick={sendMessage}
+              disabled={!inputValue.trim() || !selectedThreadId || sending}
+              className="size-9 flex items-center justify-center rounded-xl bg-slate-800 text-white hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {sending ? (
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              )}
+            </button>
           </div>
         </div>
       </div>
