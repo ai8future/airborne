@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.6] - 2026-01-19
+
+### Added
+- **Handle image and ignore commands in GenerateReply**: Added command handling logic after prepareRequest
+  - Early return for `/image` command - generates image and returns immediately (skips AI call)
+  - Early return for `/ignore` processing when SkipAI=true - returns empty response
+  - New `generateImageFromCommand()` helper function for slash command image generation
+  - New `convertGeneratedImages()` helper function for batch image conversion
+  - Removed `processImageGeneration` call from GenerateReply (image triggers now handled on user input)
+
+Agent: Claude:Opus 4.5
+
 ## [1.5.5] - 2026-01-19
 
 ### Added

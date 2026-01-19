@@ -232,6 +232,27 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 		return nil, err
 	}
 
+	// Handle slash commands
+	if prepared.commandResult != nil {
+		// Handle /image command - generate image and return immediately
+		if prepared.commandResult.ImagePrompt != "" {
+			images := s.generateImageFromCommand(ctx, prepared.commandResult.ImagePrompt)
+			return &pb.GenerateReplyResponse{
+				Text:     "",
+				Provider: pb.Provider_PROVIDER_UNSPECIFIED,
+				Images:   convertGeneratedImages(images),
+			}, nil
+		}
+
+		// Handle empty input after /ignore processing
+		if prepared.commandResult.SkipAI {
+			return &pb.GenerateReplyResponse{
+				Text:     "",
+				Provider: pb.Provider_PROVIDER_UNSPECIFIED,
+			}, nil
+		}
+	}
+
 	slog.Info("generating reply",
 		"provider", prepared.provider.Name(),
 		"model", prepared.providerCfg.Model,
@@ -291,12 +312,6 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 	// Add RAG citations to result if we used self-hosted RAG
 	if len(prepared.ragChunks) > 0 {
 		result.Citations = append(result.Citations, ragChunksToCitations(prepared.ragChunks)...)
-	}
-
-	// Check for image generation trigger in response
-	generatedImages := s.processImageGeneration(ctx, result.Text)
-	if len(generatedImages) > 0 {
-		result.Images = generatedImages
 	}
 
 	// Render HTML if markdown_svc is enabled
@@ -831,6 +846,72 @@ func (s *ChatService) processImageGeneration(ctx context.Context, responseText s
 	)
 
 	return []provider.GeneratedImage{img}
+}
+
+// generateImageFromCommand generates an image from a slash command prompt.
+func (s *ChatService) generateImageFromCommand(ctx context.Context, prompt string) []provider.GeneratedImage {
+	if s.imageGen == nil {
+		slog.Warn("image generation requested but imageGen client is nil")
+		return nil
+	}
+
+	tenantCfg := auth.TenantFromContext(ctx)
+	if tenantCfg == nil {
+		slog.Warn("image generation requested but no tenant config")
+		return nil
+	}
+
+	imgCfg := &imagegen.Config{
+		Enabled:         tenantCfg.ImageGeneration.Enabled,
+		Provider:        tenantCfg.ImageGeneration.Provider,
+		Model:           tenantCfg.ImageGeneration.Model,
+		TriggerPhrases:  tenantCfg.ImageGeneration.TriggerPhrases,
+		FallbackOnError: tenantCfg.ImageGeneration.FallbackOnError,
+		MaxImages:       tenantCfg.ImageGeneration.MaxImages,
+	}
+
+	if !imgCfg.IsEnabled() {
+		slog.Warn("image generation requested but not enabled for tenant")
+		return nil
+	}
+
+	imgReq := &imagegen.ImageRequest{
+		Prompt: prompt,
+		Config: imgCfg,
+	}
+
+	// Get API keys from tenant provider config
+	if geminiCfg, ok := tenantCfg.GetProvider("gemini"); ok {
+		imgReq.GeminiAPIKey = geminiCfg.APIKey
+	}
+	if openaiCfg, ok := tenantCfg.GetProvider("openai"); ok {
+		imgReq.OpenAIAPIKey = openaiCfg.APIKey
+	}
+
+	slog.Info("slash command image generation",
+		"provider", imgCfg.Provider,
+		"prompt_preview", truncateString(prompt, 100),
+	)
+
+	img, err := s.imageGen.Generate(ctx, imgReq)
+	if err != nil {
+		slog.Error("slash command image generation failed", "error", err)
+		return nil
+	}
+
+	return []provider.GeneratedImage{img}
+}
+
+// convertGeneratedImages converts provider images to proto images.
+func convertGeneratedImages(images []provider.GeneratedImage) []*pb.GeneratedImage {
+	if len(images) == 0 {
+		return nil
+	}
+	result := make([]*pb.GeneratedImage, len(images))
+	for i, img := range images {
+		result[i] = convertGeneratedImage(img)
+	}
+	return result
 }
 
 // truncateString truncates a string for logging purposes.
