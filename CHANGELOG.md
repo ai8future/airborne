@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.8] - 2026-01-19
+
+### Added
+- **Version endpoint**: `GET /admin/version` returns JSON with version, git_commit, and build_time for rapid version checking
+
+Agent: Claude:Opus 4.5
+
 ## [1.4.7] - 2026-01-19
 
 ### Reverted

@@ -28,13 +28,22 @@ type Server struct {
 	authToken  string
 	grpcConn   *grpc.ClientConn
 	grpcClient pb.AirborneServiceClient
+	version    VersionInfo
+}
+
+// VersionInfo holds version information for the service.
+type VersionInfo struct {
+	Version   string `json:"version"`
+	GitCommit string `json:"git_commit"`
+	BuildTime string `json:"build_time"`
 }
 
 // Config holds admin server configuration.
 type Config struct {
 	Port      int
-	GRPCAddr  string // Address of the gRPC server (e.g., "localhost:50051")
-	AuthToken string // Auth token for gRPC calls
+	GRPCAddr  string      // Address of the gRPC server (e.g., "localhost:50051")
+	AuthToken string      // Auth token for gRPC calls
+	Version   VersionInfo // Version information
 }
 
 // NewServer creates a new admin HTTP server.
@@ -44,6 +53,7 @@ func NewServer(repo *db.Repository, cfg Config) *Server {
 		port:      cfg.Port,
 		grpcAddr:  cfg.GRPCAddr,
 		authToken: cfg.AuthToken,
+		version:   cfg.Version,
 	}
 
 	mux := http.NewServeMux()
@@ -69,6 +79,7 @@ func NewServer(repo *db.Repository, cfg Config) *Server {
 	mux.HandleFunc("/admin/debug/", corsHandler(s.handleDebug))
 	mux.HandleFunc("/admin/thread/", corsHandler(s.handleThread))
 	mux.HandleFunc("/admin/health", corsHandler(s.handleHealth))
+	mux.HandleFunc("/admin/version", corsHandler(s.handleVersion))
 	mux.HandleFunc("/admin/test", corsHandler(s.handleTest))
 	mux.HandleFunc("/admin/chat", corsHandler(s.handleChat))
 
@@ -211,6 +222,18 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"status":   status,
 		"database": dbStatus,
 	})
+}
+
+// handleVersion returns version information.
+// GET /admin/version
+func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(s.version)
 }
 
 // handleDebug returns full request/response debug data for a message.

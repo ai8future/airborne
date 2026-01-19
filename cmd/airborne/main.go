@@ -116,6 +116,11 @@ func main() {
 			Port:      cfg.Admin.Port,
 			GRPCAddr:  grpcAddr,
 			AuthToken: cfg.Auth.AdminToken,
+			Version: admin.VersionInfo{
+				Version:   Version,
+				GitCommit: GitCommit,
+				BuildTime: BuildTime,
+			},
 		})
 		go func() {
 			if err := adminServer.Start(); err != nil && err != http.ErrServerClosed {
