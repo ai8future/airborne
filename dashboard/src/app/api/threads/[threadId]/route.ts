@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const AIRBORNE_ADMIN_URL = process.env.AIRBORNE_ADMIN_URL || "http://localhost:8473";
+const AIRBORNE_ADMIN_URL = process.env.AIRBORNE_ADMIN_URL || "http://localhost:50054";
 
 export async function GET(
   request: NextRequest,
@@ -13,7 +13,7 @@ export async function GET(
   }
 
   try {
-    const response = await fetch(`${AIRBORNE_ADMIN_URL}/admin/threads/${threadId}`, {
+    const response = await fetch(`${AIRBORNE_ADMIN_URL}/admin/thread/${threadId}`, {
       headers: {
         "Content-Type": "application/json",
       },

@@ -87,7 +87,7 @@ export default function ConversationPanel({ activity }: ConversationPanelProps) 
     try {
       const res = await fetch(`/api/threads/${threadId}`);
       const data = await res.json();
-      if (data.messages) {
+      if (data.messages && data.messages.length > 0) {
         setMessages(data.messages);
       } else {
         // Fallback: construct messages from activity data

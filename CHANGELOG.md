@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.1] - 2026-01-19
+
+### Fixed
+- **Dashboard API**: Fixed admin URL port (50054 for admin HTTP, not 50053 for gRPC)
+- **Thread API**: Fixed endpoint path (`/admin/thread/` not `/admin/threads/`)
+- **Fallback Logic**: Use activity-based messages when thread API returns empty array
+
+Agent: Claude:Opus 4.5
+
 ## [1.3.0] - 2026-01-19
 
 ### Changed

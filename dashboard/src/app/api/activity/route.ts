@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const AIRBORNE_ADMIN_URL = process.env.AIRBORNE_ADMIN_URL || "http://localhost:50052";
+const AIRBORNE_ADMIN_URL = process.env.AIRBORNE_ADMIN_URL || "http://localhost:50054";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
