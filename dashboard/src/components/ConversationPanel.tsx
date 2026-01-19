@@ -47,13 +47,115 @@ interface ConversationPanelProps {
   activity: ActivityEntry[];
 }
 
-// Message bubble component with markdown toggle
+type ViewMode = "formatted" | "raw" | "json";
+
+// Message bubble component with view mode toggle
 function MessageBubble({ message }: { message: ThreadMessage }) {
-  const [showRaw, setShowRaw] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("formatted");
+  const [jsonData, setJsonData] = useState<string | null>(null);
+  const [loadingJson, setLoadingJson] = useState(false);
 
   const formatTime = (timestamp: string) => {
     return new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
+
+  // Fetch JSON data from debug endpoint when JSON view is requested
+  const fetchJsonData = async () => {
+    if (jsonData) return; // Already fetched
+    setLoadingJson(true);
+    try {
+      const res = await fetch(`/api/debug/${message.id}`);
+      const data = await res.json();
+      if (data.response_json) {
+        setJsonData(JSON.stringify(JSON.parse(data.response_json), null, 2));
+      } else {
+        // Construct a representative JSON from available data
+        const constructedJson = {
+          provider: message.provider,
+          model: message.model,
+          content: message.content,
+          usage: {
+            input_tokens: message.tokens_in,
+            output_tokens: message.tokens_out,
+          },
+          cost_usd: message.cost_usd,
+        };
+        setJsonData(JSON.stringify(constructedJson, null, 2));
+      }
+    } catch {
+      // Fallback to constructed JSON
+      const constructedJson = {
+        provider: message.provider,
+        model: message.model,
+        content: message.content,
+        usage: {
+          input_tokens: message.tokens_in,
+          output_tokens: message.tokens_out,
+        },
+        cost_usd: message.cost_usd,
+      };
+      setJsonData(JSON.stringify(constructedJson, null, 2));
+    } finally {
+      setLoadingJson(false);
+    }
+  };
+
+  const handleViewChange = (mode: ViewMode) => {
+    setViewMode(mode);
+    if (mode === "json" && !jsonData) {
+      fetchJsonData();
+    }
+  };
+
+  const renderContent = () => {
+    if (viewMode === "json") {
+      if (loadingJson) {
+        return <div className="text-xs text-slate-400">Loading...</div>;
+      }
+      return (
+        <pre className="text-xs whitespace-pre-wrap leading-relaxed font-mono overflow-x-auto text-slate-700 bg-slate-50 p-3 rounded-lg">
+          {jsonData || "No JSON data available"}
+        </pre>
+      );
+    }
+    if (viewMode === "raw") {
+      return (
+        <pre className="text-sm whitespace-pre-wrap leading-relaxed font-mono text-xs overflow-x-auto text-slate-700">
+          {message.content}
+        </pre>
+      );
+    }
+    return (
+      <div className="text-sm leading-relaxed prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 text-slate-700">
+        <ReactMarkdown>{message.content}</ReactMarkdown>
+      </div>
+    );
+  };
+
+  const ViewToggle = ({ className }: { className: string }) => (
+    <div className={`flex items-center gap-3 mt-2 ${className}`}>
+      <button
+        onClick={() => handleViewChange("formatted")}
+        className={`text-xs transition-colors ${viewMode === "formatted" ? "font-medium" : "opacity-60 hover:opacity-100"}`}
+      >
+        Formatted
+      </button>
+      <span className="text-xs opacity-30">|</span>
+      <button
+        onClick={() => handleViewChange("raw")}
+        className={`text-xs transition-colors ${viewMode === "raw" ? "font-medium" : "opacity-60 hover:opacity-100"}`}
+      >
+        Raw
+      </button>
+      <span className="text-xs opacity-30">|</span>
+      <button
+        onClick={() => handleViewChange("json")}
+        className={`text-xs transition-colors ${viewMode === "json" ? "font-medium" : "opacity-60 hover:opacity-100"}`}
+      >
+        JSON
+      </button>
+    </div>
+  );
 
   // Assistant messages: centered, white background
   if (message.role === "assistant") {
@@ -69,21 +171,8 @@ function MessageBubble({ message }: { message: ThreadMessage }) {
             )}
           </div>
           <div className="bg-white rounded-2xl px-5 py-4 shadow-sm border border-gray-100">
-            {showRaw ? (
-              <pre className="text-sm whitespace-pre-wrap leading-relaxed font-mono text-xs overflow-x-auto text-slate-700">
-                {message.content}
-              </pre>
-            ) : (
-              <div className="text-sm leading-relaxed prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 text-slate-700">
-                <ReactMarkdown>{message.content}</ReactMarkdown>
-              </div>
-            )}
-            <button
-              onClick={() => setShowRaw(!showRaw)}
-              className="text-xs mt-2 text-slate-400 hover:text-slate-600 transition-colors"
-            >
-              {showRaw ? "Show formatted" : "Show raw"}
-            </button>
+            {renderContent()}
+            <ViewToggle className="text-slate-400" />
           </div>
         </div>
       </div>
@@ -98,21 +187,8 @@ function MessageBubble({ message }: { message: ThreadMessage }) {
           <span className="text-xs text-slate-400">{formatTime(message.timestamp)}</span>
         </div>
         <div className="bg-blue-100 text-slate-800 rounded-2xl px-4 py-3 shadow-sm">
-          {showRaw ? (
-            <pre className="text-sm whitespace-pre-wrap leading-relaxed font-mono text-xs overflow-x-auto">
-              {message.content}
-            </pre>
-          ) : (
-            <div className="text-sm leading-relaxed prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0">
-              <ReactMarkdown>{message.content}</ReactMarkdown>
-            </div>
-          )}
-          <button
-            onClick={() => setShowRaw(!showRaw)}
-            className="text-xs mt-2 text-blue-500 hover:text-blue-700 transition-colors"
-          >
-            {showRaw ? "Show formatted" : "Show raw"}
-          </button>
+          {renderContent()}
+          <ViewToggle className="text-blue-500" />
         </div>
       </div>
     </div>
