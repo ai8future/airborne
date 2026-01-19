@@ -121,34 +121,6 @@ function MessageBubble({ message, isPending, sendStartTime }: MessageBubbleProps
         }
       }
 
-      // Fallback if no raw request JSON - reconstruct from available data
-      if (!data.raw_request_json) {
-        const requestFallback = {
-          _note: "Raw request not captured - showing available metadata",
-          provider: data.request_provider || message.provider,
-          model: data.request_model || message.model,
-          system_prompt: data.system_prompt || "(not available)",
-          user_input: data.user_input || "(not available)",
-          timestamp: data.request_timestamp || message.timestamp,
-        };
-        setRequestJson(JSON.stringify(requestFallback, null, 2));
-      }
-
-      // Fallback if no raw response JSON
-      if (!data.raw_response_json) {
-        const responseFallback = {
-          _note: "Raw response not captured - showing available metadata",
-          provider: message.provider,
-          model: message.model,
-          content: message.content,
-          usage: {
-            input_tokens: message.tokens_in,
-            output_tokens: message.tokens_out,
-          },
-          cost_usd: message.cost_usd,
-        };
-        setResponseJson(JSON.stringify(responseFallback, null, 2));
-      }
 
       setDataFetched(true);
     } catch {
