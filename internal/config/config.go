@@ -271,13 +271,13 @@ func (c *Config) applyEnvOverrides() {
 		// Try to fetch DATABASE_URL from Doppler supabase project
 		if dopplerURL := fetchDopplerSecret("supabase", "DATABASE_URL"); dopplerURL != "" {
 			c.Database.URL = dopplerURL
-			slog.Info("loaded DATABASE_URL from Doppler supabase project")
+			fmt.Fprintf(os.Stderr, "config: loaded DATABASE_URL from Doppler supabase project\n")
 		}
 	}
 	// Auto-enable database if URL is configured
 	if c.Database.URL != "" && !c.Database.Enabled {
 		c.Database.Enabled = true
-		slog.Info("auto-enabled database persistence")
+		fmt.Fprintf(os.Stderr, "config: auto-enabled database persistence\n")
 	}
 	if maxConn := os.Getenv("DATABASE_MAX_CONNECTIONS"); maxConn != "" {
 		if n, err := strconv.Atoi(maxConn); err == nil {
@@ -425,6 +425,7 @@ func (c *Config) validate() error {
 
 // fetchDopplerSecret fetches a single secret from Doppler.
 // Returns empty string if DOPPLER_TOKEN is not set or on any error.
+// Note: This runs before logger is configured, so we use fmt.Fprintf for errors.
 func fetchDopplerSecret(project, secretName string) string {
 	token := os.Getenv("DOPPLER_TOKEN")
 	if token == "" {
@@ -441,7 +442,7 @@ func fetchDopplerSecret(project, secretName string) string {
 	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		slog.Debug("doppler request creation failed", "error", err)
+		fmt.Fprintf(os.Stderr, "doppler: request creation failed: %v\n", err)
 		return ""
 	}
 	req.SetBasicAuth(token, "")
@@ -449,14 +450,14 @@ func fetchDopplerSecret(project, secretName string) string {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		slog.Debug("doppler request failed", "error", err)
+		fmt.Fprintf(os.Stderr, "doppler: request failed: %v\n", err)
 		return ""
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		slog.Debug("doppler API error", "status", resp.StatusCode, "body", string(body))
+		fmt.Fprintf(os.Stderr, "doppler: API error (status %d): %s\n", resp.StatusCode, string(body))
 		return ""
 	}
 
@@ -466,12 +467,13 @@ func fetchDopplerSecret(project, secretName string) string {
 		} `json:"secrets"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		slog.Debug("doppler response decode failed", "error", err)
+		fmt.Fprintf(os.Stderr, "doppler: response decode failed: %v\n", err)
 		return ""
 	}
 
 	if secret, ok := result.Secrets[secretName]; ok {
 		return secret.Raw
 	}
+	fmt.Fprintf(os.Stderr, "doppler: secret %s not found in project %s\n", secretName, project)
 	return ""
 }

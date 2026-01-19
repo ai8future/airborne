@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.12] - 2026-01-19
+
+### Fixed
+- **Doppler config logging**: Changed Doppler fetch logging to use stderr (fmt.Fprintf) since it runs before slog is configured
+
+Agent: Claude:Opus 4.5
+
 ## [1.4.11] - 2026-01-19
 
 ### Added
