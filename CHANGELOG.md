@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.4] - 2026-01-19
+
+### Changed
+- **Conversations panel height**: Expanded to fill viewport height down to input box
+  - Changed from fixed 600px to `calc(100vh-12rem)` for dynamic height
+  - Panel now extends to touch the chat input at the bottom
+
+Agent: Claude:Opus 4.5
+
 ## [1.3.3] - 2026-01-19
 
 ### Added
