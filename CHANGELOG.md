@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.0] - 2026-01-19
+
+### Changed
+- **Conversation Panel**: Added ChatApp-style centered input at bottom
+  - Wide, centered glass-morphism input container with send button
+  - Removed header search input in favor of bottom chat input
+  - Increased panel height to 600px for better message viewing
+  - Added glass-input-container CSS styling
+
+Agent: Claude:Opus 4.5
+
 ## [1.2.15] - 2026-01-19
 
 ### Changed

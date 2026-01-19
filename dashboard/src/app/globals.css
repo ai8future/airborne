@@ -21,6 +21,15 @@
   box-shadow: 0 4px 15px -3px rgba(30, 41, 59, 0.3);
 }
 
+/* Glass input container */
+.glass-input-container {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
+}
+
 /* Custom scrollbar for chat */
 .custom-scrollbar::-webkit-scrollbar {
   width: 3px;

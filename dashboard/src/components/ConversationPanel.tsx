@@ -161,16 +161,11 @@ export default function ConversationPanel({ activity }: ConversationPanelProps) 
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+      <div className="px-4 py-3 border-b border-gray-200">
         <h3 className="font-semibold text-gray-800">Conversations</h3>
-        <input
-          type="text"
-          placeholder="Search threads..."
-          className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-64"
-        />
       </div>
 
-      <div className="flex h-[500px]">
+      <div className="flex h-[600px]">
         {/* Thread list - left sidebar */}
         <div className="w-72 border-r border-gray-200 overflow-y-auto bg-gray-50">
           {threadList.length === 0 ? (
@@ -205,9 +200,9 @@ export default function ConversationPanel({ activity }: ConversationPanelProps) 
         </div>
 
         {/* Messages area - right */}
-        <div className="flex-1 flex flex-col bg-gradient-to-b from-slate-50 to-slate-100">
+        <div className="flex-1 flex flex-col bg-gradient-to-b from-slate-50 to-slate-100 relative">
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto p-4 pb-24">
             {loading ? (
               <div className="flex items-center justify-center h-full text-gray-400">
                 Loading messages...
@@ -247,6 +242,33 @@ export default function ConversationPanel({ activity }: ConversationPanelProps) 
                 <div ref={messagesEndRef} />
               </div>
             )}
+          </div>
+
+          {/* Chat input - centered at bottom */}
+          <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-slate-100 to-transparent">
+            <div className="max-w-2xl mx-auto">
+              <div className="glass-input-container flex items-center gap-3 p-3 rounded-2xl">
+                <textarea
+                  placeholder="Ask anything..."
+                  rows={1}
+                  className="flex-1 resize-none min-h-[24px] max-h-[120px] leading-6 bg-transparent outline-none text-slate-800 placeholder:text-slate-400 text-sm"
+                  style={{ height: '24px' }}
+                  onInput={(e) => {
+                    const target = e.target as HTMLTextAreaElement;
+                    target.style.height = '24px';
+                    target.style.height = Math.min(target.scrollHeight, 120) + 'px';
+                  }}
+                />
+                <button
+                  type="button"
+                  className="size-9 flex items-center justify-center rounded-xl bg-slate-800 text-white hover:bg-blue-600 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
