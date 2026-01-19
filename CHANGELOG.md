@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.11] - 2026-01-19
+
+### Added
+- **Auto-fetch DATABASE_URL from Doppler**: Config now automatically fetches DATABASE_URL from Doppler's `supabase` project at startup if DOPPLER_TOKEN is set and DATABASE_URL is not in environment
+- **Auto-enable database persistence**: Database persistence is automatically enabled when DATABASE_URL is configured
+
+Agent: Claude:Opus 4.5
+
 ## [1.4.10] - 2026-01-19
 
 ### Changed

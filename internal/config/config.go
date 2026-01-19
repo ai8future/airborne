@@ -1,11 +1,15 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -263,6 +267,17 @@ func (c *Config) applyEnvOverrides() {
 	}
 	if url := os.Getenv("DATABASE_URL"); url != "" {
 		c.Database.URL = url
+	} else {
+		// Try to fetch DATABASE_URL from Doppler supabase project
+		if dopplerURL := fetchDopplerSecret("supabase", "DATABASE_URL"); dopplerURL != "" {
+			c.Database.URL = dopplerURL
+			slog.Info("loaded DATABASE_URL from Doppler supabase project")
+		}
+	}
+	// Auto-enable database if URL is configured
+	if c.Database.URL != "" && !c.Database.Enabled {
+		c.Database.Enabled = true
+		slog.Info("auto-enabled database persistence")
 	}
 	if maxConn := os.Getenv("DATABASE_MAX_CONNECTIONS"); maxConn != "" {
 		if n, err := strconv.Atoi(maxConn); err == nil {
@@ -406,4 +421,57 @@ func (c *Config) validate() error {
 	}
 
 	return nil
+}
+
+// fetchDopplerSecret fetches a single secret from Doppler.
+// Returns empty string if DOPPLER_TOKEN is not set or on any error.
+func fetchDopplerSecret(project, secretName string) string {
+	token := os.Getenv("DOPPLER_TOKEN")
+	if token == "" {
+		return ""
+	}
+
+	config := os.Getenv("DOPPLER_CONFIG")
+	if config == "" {
+		config = "prod"
+	}
+
+	url := fmt.Sprintf("https://api.doppler.com/v3/configs/config/secrets?project=%s&config=%s", project, config)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		slog.Debug("doppler request creation failed", "error", err)
+		return ""
+	}
+	req.SetBasicAuth(token, "")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		slog.Debug("doppler request failed", "error", err)
+		return ""
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		slog.Debug("doppler API error", "status", resp.StatusCode, "body", string(body))
+		return ""
+	}
+
+	var result struct {
+		Secrets map[string]struct {
+			Raw string `json:"raw"`
+		} `json:"secrets"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		slog.Debug("doppler response decode failed", "error", err)
+		return ""
+	}
+
+	if secret, ok := result.Secrets[secretName]; ok {
+		return secret.Raw
+	}
+	return ""
 }
