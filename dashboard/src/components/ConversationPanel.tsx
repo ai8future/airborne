@@ -435,6 +435,10 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activityRef = useRef(activity);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [systemPrompt, setSystemPrompt] = useState<"email4ai" | "custom">("email4ai");
+  const [customPromptText, setCustomPromptText] = useState("");
+  const [showCustomPromptModal, setShowCustomPromptModal] = useState(false);
+  const [showPromptDropdown, setShowPromptDropdown] = useState(false);
 
   // Keep activity ref updated
   useEffect(() => {
@@ -787,6 +791,48 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-slate-100 via-slate-100/95 to-transparent z-50">
         <div className="max-w-2xl mx-auto">
           <div className="glass-input-container flex items-center gap-3 p-3 rounded-2xl">
+            {/* System Prompt Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowPromptDropdown(!showPromptDropdown)}
+                disabled={!selectedThreadId || sending}
+                className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-200/50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span>{systemPrompt === "email4ai" ? "Email4.ai" : "Custom"}</span>
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showPromptDropdown && (
+                <div className="absolute bottom-full left-0 mb-1 bg-white rounded-lg shadow-lg border border-slate-200 py-1 min-w-[140px] z-50">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSystemPrompt("email4ai");
+                      setShowPromptDropdown(false);
+                    }}
+                    className={`w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100 ${systemPrompt === "email4ai" ? "text-blue-600 font-medium" : "text-slate-700"}`}
+                  >
+                    Email4.ai
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPromptDropdown(false);
+                      setShowCustomPromptModal(true);
+                    }}
+                    className={`w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100 ${systemPrompt === "custom" ? "text-blue-600 font-medium" : "text-slate-700"}`}
+                  >
+                    Custom...
+                  </button>
+                </div>
+              )}
+            </div>
+
             <input
               type="file"
               ref={fileInputRef}
@@ -846,6 +892,52 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
           </div>
         </div>
       </div>
+
+      {/* Custom Prompt Modal */}
+      {showCustomPromptModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]" onClick={() => setShowCustomPromptModal(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-slate-800">Custom System Prompt</h3>
+              <button
+                type="button"
+                onClick={() => setShowCustomPromptModal(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <textarea
+              value={customPromptText}
+              onChange={(e) => setCustomPromptText(e.target.value)}
+              placeholder="Enter your custom system prompt..."
+              className="w-full h-48 p-3 border border-slate-200 rounded-xl text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            />
+            <div className="flex justify-end gap-3 mt-4">
+              <button
+                type="button"
+                onClick={() => setShowCustomPromptModal(false)}
+                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSystemPrompt("custom");
+                  setShowCustomPromptModal(false);
+                }}
+                disabled={!customPromptText.trim()}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Save Prompt
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

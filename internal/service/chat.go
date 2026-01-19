@@ -41,14 +41,14 @@ type ChatService struct {
 	rateLimiter       *auth.RateLimiter
 	ragService        *rag.Service
 	imageGen          *imagegen.Client
-	repo              *db.Repository // Optional: message persistence
+	dbClient          *db.Client // Optional: message persistence
 }
 
 // NewChatService creates a new chat service.
 // The ragService parameter is optional - pass nil to disable self-hosted RAG.
 // The imageGen parameter is optional - pass nil to disable image generation.
-// The repo parameter is optional - pass nil to disable message persistence.
-func NewChatService(rateLimiter *auth.RateLimiter, ragService *rag.Service, imageGen *imagegen.Client, repo *db.Repository) *ChatService {
+// The dbClient parameter is optional - pass nil to disable message persistence.
+func NewChatService(rateLimiter *auth.RateLimiter, ragService *rag.Service, imageGen *imagegen.Client, dbClient *db.Client) *ChatService {
 	return &ChatService{
 		openaiProvider:    openai.NewClient(),
 		geminiProvider:    gemini.NewClient(),
@@ -56,7 +56,7 @@ func NewChatService(rateLimiter *auth.RateLimiter, ragService *rag.Service, imag
 		rateLimiter:       rateLimiter,
 		ragService:        ragService,
 		imageGen:          imageGen,
-		repo:              repo,
+		dbClient:          dbClient,
 	}
 }
 

@@ -7,10 +7,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// Thread represents a conversation container with tenant isolation.
+// Thread represents a conversation container (tenant isolation is at table level).
 type Thread struct {
 	ID           uuid.UUID  `json:"id"`
-	TenantID     string     `json:"tenant_id"`
 	UserID       string     `json:"user_id"`
 	Provider     *string    `json:"provider,omitempty"`
 	Model        *string    `json:"model,omitempty"`
@@ -156,11 +155,11 @@ func CitationsToJSON(citations []Citation) (*string, error) {
 }
 
 // NewThread creates a new thread with default values.
-func NewThread(tenantID, userID string) *Thread {
+// Tenant isolation is at the table level, not row level.
+func NewThread(userID string) *Thread {
 	now := time.Now()
 	return &Thread{
 		ID:           uuid.New(),
-		TenantID:     tenantID,
 		UserID:       userID,
 		Status:       ThreadStatusActive,
 		MessageCount: 0,
@@ -226,4 +225,57 @@ type ThreadConversation struct {
 	Messages     []ConversationMessage `json:"messages"`
 	CreatedAt    time.Time             `json:"created_at"`
 	UpdatedAt    time.Time             `json:"updated_at"`
+}
+
+// File represents an uploaded file for RAG and attachments.
+type File struct {
+	ID        uuid.UUID  `json:"id"`
+	UserID    string     `json:"user_id"`
+	Filename  string     `json:"filename"`
+	MimeType  *string    `json:"mime_type,omitempty"`
+	SizeBytes *int64     `json:"size_bytes,omitempty"`
+	StoreID   *string    `json:"store_id,omitempty"`   // Vector store ID for RAG
+	FileID    *string    `json:"file_id,omitempty"`    // Provider file ID
+	Provider  *string    `json:"provider,omitempty"`   // Provider that owns the file
+	Status    string     `json:"status"`               // uploaded, processing, ready, failed
+	CreatedAt time.Time  `json:"created_at"`
+	Metadata  *string    `json:"metadata,omitempty"`   // JSONB stored as string
+}
+
+// FileStatus constants
+const (
+	FileStatusUploaded   = "uploaded"
+	FileStatusProcessing = "processing"
+	FileStatusReady      = "ready"
+	FileStatusFailed     = "failed"
+)
+
+// FileProviderUpload tracks file uploads to different AI providers.
+type FileProviderUpload struct {
+	ID              uuid.UUID  `json:"id"`
+	FileID          uuid.UUID  `json:"file_id"`
+	Provider        string     `json:"provider"`           // openai, gemini, etc.
+	ProviderFileID  *string    `json:"provider_file_id,omitempty"`
+	ProviderStoreID *string    `json:"provider_store_id,omitempty"`
+	Status          string     `json:"status"`             // pending, uploading, ready, failed
+	CreatedAt       time.Time  `json:"created_at"`
+	UploadedAt      *time.Time `json:"uploaded_at,omitempty"`
+}
+
+// UploadStatus constants
+const (
+	UploadStatusPending   = "pending"
+	UploadStatusUploading = "uploading"
+	UploadStatusReady     = "ready"
+	UploadStatusFailed    = "failed"
+)
+
+// ThreadVectorStore links threads to vector stores for RAG.
+type ThreadVectorStore struct {
+	ID        uuid.UUID `json:"id"`
+	ThreadID  uuid.UUID `json:"thread_id"`
+	StoreID   string    `json:"store_id"`
+	Provider  string    `json:"provider"`   // openai, qdrant, etc.
+	Enabled   bool      `json:"enabled"`
+	CreatedAt time.Time `json:"created_at"`
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -15,8 +16,10 @@ import (
 
 // Client wraps a PostgreSQL connection pool.
 type Client struct {
-	pool       *pgxpool.Pool
-	logQueries bool
+	pool        *pgxpool.Pool
+	logQueries  bool
+	tenantRepos map[string]*Repository
+	mu          sync.RWMutex
 }
 
 // Config holds database connection configuration.
@@ -89,8 +92,9 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 	)
 
 	return &Client{
-		pool:       pool,
-		logQueries: cfg.LogQueries,
+		pool:        pool,
+		logQueries:  cfg.LogQueries,
+		tenantRepos: make(map[string]*Repository),
 	}, nil
 }
 
@@ -110,6 +114,37 @@ func (c *Client) Close() {
 // Ping verifies the database connection is alive.
 func (c *Client) Ping(ctx context.Context) error {
 	return c.pool.Ping(ctx)
+}
+
+// TenantRepository returns a repository scoped to a specific tenant's tables.
+// The repository is cached for efficiency and is thread-safe.
+func (c *Client) TenantRepository(tenantID string) (*Repository, error) {
+	// Fast path: check if already cached (read lock)
+	c.mu.RLock()
+	if repo, ok := c.tenantRepos[tenantID]; ok {
+		c.mu.RUnlock()
+		return repo, nil
+	}
+	c.mu.RUnlock()
+
+	// Slow path: create new repository (write lock)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Double-check after acquiring write lock
+	if repo, ok := c.tenantRepos[tenantID]; ok {
+		return repo, nil
+	}
+
+	// Create new tenant repository
+	repo, err := NewTenantRepository(c, tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	c.tenantRepos[tenantID] = repo
+	slog.Debug("created tenant repository", "tenant_id", tenantID)
+	return repo, nil
 }
 
 // logQuery logs a query if logging is enabled.

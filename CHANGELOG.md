@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.0] - 2026-01-19
+
+### Added
+- **System Prompt dropdown**: Added a dropdown selector to the far left of the chat input
+  - Options: "Email4.ai" (default) and "Custom..."
+  - Dropdown appears above the input when clicked
+  - Visual indicator shows currently selected prompt type
+- **Custom Prompt modal**: Selecting "Custom..." opens a modal dialog
+  - Textarea for entering custom system prompt text
+  - Save/Cancel buttons with validation (requires non-empty text)
+  - Click outside or X button to dismiss
+
+Agent: Claude:Opus 4.5
+
 ## [1.4.14] - 2026-01-19
 
 ### Added
