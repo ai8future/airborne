@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.10] - 2026-01-19
+
+### Added
+- **System prompt support in dashboard**: Users can now view and customize the system prompt
+  - Email4.ai default prompt shown in a modal when clicking the prompt selector
+  - Custom prompt option with editable textarea
+  - System prompt sent to Airborne backend with each message
+  - Prompt selector moved outside input box for better UX
+
+- **New conversation UX**: Users can start conversations without selecting an existing thread
+  - Input placeholder changed from "Select a conversation first..." to "Start a new conversation..."
+  - Auto-generates UUID for new threads when user sends first message
+  - Input no longer disabled when no thread selected
+
+### Changed
+- **Admin server**: `/admin/chat` endpoint now accepts `system_prompt` parameter
+  - Falls back to default prompt if not provided
+  - System prompt passed to gRPC `Instructions` field
+
+Agent: Claude:Opus 4.5
+
 ## [1.5.9] - 2026-01-19
 
 ### Fixed

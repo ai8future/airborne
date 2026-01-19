@@ -7,6 +7,7 @@ interface ChatRequest {
   message: string;
   tenant_id?: string;
   provider?: string;
+  system_prompt?: string;
 }
 
 interface ChatResponse {
@@ -51,6 +52,7 @@ export async function POST(request: NextRequest) {
           message: body.message,
           tenant_id: body.tenant_id || "",
           provider: body.provider || "",
+          system_prompt: body.system_prompt || "",
         }),
       });
 

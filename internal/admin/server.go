@@ -521,10 +521,11 @@ func (s *Server) handleTest(w http.ResponseWriter, r *http.Request) {
 
 // ChatRequest is the request body for the chat endpoint.
 type ChatRequest struct {
-	ThreadID string `json:"thread_id"`
-	Message  string `json:"message"`
-	TenantID string `json:"tenant_id,omitempty"`
-	Provider string `json:"provider,omitempty"`
+	ThreadID     string `json:"thread_id"`
+	Message      string `json:"message"`
+	TenantID     string `json:"tenant_id,omitempty"`
+	Provider     string `json:"provider,omitempty"`
+	SystemPrompt string `json:"system_prompt,omitempty"`
 }
 
 // ChatResponse is the response from the chat endpoint.
@@ -599,9 +600,15 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Use system prompt from request, or default
+	systemPrompt := req.SystemPrompt
+	if strings.TrimSpace(systemPrompt) == "" {
+		systemPrompt = "You are a helpful assistant. Continue the conversation naturally."
+	}
+
 	// Build gRPC request - use thread_id as request_id to continue the thread
 	grpcReq := &pb.GenerateReplyRequest{
-		Instructions: "You are a helpful assistant. Continue the conversation naturally.",
+		Instructions: systemPrompt,
 		UserInput:    req.Message,
 		TenantId:     req.TenantID,
 		ClientId:     "dashboard-chat",

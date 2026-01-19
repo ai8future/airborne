@@ -55,7 +55,11 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	// Make the actual request
-	resp, err := t.Base.RoundTrip(req)
+	base := t.Base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	resp, err := base.RoundTrip(req)
 	if err != nil {
 		slog.Warn("httpcapture: request failed", "error", err)
 		return nil, err

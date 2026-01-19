@@ -423,6 +423,15 @@ function MessageBubble({ message, isPending, sendStartTime }: MessageBubbleProps
   );
 }
 
+// Generate a UUID for new threads
+function generateUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 export default function ConversationPanel({ activity, selectedThreadId, onSelectThread }: ConversationPanelProps) {
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -435,10 +444,33 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activityRef = useRef(activity);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [systemPrompt, setSystemPrompt] = useState<"email4ai" | "custom">("email4ai");
+  const [systemPromptType, setSystemPromptType] = useState<"email4ai" | "custom">("email4ai");
   const [customPromptText, setCustomPromptText] = useState("");
-  const [showCustomPromptModal, setShowCustomPromptModal] = useState(false);
+  const [showPromptModal, setShowPromptModal] = useState(false);
   const [showPromptDropdown, setShowPromptDropdown] = useState(false);
+
+  // Email4.ai default system prompt
+  const EMAIL4AI_PROMPT = `You are an AI email assistant for Email4.ai. Your role is to help users by responding to their emails professionally and helpfully.
+
+Guidelines:
+- Be concise but thorough in your responses
+- Match the tone of the incoming email (formal if formal, casual if casual)
+- If you don't know something, say so honestly
+- Never make up information or hallucinate facts
+- Be helpful and focused on solving the user's actual needs
+- Format responses appropriately with paragraphs and lists when helpful`;
+
+  // Get the active system prompt text
+  const getActivePrompt = () => {
+    return systemPromptType === "email4ai" ? EMAIL4AI_PROMPT : customPromptText;
+  };
+
+  // Start a new conversation
+  const startNewConversation = useCallback(() => {
+    const newThreadId = generateUUID();
+    onSelectThread(newThreadId);
+    setMessages([]);
+  }, [onSelectThread]);
 
   // Keep activity ref updated
   useEffect(() => {
@@ -536,7 +568,14 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
 
   // Send message handler
   const sendMessage = async () => {
-    if (!inputValue.trim() || !selectedThreadId || sending) return;
+    if (!inputValue.trim() || sending) return;
+
+    // If no thread selected, create a new one
+    let threadId = selectedThreadId;
+    if (!threadId) {
+      threadId = generateUUID();
+      onSelectThread(threadId);
+    }
 
     const messageContent = inputValue.trim();
     const tempId = `temp-${Date.now()}`;
@@ -564,8 +603,9 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          thread_id: selectedThreadId,
+          thread_id: threadId,
           message: messageContent,
+          system_prompt: getActivePrompt(),
         }),
       });
 
@@ -820,50 +860,67 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
 
       {/* Chat input - fixed to bottom of browser */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-slate-100 via-slate-100/95 to-transparent z-50">
-        <div className="max-w-2xl mx-auto">
-          <div className="glass-input-container flex items-center gap-3 p-3 rounded-2xl">
-            {/* System Prompt Dropdown */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setShowPromptDropdown(!showPromptDropdown)}
-                disabled={!selectedThreadId || sending}
-                className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-200/50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <span>{systemPrompt === "email4ai" ? "Email4.ai" : "Custom"}</span>
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              {showPromptDropdown && (
-                <div className="absolute bottom-full left-0 mb-1 bg-white rounded-lg shadow-lg border border-slate-200 py-1 min-w-[140px] z-50">
+        <div className="max-w-3xl mx-auto flex items-end gap-3">
+          {/* System Prompt Dropdown - outside input box, far left */}
+          <div className="relative flex-shrink-0 mb-1">
+            <button
+              type="button"
+              onClick={() => setShowPromptDropdown(!showPromptDropdown)}
+              disabled={sending}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span>{systemPromptType === "email4ai" ? "Email4.ai" : "Custom"}</span>
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {showPromptDropdown && (
+              <div className="absolute bottom-full left-0 mb-1 bg-white rounded-lg shadow-lg border border-slate-200 py-1 min-w-[160px] z-50">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSystemPromptType("email4ai");
+                    setShowPromptDropdown(false);
+                    setShowPromptModal(true);
+                  }}
+                  className={`w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100 flex items-center justify-between ${systemPromptType === "email4ai" ? "text-blue-600 font-medium" : "text-slate-700"}`}
+                >
+                  <span>Email4.ai</span>
+                  {systemPromptType === "email4ai" && <span className="text-blue-500">✓</span>}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSystemPromptType("custom");
+                    setShowPromptDropdown(false);
+                    setShowPromptModal(true);
+                  }}
+                  className={`w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100 flex items-center justify-between ${systemPromptType === "custom" ? "text-blue-600 font-medium" : "text-slate-700"}`}
+                >
+                  <span>Custom</span>
+                  {systemPromptType === "custom" && <span className="text-blue-500">✓</span>}
+                </button>
+                <div className="border-t border-slate-100 mt-1 pt-1">
                   <button
                     type="button"
                     onClick={() => {
-                      setSystemPrompt("email4ai");
                       setShowPromptDropdown(false);
+                      setShowPromptModal(true);
                     }}
-                    className={`w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100 ${systemPrompt === "email4ai" ? "text-blue-600 font-medium" : "text-slate-700"}`}
+                    className="w-full px-3 py-1.5 text-left text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                   >
-                    Email4.ai
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowPromptDropdown(false);
-                      setShowCustomPromptModal(true);
-                    }}
-                    className={`w-full px-3 py-1.5 text-left text-xs hover:bg-slate-100 ${systemPrompt === "custom" ? "text-blue-600 font-medium" : "text-slate-700"}`}
-                  >
-                    Custom...
+                    View/Edit Prompt...
                   </button>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+          </div>
 
+          {/* Input container */}
+          <div className="flex-1 glass-input-container flex items-center gap-3 p-3 rounded-2xl">
             <input
               type="file"
               ref={fileInputRef}
@@ -873,7 +930,7 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              disabled={!selectedThreadId || sending}
+              disabled={sending}
               className="size-9 flex items-center justify-center rounded-xl text-slate-500 hover:text-slate-700 hover:bg-slate-200/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               title={selectedFile ? selectedFile.name : "Attach file"}
             >
@@ -889,12 +946,12 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
             </button>
             <textarea
               ref={textareaRef}
-              placeholder={selectedThreadId ? "Ask anything..." : "Select a conversation first..."}
+              placeholder={selectedThreadId ? "Ask anything..." : "Start a new conversation..."}
               rows={1}
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              disabled={!selectedThreadId || sending}
+              disabled={sending}
               className="flex-1 resize-none min-h-[24px] max-h-[120px] leading-6 bg-transparent outline-none text-slate-800 placeholder:text-slate-400 text-sm disabled:opacity-50"
               style={{ height: '24px' }}
               onInput={(e) => {
@@ -906,7 +963,7 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
             <button
               type="button"
               onClick={sendMessage}
-              disabled={!inputValue.trim() || !selectedThreadId || sending}
+              disabled={!inputValue.trim() || sending}
               className="size-9 flex items-center justify-center rounded-xl bg-slate-800 text-white hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {sending ? (
@@ -924,15 +981,15 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
         </div>
       </div>
 
-      {/* Custom Prompt Modal */}
-      {showCustomPromptModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]" onClick={() => setShowCustomPromptModal(false)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6" onClick={(e) => e.stopPropagation()}>
+      {/* System Prompt Modal */}
+      {showPromptModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]" onClick={() => setShowPromptModal(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 p-6 max-h-[80vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-slate-800">Custom System Prompt</h3>
+              <h3 className="text-lg font-semibold text-slate-800">System Prompt</h3>
               <button
                 type="button"
-                onClick={() => setShowCustomPromptModal(false)}
+                onClick={() => setShowPromptModal(false)}
                 className="text-slate-400 hover:text-slate-600 transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -940,30 +997,63 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
                 </svg>
               </button>
             </div>
-            <textarea
-              value={customPromptText}
-              onChange={(e) => setCustomPromptText(e.target.value)}
-              placeholder="Enter your custom system prompt..."
-              className="w-full h-48 p-3 border border-slate-200 rounded-xl text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-            />
-            <div className="flex justify-end gap-3 mt-4">
+
+            {/* Prompt Type Selector */}
+            <div className="flex gap-2 mb-4">
               <button
                 type="button"
-                onClick={() => setShowCustomPromptModal(false)}
-                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                onClick={() => setSystemPromptType("email4ai")}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  systemPromptType === "email4ai"
+                    ? "bg-blue-600 text-white"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                }`}
               >
-                Cancel
+                Email4.ai (Default)
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setSystemPrompt("custom");
-                  setShowCustomPromptModal(false);
-                }}
-                disabled={!customPromptText.trim()}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => setSystemPromptType("custom")}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  systemPromptType === "custom"
+                    ? "bg-blue-600 text-white"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                }`}
               >
-                Save Prompt
+                Custom
+              </button>
+            </div>
+
+            {/* Prompt Content */}
+            <div className="flex-1 overflow-auto">
+              {systemPromptType === "email4ai" ? (
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                  <pre className="text-sm text-slate-700 whitespace-pre-wrap font-mono leading-relaxed">{EMAIL4AI_PROMPT}</pre>
+                </div>
+              ) : (
+                <textarea
+                  value={customPromptText}
+                  onChange={(e) => setCustomPromptText(e.target.value)}
+                  placeholder="Enter your custom system prompt..."
+                  className="w-full h-64 p-4 border border-slate-200 rounded-xl text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none font-mono"
+                />
+              )}
+            </div>
+
+            <div className="flex justify-between items-center mt-4 pt-4 border-t border-slate-100">
+              <p className="text-xs text-slate-500">
+                {systemPromptType === "email4ai"
+                  ? "This prompt is sent with every message to guide the AI's behavior."
+                  : customPromptText.trim()
+                    ? `${customPromptText.length} characters`
+                    : "Enter a custom system prompt to override the default."}
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowPromptModal(false)}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+              >
+                Done
               </button>
             </div>
           </div>
