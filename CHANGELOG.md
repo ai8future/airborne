@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.9] - 2026-01-19
+
+### Changed
+- **JSON view split into Request/Response tabs**:
+  - "Request" shows full request sent to AI (system prompts, settings, message history)
+  - "Response" shows the AI provider's response
+  - Added max-height with scroll for large JSON payloads
+  - Shows token/cost summary below JSON: In/Out/Total tokens + Cost
+
+### Fixed
+- **Debug API port**: Changed from 8473 to 50054 to match admin HTTP port
+
+Agent: Claude:Opus 4.5
+
 ## [1.3.8] - 2026-01-19
 
 ### Changed

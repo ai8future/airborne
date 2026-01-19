@@ -47,12 +47,13 @@ interface ConversationPanelProps {
   activity: ActivityEntry[];
 }
 
-type ViewMode = "formatted" | "raw" | "json";
+type ViewMode = "formatted" | "raw" | "request" | "response";
 
 // Message bubble component with view mode toggle
 function MessageBubble({ message }: { message: ThreadMessage }) {
   const [viewMode, setViewMode] = useState<ViewMode>("formatted");
-  const [jsonData, setJsonData] = useState<string | null>(null);
+  const [requestJson, setRequestJson] = useState<string | null>(null);
+  const [responseJson, setResponseJson] = useState<string | null>(null);
   const [loadingJson, setLoadingJson] = useState(false);
 
   const formatTime = (timestamp: string) => {
@@ -61,16 +62,33 @@ function MessageBubble({ message }: { message: ThreadMessage }) {
 
   // Fetch JSON data from debug endpoint when JSON view is requested
   const fetchJsonData = async () => {
-    if (jsonData) return; // Already fetched
+    if (requestJson || responseJson) return; // Already fetched
     setLoadingJson(true);
     try {
       const res = await fetch(`/api/debug/${message.id}`);
       const data = await res.json();
+
+      // Parse and format request JSON
+      if (data.request_json) {
+        try {
+          setRequestJson(JSON.stringify(JSON.parse(data.request_json), null, 2));
+        } catch {
+          setRequestJson(data.request_json);
+        }
+      }
+
+      // Parse and format response JSON
       if (data.response_json) {
-        setJsonData(JSON.stringify(JSON.parse(data.response_json), null, 2));
-      } else {
-        // Construct a representative JSON from available data
-        const constructedJson = {
+        try {
+          setResponseJson(JSON.stringify(JSON.parse(data.response_json), null, 2));
+        } catch {
+          setResponseJson(data.response_json);
+        }
+      }
+
+      // Fallback if no data
+      if (!data.request_json && !data.response_json) {
+        const fallback = {
           provider: message.provider,
           model: message.model,
           content: message.content,
@@ -80,11 +98,11 @@ function MessageBubble({ message }: { message: ThreadMessage }) {
           },
           cost_usd: message.cost_usd,
         };
-        setJsonData(JSON.stringify(constructedJson, null, 2));
+        setResponseJson(JSON.stringify(fallback, null, 2));
       }
     } catch {
       // Fallback to constructed JSON
-      const constructedJson = {
+      const fallback = {
         provider: message.provider,
         model: message.model,
         content: message.content,
@@ -94,7 +112,7 @@ function MessageBubble({ message }: { message: ThreadMessage }) {
         },
         cost_usd: message.cost_usd,
       };
-      setJsonData(JSON.stringify(constructedJson, null, 2));
+      setResponseJson(JSON.stringify(fallback, null, 2));
     } finally {
       setLoadingJson(false);
     }
@@ -102,20 +120,56 @@ function MessageBubble({ message }: { message: ThreadMessage }) {
 
   const handleViewChange = (mode: ViewMode) => {
     setViewMode(mode);
-    if (mode === "json" && !jsonData) {
+    if ((mode === "request" || mode === "response") && !requestJson && !responseJson) {
       fetchJsonData();
     }
   };
 
+  const TokenSummary = () => {
+    if (message.role !== "assistant") return null;
+    const inTokens = message.tokens_in || 0;
+    const outTokens = message.tokens_out || 0;
+    const totalTokens = inTokens + outTokens;
+    const cost = message.cost_usd || 0;
+
+    return (
+      <div className="mt-2 pt-2 border-t border-slate-200 text-xs text-slate-500 font-mono">
+        In: <span className="text-slate-700">{inTokens.toLocaleString()}</span>
+        {" "}&bull;{" "}
+        Out: <span className="text-slate-700">{outTokens.toLocaleString()}</span>
+        {" "}&bull;{" "}
+        Total: <span className="text-purple-600 font-medium">{totalTokens.toLocaleString()}</span>
+        {" "}&bull;{" "}
+        Cost: <span className="text-green-600 font-medium">${cost.toFixed(4)}</span>
+      </div>
+    );
+  };
+
   const renderContent = () => {
-    if (viewMode === "json") {
+    if (viewMode === "request") {
       if (loadingJson) {
         return <div className="text-xs text-slate-400">Loading...</div>;
       }
       return (
-        <pre className="text-xs whitespace-pre-wrap leading-relaxed font-mono overflow-x-auto text-slate-700 bg-slate-50 p-3 rounded-lg">
-          {jsonData || "No JSON data available"}
-        </pre>
+        <>
+          <pre className="text-xs whitespace-pre-wrap leading-relaxed font-mono overflow-x-auto text-slate-700 bg-slate-50 p-3 rounded-lg max-h-96 overflow-y-auto">
+            {requestJson || "No request data available"}
+          </pre>
+          <TokenSummary />
+        </>
+      );
+    }
+    if (viewMode === "response") {
+      if (loadingJson) {
+        return <div className="text-xs text-slate-400">Loading...</div>;
+      }
+      return (
+        <>
+          <pre className="text-xs whitespace-pre-wrap leading-relaxed font-mono overflow-x-auto text-slate-700 bg-slate-50 p-3 rounded-lg max-h-96 overflow-y-auto">
+            {responseJson || "No response data available"}
+          </pre>
+          <TokenSummary />
+        </>
       );
     }
     if (viewMode === "raw") {
@@ -149,10 +203,17 @@ function MessageBubble({ message }: { message: ThreadMessage }) {
       </button>
       <span className="text-xs opacity-30">|</span>
       <button
-        onClick={() => handleViewChange("json")}
-        className={`text-xs transition-colors ${viewMode === "json" ? "font-medium" : "opacity-60 hover:opacity-100"}`}
+        onClick={() => handleViewChange("request")}
+        className={`text-xs transition-colors ${viewMode === "request" ? "font-medium" : "opacity-60 hover:opacity-100"}`}
       >
-        JSON
+        Request
+      </button>
+      <span className="text-xs opacity-30">|</span>
+      <button
+        onClick={() => handleViewChange("response")}
+        className={`text-xs transition-colors ${viewMode === "response" ? "font-medium" : "opacity-60 hover:opacity-100"}`}
+      >
+        Response
       </button>
     </div>
   );
