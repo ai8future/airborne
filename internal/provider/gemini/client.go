@@ -327,6 +327,20 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		if capture != nil {
 			reqJSON = capture.RequestBody
 			respJSON = capture.ResponseBody
+			slog.Debug("gemini: captured HTTP payloads",
+				"request_json_len", len(reqJSON),
+				"response_json_len", len(respJSON),
+				"request_id", params.RequestID,
+			)
+			if len(reqJSON) == 0 {
+				slog.Warn("gemini: no request body captured - SDK may not be using custom HTTPClient",
+					"request_id", params.RequestID,
+				)
+			}
+		} else {
+			slog.Warn("gemini: capture transport is nil",
+				"request_id", params.RequestID,
+			)
 		}
 
 		return provider.GenerateResult{
@@ -623,6 +637,16 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 			respJSON, _ = json.Marshal(syntheticResp)
 		}
 
+		// Log captured data for debugging
+		streamReqJSON := capture.RequestBody
+		if len(streamReqJSON) == 0 {
+			slog.Warn("gemini stream: no request body captured - SDK may not be using custom HTTPClient")
+		} else {
+			slog.Debug("gemini stream: captured request body",
+				"size", len(streamReqJSON),
+			)
+		}
+
 		// Send completion chunk with captured debug JSON
 		ch <- provider.StreamChunk{
 			Type:               provider.ChunkTypeComplete,
@@ -631,7 +655,7 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 			ToolCalls:          toolCalls,
 			RequiresToolOutput: len(toolCalls) > 0,
 			CodeExecutions:     codeExecutions,
-			RequestJSON:        capture.RequestBody,
+			RequestJSON:        streamReqJSON,
 			ResponseJSON:       respJSON,
 		}
 	}()

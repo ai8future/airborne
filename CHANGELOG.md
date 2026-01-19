@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.9] - 2026-01-19
+
+### Added
+- **Debug logging for HTTP capture**: Added detailed logging to httpcapture transport to diagnose why request/response JSON isn't being captured
+  - Logs RoundTrip calls with method, URL, and body presence
+  - Logs captured request/response body sizes and previews
+  - Warns when SDK may not be using custom HTTPClient
+- **Gemini provider capture logging**: Added logging to trace captured HTTP payloads
+  - Logs request/response JSON sizes after capture
+  - Warns when no request body is captured (indicates SDK bypass)
+
+Agent: Claude:Opus 4.5
+
 ## [1.4.8] - 2026-01-19
 
 ### Added

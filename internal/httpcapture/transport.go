@@ -5,6 +5,7 @@ package httpcapture
 import (
 	"bytes"
 	"io"
+	"log/slog"
 	"net/http"
 )
 
@@ -31,36 +32,68 @@ func New() *Transport {
 // RoundTrip implements http.RoundTripper.
 // It captures the request body before sending and the response body after receiving.
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
+	slog.Debug("httpcapture: RoundTrip called",
+		"method", req.Method,
+		"url", req.URL.String(),
+		"has_body", req.Body != nil,
+	)
+
 	// Capture request body if present
 	if req.Body != nil {
 		body, err := io.ReadAll(req.Body)
 		if err != nil {
+			slog.Warn("httpcapture: failed to read request body", "error", err)
 			return nil, err
 		}
 		t.RequestBody = body
 		// Restore the body so the SDK can read it
 		req.Body = io.NopCloser(bytes.NewReader(body))
+
+		slog.Debug("httpcapture: captured request body",
+			"size", len(body),
+			"preview", truncateForLog(body, 200),
+		)
 	}
 
 	// Make the actual request
 	resp, err := t.Base.RoundTrip(req)
 	if err != nil {
+		slog.Warn("httpcapture: request failed", "error", err)
 		return nil, err
 	}
+
+	slog.Debug("httpcapture: response received",
+		"status", resp.StatusCode,
+		"has_body", resp.Body != nil,
+	)
 
 	// Capture response body if present
 	if resp.Body != nil {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
+			slog.Warn("httpcapture: failed to read response body", "error", err)
 			resp.Body.Close()
 			return nil, err
 		}
 		t.ResponseBody = body
 		// Restore the body so the SDK can read it
 		resp.Body = io.NopCloser(bytes.NewReader(body))
+
+		slog.Debug("httpcapture: captured response body",
+			"size", len(body),
+			"preview", truncateForLog(body, 200),
+		)
 	}
 
 	return resp, nil
+}
+
+// truncateForLog returns a truncated string representation for logging.
+func truncateForLog(data []byte, maxLen int) string {
+	if len(data) <= maxLen {
+		return string(data)
+	}
+	return string(data[:maxLen]) + "..."
 }
 
 // Client returns an *http.Client configured to use this capturing transport.
