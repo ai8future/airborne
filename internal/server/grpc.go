@@ -202,6 +202,7 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, *Serv
 			URL:            cfg.Database.URL,
 			MaxConnections: cfg.Database.MaxConnections,
 			LogQueries:     cfg.Database.LogQueries,
+			CACert:         cfg.Database.CACert,
 		})
 		if dbErr != nil {
 			slog.Error("failed to connect to database", "error", dbErr)

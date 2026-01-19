@@ -37,6 +37,7 @@ type DatabaseConfig struct {
 	URL            string `yaml:"url"`
 	MaxConnections int    `yaml:"max_connections"`
 	LogQueries     bool   `yaml:"log_queries"`
+	CACert         string `yaml:"ca_cert"` // PEM-encoded CA certificate for SSL verification
 }
 
 // AdminConfig holds HTTP admin server settings
@@ -272,6 +273,17 @@ func (c *Config) applyEnvOverrides() {
 		if dopplerURL := fetchDopplerSecret("supabase", "DATABASE_URL"); dopplerURL != "" {
 			c.Database.URL = dopplerURL
 			fmt.Fprintf(os.Stderr, "config: loaded DATABASE_URL from Doppler supabase project\n")
+		}
+	}
+	// Fetch CA certificate from environment or Doppler
+	if caCert := os.Getenv("SUPABASE_CA_CERT"); caCert != "" {
+		c.Database.CACert = caCert
+		fmt.Fprintf(os.Stderr, "config: loaded SUPABASE_CA_CERT from environment\n")
+	} else if c.Database.URL != "" {
+		// Try to fetch from Doppler supabase project
+		if dopplerCert := fetchDopplerSecret("supabase", "SUPABASE_CA_CERT"); dopplerCert != "" {
+			c.Database.CACert = dopplerCert
+			fmt.Fprintf(os.Stderr, "config: loaded SUPABASE_CA_CERT from Doppler supabase project\n")
 		}
 	}
 	// Auto-enable database if URL is configured

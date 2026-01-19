@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.13] - 2026-01-19
+
+### Added
+- **Supabase SSL certificate verification**: Database connection now supports custom CA certificates for SSL verification
+  - Fetches `SUPABASE_CA_CERT` from environment or Doppler's supabase project
+  - Writes certificate to temp file and configures pgx with `sslmode=verify-full`
+  - Provides secure verified connections to Supabase PostgreSQL
+
+Agent: Claude:Opus 4.5
+
 ## [1.4.12] - 2026-01-19
 
 ### Fixed
