@@ -348,36 +348,6 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 		return err
 	}
 
-	// Handle slash commands
-	if prepared.commandResult != nil {
-		// Handle /image command - generate image and return immediately
-		if prepared.commandResult.ImagePrompt != "" {
-			images := s.generateImageFromCommand(ctx, prepared.commandResult.ImagePrompt)
-			complete := &pb.StreamComplete{
-				Provider: pb.Provider_PROVIDER_UNSPECIFIED,
-			}
-			for _, img := range images {
-				complete.Images = append(complete.Images, convertGeneratedImage(img))
-			}
-			return stream.Send(&pb.GenerateReplyChunk{
-				Chunk: &pb.GenerateReplyChunk_Complete{
-					Complete: complete,
-				},
-			})
-		}
-
-		// Handle empty input after /ignore processing
-		if prepared.commandResult.SkipAI {
-			return stream.Send(&pb.GenerateReplyChunk{
-				Chunk: &pb.GenerateReplyChunk_Complete{
-					Complete: &pb.StreamComplete{
-						Provider: pb.Provider_PROVIDER_UNSPECIFIED,
-					},
-				},
-			})
-		}
-	}
-
 	// Generate streaming reply
 	streamChunks, err := prepared.provider.GenerateReplyStream(ctx, prepared.params)
 	if err != nil {
@@ -801,75 +771,6 @@ func (s *ChatService) buildResponse(result provider.GenerateResult, providerName
 	}
 
 	return resp
-}
-
-// processImageGeneration checks for image generation triggers and generates images.
-func (s *ChatService) processImageGeneration(ctx context.Context, responseText string) []provider.GeneratedImage {
-	if s.imageGen == nil {
-		return nil
-	}
-
-	// Get tenant config
-	tenantCfg := auth.TenantFromContext(ctx)
-	if tenantCfg == nil {
-		return nil
-	}
-
-	// Convert tenant config to imagegen config
-	imgCfg := &imagegen.Config{
-		Enabled:         tenantCfg.ImageGeneration.Enabled,
-		Provider:        tenantCfg.ImageGeneration.Provider,
-		Model:           tenantCfg.ImageGeneration.Model,
-		TriggerPhrases:  tenantCfg.ImageGeneration.TriggerPhrases,
-		FallbackOnError: tenantCfg.ImageGeneration.FallbackOnError,
-		MaxImages:       tenantCfg.ImageGeneration.MaxImages,
-	}
-
-	if !imgCfg.IsEnabled() {
-		return nil
-	}
-
-	// Check for image trigger in response
-	imgReq := s.imageGen.DetectImageRequest(responseText, imgCfg)
-	if imgReq == nil {
-		return nil
-	}
-
-	// Get API keys from tenant provider config
-	if geminiCfg, ok := tenantCfg.GetProvider("gemini"); ok {
-		imgReq.GeminiAPIKey = geminiCfg.APIKey
-	}
-	if openaiCfg, ok := tenantCfg.GetProvider("openai"); ok {
-		imgReq.OpenAIAPIKey = openaiCfg.APIKey
-	}
-
-	slog.Info("image generation triggered",
-		"provider", imgCfg.Provider,
-		"prompt_preview", truncateString(imgReq.Prompt, 100),
-	)
-
-	// Generate image
-	img, err := s.imageGen.Generate(ctx, imgReq)
-	if err != nil {
-		slog.Warn("image generation failed",
-			"error", err,
-			"fallback_on_error", imgCfg.FallbackOnError,
-		)
-		// If fallback is enabled, return nil (continue without image)
-		if imgCfg.FallbackOnError {
-			return nil
-		}
-		// Otherwise still return nil but log at higher severity
-		return nil
-	}
-
-	slog.Info("image generated successfully",
-		"width", img.Width,
-		"height", img.Height,
-		"size_bytes", len(img.Data),
-	)
-
-	return []provider.GeneratedImage{img}
 }
 
 // generateImageFromCommand generates an image from a slash command prompt.

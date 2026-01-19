@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.8] - 2026-01-19
+
+### Removed
+- **Removed `processImageGeneration` function**: Deleted dead code from chat service
+  - Function was no longer called after Tasks 3 and 4 moved image generation to command parser
+  - Also removed lingering call in ChunkTypeComplete case that was missed in Task 4
+  - Image generation now exclusively uses `generateImageFromCommand()` via slash commands
+
+Agent: Claude:Opus 4.5
+
 ## [1.5.7] - 2026-01-19
 
 ### Added
