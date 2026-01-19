@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ai8future/airborne/internal/auth"
+	"github.com/ai8future/airborne/internal/commands"
 	"github.com/ai8future/airborne/internal/db"
 	sanitize "github.com/ai8future/airborne/internal/errors"
 	"github.com/ai8future/airborne/internal/imagegen"
@@ -63,11 +64,12 @@ func NewChatService(rateLimiter *auth.RateLimiter, ragService *rag.Service, imag
 // preparedRequest holds the result of request preparation shared by both
 // GenerateReply and GenerateReplyStream.
 type preparedRequest struct {
-	provider   provider.Provider
-	params     provider.GenerateParams
-	ragChunks  []rag.RetrieveResult
-	requestID  string
-	providerCfg provider.ProviderConfig
+	provider      provider.Provider
+	params        provider.GenerateParams
+	ragChunks     []rag.RetrieveResult
+	requestID     string
+	providerCfg   provider.ProviderConfig
+	commandResult *commands.Result // Result of slash command parsing
 }
 
 // prepareRequest validates the request and prepares all data needed for generation.
@@ -107,6 +109,24 @@ func (s *ChatService) prepareRequest(ctx context.Context, req *pb.GenerateReplyR
 	// Validate request
 	if strings.TrimSpace(req.UserInput) == "" {
 		return nil, status.Error(codes.InvalidArgument, "user_input is required")
+	}
+
+	// Parse slash commands from user input
+	var commandResult *commands.Result
+	tenantCfg := auth.TenantFromContext(ctx)
+	if tenantCfg != nil {
+		// Build image triggers list: configured triggers + /image
+		imageTriggers := append([]string{"/image"}, tenantCfg.ImageGeneration.TriggerPhrases...)
+		parser := commands.NewParser(imageTriggers)
+		parsed := parser.Parse(req.UserInput)
+		commandResult = &parsed
+
+		// If /image detected, we'll handle it after prepareRequest returns
+		// If text is empty after /ignore processing, we'll skip AI
+		if !parsed.SkipAI && parsed.ImagePrompt == "" {
+			// Update UserInput with processed text (after /ignore removal)
+			req.UserInput = parsed.ProcessedText
+		}
 	}
 
 	// Select provider (with tenant awareness)
@@ -166,11 +186,12 @@ func (s *ChatService) prepareRequest(ctx context.Context, req *pb.GenerateReplyR
 	}
 
 	return &preparedRequest{
-		provider:    selectedProvider,
-		params:      params,
-		ragChunks:   ragChunks,
-		requestID:   requestID,
-		providerCfg: providerCfg,
+		provider:      selectedProvider,
+		params:        params,
+		ragChunks:     ragChunks,
+		requestID:     requestID,
+		providerCfg:   providerCfg,
+		commandResult: commandResult,
 	}, nil
 }
 
@@ -289,8 +310,8 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 		}
 	}
 
-	// Persist conversation asynchronously (if repository is configured)
-	if s.repo != nil && result.Usage != nil {
+	// Persist conversation asynchronously (if database client is configured)
+	if s.dbClient != nil && result.Usage != nil {
 		s.persistConversation(ctx, req, result, prepared.provider.Name(), prepared.providerCfg.Model, htmlContent)
 	}
 
@@ -422,8 +443,8 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 				}
 			}
 
-			// Persist streaming conversation (if repository is configured)
-			if s.repo != nil && chunk.Usage != nil {
+			// Persist streaming conversation (if database client is configured)
+			if s.dbClient != nil && chunk.Usage != nil {
 				streamResult := provider.GenerateResult{
 					Text:         accumulatedText.String(),
 					Model:        chunk.Model,
@@ -982,7 +1003,14 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 	// Extract tenant and user info from context
 	tenantID := auth.TenantIDFromContext(ctx)
 	if tenantID == "" {
-		tenantID = "default"
+		slog.Warn("no tenant ID in context, skipping persistence")
+		return
+	}
+
+	// Validate tenant ID is in our allowed list
+	if !db.ValidTenantIDs[tenantID] {
+		slog.Warn("invalid tenant ID, skipping persistence", "tenant_id", tenantID)
+		return
 	}
 
 	userID := ""
@@ -1032,10 +1060,19 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 		persistCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		err := s.repo.PersistConversationTurnWithDebug(
+		// Get tenant-specific repository
+		repo, err := s.dbClient.TenantRepository(tenantID)
+		if err != nil {
+			slog.Error("failed to get tenant repository",
+				"error", err,
+				"tenant_id", tenantID,
+			)
+			return
+		}
+
+		err = repo.PersistConversationTurnWithDebug(
 			persistCtx,
 			threadID,
-			tenantID,
 			userID,
 			req.UserInput,
 			result.Text,

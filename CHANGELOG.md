@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.5] - 2026-01-19
+
+### Added
+- **Command parser integration in chat service**: Integrated slash command parsing into `prepareRequest`
+  - Added `commands` import to `internal/service/chat.go`
+  - Added `commandResult *commands.Result` field to `preparedRequest` struct
+  - Parser runs after input validation, before provider selection
+  - Builds image triggers list from tenant config + default `/image` command
+  - Updates `req.UserInput` with processed text (after `/ignore` removal)
+  - Stores command result for later handling in GenerateReply/GenerateReplyStream
+
+Agent: Claude:Opus 4.5
+
 ## [1.5.4] - 2026-01-19
 
 ### Added
