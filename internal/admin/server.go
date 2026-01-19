@@ -601,7 +601,10 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Load conversation history from database if available
+	// For Gemini/Anthropic: we need to pass full conversation history (stateless APIs)
+	// For OpenAI: we can use PreviousResponseId for native continuity (more efficient)
 	var conversationHistory []*pb.Message
+	var previousResponseID string
 	if s.dbClient != nil && req.TenantID != "" {
 		repo, repoErr := s.dbClient.TenantRepository(req.TenantID)
 		if repoErr == nil {
@@ -615,8 +618,12 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 						Content:   msg.Content,
 						Timestamp: msg.CreatedAt.Unix(),
 					})
+					// Extract the last assistant's response_id for OpenAI native continuity
+					if msg.Role == "assistant" && msg.ResponseID != nil && *msg.ResponseID != "" {
+						previousResponseID = *msg.ResponseID
+					}
 				}
-				slog.Info("loaded conversation history", "thread_id", req.ThreadID, "messages", len(conversationHistory))
+				slog.Info("loaded conversation history", "thread_id", req.ThreadID, "messages", len(conversationHistory), "previous_response_id", previousResponseID)
 			}
 		}
 	}
@@ -633,8 +640,9 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		UserInput:           req.Message,
 		TenantId:            req.TenantID,
 		ClientId:            "dashboard-chat",
-		RequestId:           threadUUID.String(), // Use thread_id as request_id for thread continuity
-		ConversationHistory: conversationHistory,
+		RequestId:           threadUUID.String(),    // Use thread_id as request_id for thread continuity
+		ConversationHistory: conversationHistory,    // For Gemini/Anthropic (stateless)
+		PreviousResponseId:  previousResponseID,     // For OpenAI native continuity
 	}
 
 	// Set provider if specified

@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.14] - 2026-01-19
+
+### Added
+- **OpenAI native continuity**: Added PreviousResponseId support for OpenAI thread continuity
+  - Extracts response_id from last assistant message in thread
+  - Passes to OpenAI for efficient native thread continuation
+  - Gemini/Anthropic still use full conversation history (as they should - stateless APIs)
+
+Agent: Claude:Opus 4.5
+
 ## [1.5.13] - 2026-01-19
 
 ### Fixed
