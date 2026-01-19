@@ -46,6 +46,8 @@ interface ActivityEntry {
 
 interface ConversationPanelProps {
   activity: ActivityEntry[];
+  selectedThreadId: string | null;
+  onSelectThread: (threadId: string) => void;
 }
 
 type ViewMode = "formatted" | "markdown" | "raw" | "request" | "response";
@@ -397,13 +399,11 @@ function MessageBubble({ message }: { message: ThreadMessage }) {
   );
 }
 
-export default function ConversationPanel({ activity }: ConversationPanelProps) {
-  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+export default function ConversationPanel({ activity, selectedThreadId, onSelectThread }: ConversationPanelProps) {
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [sending, setSending] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const activityRef = useRef(activity);
@@ -486,9 +486,9 @@ export default function ConversationPanel({ activity }: ConversationPanelProps) 
   // Auto-select first thread if none selected
   useEffect(() => {
     if (!selectedThreadId && threadList.length > 0) {
-      setSelectedThreadId(threadList[0].thread_id);
+      onSelectThread(threadList[0].thread_id);
     }
-  }, [selectedThreadId, threadList]);
+  }, [selectedThreadId, threadList, onSelectThread]);
 
   // Fetch messages when thread changes (only when selectedThreadId changes)
   useEffect(() => {
@@ -599,7 +599,7 @@ export default function ConversationPanel({ activity }: ConversationPanelProps) 
             threadList.map((thread) => (
               <button
                 key={thread.thread_id}
-                onClick={() => setSelectedThreadId(thread.thread_id)}
+                onClick={() => onSelectThread(thread.thread_id)}
                 className={`w-full px-2.5 py-2 text-left border-b border-gray-100 hover:bg-gray-100 transition-colors ${
                   selectedThreadId === thread.thread_id
                     ? "bg-blue-100 border-l-3 border-l-blue-500"
@@ -646,124 +646,103 @@ export default function ConversationPanel({ activity }: ConversationPanelProps) 
           </div>
         </div>
 
-        {/* Details panel - right sidebar */}
-        {detailsOpen ? (
-          <div className="w-64 border-l border-gray-200 bg-gray-50 flex flex-col overflow-hidden">
-            {/* Header */}
-            <div className="px-3 py-2 border-b border-gray-200 flex items-center justify-between">
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Details</h4>
-              <button
-                onClick={() => setDetailsOpen(false)}
-                className="p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 6L6 18M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 p-3 overflow-y-auto">
-              {selectedThreadId && threads[selectedThreadId] ? (
-                <div className="space-y-4">
-                  {/* Thread Info */}
-                  <div>
-                    <h5 className="text-xs font-medium text-gray-700 mb-2">Thread Info</h5>
-                    <div className="space-y-1.5 text-xs">
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Tenant</span>
-                        <code className="text-gray-700 bg-gray-200 px-1.5 py-0.5 rounded">{threads[selectedThreadId].tenant}</code>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Messages</span>
-                        <span className="text-gray-700 font-medium">{threads[selectedThreadId].message_count}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Last Active</span>
-                        <span className="text-gray-700">{formatDate(threads[selectedThreadId].last_timestamp)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Token Usage */}
-                  <div>
-                    <h5 className="text-xs font-medium text-gray-700 mb-2">Token Usage</h5>
-                    <div className="space-y-1.5 text-xs">
-                      {(() => {
-                        const threadMessages = messages.filter(m => m.role === "assistant");
-                        const totalIn = threadMessages.reduce((sum, m) => sum + (m.tokens_in || 0), 0);
-                        const totalOut = threadMessages.reduce((sum, m) => sum + (m.tokens_out || 0), 0);
-                        return (
-                          <>
-                            <div className="flex justify-between">
-                              <span className="text-gray-500">Input</span>
-                              <span className="text-gray-700 font-mono">{totalIn.toLocaleString()}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-500">Output</span>
-                              <span className="text-gray-700 font-mono">{totalOut.toLocaleString()}</span>
-                            </div>
-                            <div className="flex justify-between pt-1 border-t border-gray-200">
-                              <span className="text-gray-500">Total</span>
-                              <span className="text-purple-600 font-mono font-medium">{(totalIn + totalOut).toLocaleString()}</span>
-                            </div>
-                          </>
-                        );
-                      })()}
-                    </div>
-                  </div>
-
-                  {/* Cost */}
-                  <div>
-                    <h5 className="text-xs font-medium text-gray-700 mb-2">Cost</h5>
-                    <div className="space-y-1.5 text-xs">
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Thread Total</span>
-                        <span className="text-green-600 font-mono font-medium">${threads[selectedThreadId].total_cost.toFixed(4)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Models Used */}
-                  <div>
-                    <h5 className="text-xs font-medium text-gray-700 mb-2">Models Used</h5>
-                    <div className="flex flex-wrap gap-1">
-                      {(() => {
-                        const models = [...new Set(messages.filter(m => m.model).map(m => m.model))];
-                        return models.map(model => (
-                          <span key={model} className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
-                            {model?.replace(/^gemini-|^claude-|^gpt-/, '').replace(/-20\d{6}$/, '')}
-                          </span>
-                        ));
-                      })()}
-                    </div>
-                  </div>
-
-                  {/* Thread ID */}
-                  <div>
-                    <h5 className="text-xs font-medium text-gray-700 mb-2">Thread ID</h5>
-                    <code className="text-[10px] text-gray-500 break-all">{selectedThreadId}</code>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-xs text-gray-400 text-center py-4">
-                  Select a conversation to view details
-                </div>
-              )}
-            </div>
+        {/* Details panel - right sidebar (always visible) */}
+        <div className="w-64 border-l border-gray-200 bg-gray-50 flex flex-col overflow-hidden">
+          {/* Header */}
+          <div className="px-3 py-2 border-b border-gray-200">
+            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Details</h4>
           </div>
-        ) : (
-          <button
-            onClick={() => setDetailsOpen(true)}
-            className="w-8 border-l border-gray-200 bg-gray-50 flex flex-col items-center py-3 gap-2 hover:bg-gray-100 transition-colors"
-          >
-            <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 16v-4M12 8h.01" />
-            </svg>
-            <span className="text-[10px] text-gray-400 [writing-mode:vertical-lr] rotate-180">Details</span>
-          </button>
-        )}
+
+          {/* Content */}
+          <div className="flex-1 p-3 overflow-y-auto">
+            {selectedThreadId && threads[selectedThreadId] ? (
+              <div className="space-y-4">
+                {/* Thread Info */}
+                <div>
+                  <h5 className="text-xs font-medium text-gray-700 mb-2">Thread Info</h5>
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Tenant</span>
+                      <code className="text-gray-700 bg-gray-200 px-1.5 py-0.5 rounded">{threads[selectedThreadId].tenant}</code>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Messages</span>
+                      <span className="text-gray-700 font-medium">{threads[selectedThreadId].message_count}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Last Active</span>
+                      <span className="text-gray-700">{formatDate(threads[selectedThreadId].last_timestamp)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Token Usage */}
+                <div>
+                  <h5 className="text-xs font-medium text-gray-700 mb-2">Token Usage</h5>
+                  <div className="space-y-1.5 text-xs">
+                    {(() => {
+                      const threadMessages = messages.filter(m => m.role === "assistant");
+                      const totalIn = threadMessages.reduce((sum, m) => sum + (m.tokens_in || 0), 0);
+                      const totalOut = threadMessages.reduce((sum, m) => sum + (m.tokens_out || 0), 0);
+                      return (
+                        <>
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Input</span>
+                            <span className="text-gray-700 font-mono">{totalIn.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Output</span>
+                            <span className="text-gray-700 font-mono">{totalOut.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between pt-1 border-t border-gray-200">
+                            <span className="text-gray-500">Total</span>
+                            <span className="text-purple-600 font-mono font-medium">{(totalIn + totalOut).toLocaleString()}</span>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* Cost */}
+                <div>
+                  <h5 className="text-xs font-medium text-gray-700 mb-2">Cost</h5>
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Thread Total</span>
+                      <span className="text-green-600 font-mono font-medium">${threads[selectedThreadId].total_cost.toFixed(4)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Models Used */}
+                <div>
+                  <h5 className="text-xs font-medium text-gray-700 mb-2">Models Used</h5>
+                  <div className="flex flex-wrap gap-1">
+                    {(() => {
+                      const models = [...new Set(messages.filter(m => m.model).map(m => m.model))];
+                      return models.map(model => (
+                        <span key={model} className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
+                          {model?.replace(/^gemini-|^claude-|^gpt-/, '').replace(/-20\d{6}$/, '')}
+                        </span>
+                      ));
+                    })()}
+                  </div>
+                </div>
+
+                {/* Thread ID */}
+                <div>
+                  <h5 className="text-xs font-medium text-gray-700 mb-2">Thread ID</h5>
+                  <code className="text-[10px] text-gray-500 break-all">{selectedThreadId}</code>
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-gray-400 text-center py-4">
+                Select a conversation to view details
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Chat input - fixed to bottom of browser */}

@@ -1,8 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import DebugModal from "./DebugModal";
-
 interface ActivityEntry {
   id: string;
   thread_id: string;
@@ -29,6 +26,8 @@ interface ActivityPanelProps {
   paused: boolean;
   onPauseToggle: () => void;
   onClear: () => void;
+  onSelectThread: (threadId: string) => void;
+  selectedThreadId: string | null;
 }
 
 export default function ActivityPanel({
@@ -38,8 +37,9 @@ export default function ActivityPanel({
   paused,
   onPauseToggle,
   onClear,
+  onSelectThread,
+  selectedThreadId,
 }: ActivityPanelProps) {
-  const [debugMessageId, setDebugMessageId] = useState<string | null>(null);
 
   // Format token counts
   const formatTokens = (n: number | undefined): string => {
@@ -135,12 +135,14 @@ export default function ActivityPanel({
                   const totalTokens = entry.input_tokens + entry.output_tokens;
                   const durationSec = entry.processing_time_ms ? (entry.processing_time_ms / 1000).toFixed(1) : "-";
 
+                  const isSelected = entry.thread_id === selectedThreadId;
+
                   return (
                     <tr
                       key={entry.id || idx}
-                      onClick={() => setDebugMessageId(entry.id)}
+                      onClick={() => onSelectThread(entry.thread_id)}
                       className={`hover:bg-gray-50 cursor-pointer transition-colors ${
-                        isFailed ? "bg-red-50/30" : ""
+                        isSelected ? "bg-blue-50" : isFailed ? "bg-red-50/30" : ""
                       }`}
                     >
                       {/* Status dot */}
@@ -224,8 +226,6 @@ export default function ActivityPanel({
         </div>
       </div>
 
-      {/* Debug Modal (side-by-side request/response inspector) */}
-      {debugMessageId && <DebugModal messageId={debugMessageId} onClose={() => setDebugMessageId(null)} />}
     </div>
   );
 }

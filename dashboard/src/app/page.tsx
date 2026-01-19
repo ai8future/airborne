@@ -28,6 +28,7 @@ export default function Home() {
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
 
   // Fetch activity from backend
   const fetchActivity = useCallback(async () => {
@@ -73,9 +74,15 @@ export default function Home() {
         paused={paused}
         onPauseToggle={() => setPaused(!paused)}
         onClear={handleClear}
+        onSelectThread={setSelectedThreadId}
+        selectedThreadId={selectedThreadId}
       />
       <div className="flex-1 min-h-0">
-        <ConversationPanel activity={activity} />
+        <ConversationPanel
+          activity={activity}
+          selectedThreadId={selectedThreadId}
+          onSelectThread={setSelectedThreadId}
+        />
       </div>
     </div>
   );

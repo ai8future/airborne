@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.2] - 2026-01-19
+
+### Changed
+- **Activity Feed thread selection**: Clicking a row in Live Activity Feed now loads that thread in Conversations below
+  - Selected thread highlighted with blue background in Activity Feed
+  - Thread selection synced between Activity Feed and Conversations sidebar
+- **Details panel always visible**: Removed close button and collapse toggle - Details panel is now always shown
+- **Removed DebugModal**: Activity Feed row clicks no longer open modal, instead select thread
+
+Agent: Claude:Opus 4.5
+
 ## [1.4.1] - 2026-01-19
 
 ### Changed
