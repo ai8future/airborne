@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.7] - 2026-01-19
+
+### Added
+- **Handle image and ignore commands in GenerateReplyStream**: Added command handling logic for streaming endpoint
+  - Early return for `/image` command - generates image and sends Complete chunk immediately (skips AI call)
+  - Early return for `/ignore` processing when SkipAI=true - sends empty Complete chunk
+  - Reuses `generateImageFromCommand()` helper function created in Task 3
+  - Removed `processImageGeneration` call from ChunkTypeComplete handling (image triggers now handled on user input)
+
+Agent: Claude:Opus 4.5
+
 ## [1.5.6] - 2026-01-19
 
 ### Added
