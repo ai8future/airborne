@@ -385,7 +385,7 @@ export default function ConversationPanel({ activity }: ConversationPanelProps) 
         <h3 className="font-semibold text-gray-800">Conversations</h3>
       </div>
 
-      <div className="flex h-[calc(100vh-16rem)]">
+      <div className="flex h-[calc(100vh-20rem)]">
         {/* Thread list - left sidebar */}
         <div className="w-72 border-r border-gray-200 overflow-y-auto bg-gray-50">
           {threadList.length === 0 ? (
