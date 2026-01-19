@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.4] - 2026-01-19
+
+### Changed
+- **Activity Feed height limit**: Reduced to ~5 visible rows (220px max-height) with scroll
+- **Wider Model column**: Increased from w-32 to w-44 to fit "3-pro-preview" on one line
+
+Agent: Claude:Opus 4.5
+
 ## [1.4.3] - 2026-01-19
 
 ### Added

@@ -100,8 +100,8 @@ export default function ActivityPanel({
           </div>
         </div>
 
-        {/* Activity Table */}
-        <div className="max-h-[calc(100vh-200px)] overflow-y-auto">
+        {/* Activity Table - limit to ~5 visible rows */}
+        <div className="max-h-[220px] overflow-y-auto">
           {loading ? (
             <div className="px-4 py-12 text-center text-gray-500">Loading activity...</div>
           ) : error ? (
@@ -124,7 +124,7 @@ export default function ActivityPanel({
                   <th className="w-14 px-2 py-1.5 text-right">Total</th>
                   <th className="w-14 px-2 py-1.5 text-right">Cost</th>
                   <th className="w-12 px-2 py-1.5 text-right" title="Thread Cost">Thr$</th>
-                  <th className="w-32 px-2 py-1.5 text-center">Model</th>
+                  <th className="w-44 px-2 py-1.5 text-center">Model</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
