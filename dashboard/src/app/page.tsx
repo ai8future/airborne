@@ -65,7 +65,7 @@ export default function Home() {
   const handleClear = () => setActivity([]);
 
   return (
-    <div className="space-y-6">
+    <div className="h-full flex flex-col gap-6">
       <ActivityPanel
         activity={activity}
         loading={loading}
@@ -74,7 +74,9 @@ export default function Home() {
         onPauseToggle={() => setPaused(!paused)}
         onClear={handleClear}
       />
-      <ConversationPanel activity={activity} />
+      <div className="flex-1 min-h-0">
+        <ConversationPanel activity={activity} />
+      </div>
     </div>
   );
 }

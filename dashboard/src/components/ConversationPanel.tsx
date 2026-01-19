@@ -380,12 +380,12 @@ export default function ConversationPanel({ activity }: ConversationPanelProps) 
   };
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-200">
+    <div className="h-full flex flex-col bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+      <div className="flex-shrink-0 px-4 py-3 border-b border-gray-200">
         <h3 className="font-semibold text-gray-800">Conversations</h3>
       </div>
 
-      <div className="flex h-[calc(100vh-20rem)]">
+      <div className="flex flex-1 min-h-0">
         {/* Thread list - left sidebar */}
         <div className="w-72 border-r border-gray-200 overflow-y-auto bg-gray-50">
           {threadList.length === 0 ? (

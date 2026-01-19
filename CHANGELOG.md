@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.7] - 2026-01-19
+
+### Changed
+- **Layout refactor**: Proper flexbox layout instead of calc hacks
+  - Layout uses `h-full flex flex-col` for proper height distribution
+  - ConversationPanel fills remaining space with `flex-1 min-h-0`
+  - No more magic calc values - height flows naturally from parent
+
+Agent: Claude:Opus 4.5
+
 ## [1.3.6] - 2026-01-19
 
 ### Fixed
