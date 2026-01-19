@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.13] - 2026-01-19
+
+### Fixed
+- **Thread conversation history**: Admin chat endpoint now loads previous messages from database
+  - Conversations maintain context across multiple messages
+  - Loads up to 50 previous messages for context
+  - Properly converts DB messages to gRPC ConversationHistory format
+  - Fixes issue where AI would lose context of previous messages in a thread
+
+Agent: Claude:Opus 4.5
+
 ## [1.5.12] - 2026-01-19
 
 ### Changed

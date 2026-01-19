@@ -600,6 +600,27 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Load conversation history from database if available
+	var conversationHistory []*pb.Message
+	if s.dbClient != nil && req.TenantID != "" {
+		repo, repoErr := s.dbClient.TenantRepository(req.TenantID)
+		if repoErr == nil {
+			// Get up to 50 previous messages for context
+			dbMessages, msgErr := repo.GetMessages(r.Context(), threadUUID, 50)
+			if msgErr == nil && len(dbMessages) > 0 {
+				conversationHistory = make([]*pb.Message, 0, len(dbMessages))
+				for _, msg := range dbMessages {
+					conversationHistory = append(conversationHistory, &pb.Message{
+						Role:      msg.Role,
+						Content:   msg.Content,
+						Timestamp: msg.CreatedAt.Unix(),
+					})
+				}
+				slog.Info("loaded conversation history", "thread_id", req.ThreadID, "messages", len(conversationHistory))
+			}
+		}
+	}
+
 	// Use system prompt from request, or default
 	systemPrompt := req.SystemPrompt
 	if strings.TrimSpace(systemPrompt) == "" {
@@ -608,11 +629,12 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	// Build gRPC request - use thread_id as request_id to continue the thread
 	grpcReq := &pb.GenerateReplyRequest{
-		Instructions: systemPrompt,
-		UserInput:    req.Message,
-		TenantId:     req.TenantID,
-		ClientId:     "dashboard-chat",
-		RequestId:    threadUUID.String(), // Use thread_id as request_id for thread continuity
+		Instructions:        systemPrompt,
+		UserInput:           req.Message,
+		TenantId:            req.TenantID,
+		ClientId:            "dashboard-chat",
+		RequestId:           threadUUID.String(), // Use thread_id as request_id for thread continuity
+		ConversationHistory: conversationHistory,
 	}
 
 	// Set provider if specified
