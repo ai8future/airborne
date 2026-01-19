@@ -177,18 +177,12 @@ export default function ConversationPanel({ activity }: ConversationPanelProps) 
 
         const fallbackMessages: ThreadMessage[] = [];
         threadActivity.forEach(entry => {
-          // Add user message (the input/content)
+          // The activity entry contains the LLM response in content/full_content
+          // We don't have the original user input, so just show the assistant response
           fallbackMessages.push({
-            id: `${entry.id}-user`,
-            role: "user",
-            content: entry.full_content || entry.content || "...",
-            timestamp: entry.timestamp,
-          });
-          // Add assistant response
-          fallbackMessages.push({
-            id: `${entry.id}-assistant`,
+            id: entry.id,
             role: "assistant",
-            content: `[Response from ${entry.provider}/${entry.model}]\n\nTokens: ${entry.input_tokens} in / ${entry.output_tokens} out\nCost: $${entry.cost_usd?.toFixed(4) || '0.0000'}`,
+            content: entry.full_content || entry.content || "...",
             timestamp: entry.timestamp,
             provider: entry.provider,
             model: entry.model,
