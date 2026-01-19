@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.5] - 2026-01-19
+
+### Added
+- **Processing indicator**: User message bubble shows animated "Processing... Xs" while waiting for AI response
+  - Bouncing dots animation
+  - Elapsed time counter in seconds
+  - Subtle pulse animation on the message bubble
+
+Agent: Claude:Opus 4.5
+
 ## [1.4.4] - 2026-01-19
 
 ### Changed

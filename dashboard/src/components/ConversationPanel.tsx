@@ -52,14 +52,39 @@ interface ConversationPanelProps {
 
 type ViewMode = "formatted" | "markdown" | "raw" | "request" | "response";
 
+interface MessageBubbleProps {
+  message: ThreadMessage;
+  isPending?: boolean;
+  sendStartTime?: number;
+}
+
 // Message bubble component with view mode toggle
-function MessageBubble({ message }: { message: ThreadMessage }) {
+function MessageBubble({ message, isPending, sendStartTime }: MessageBubbleProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("formatted");
   const [requestJson, setRequestJson] = useState<string | null>(null);
   const [responseJson, setResponseJson] = useState<string | null>(null);
   const [renderedHtml, setRenderedHtml] = useState<string | null>(null);
   const [loadingData, setLoadingData] = useState(false);
   const [dataFetched, setDataFetched] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  // Track elapsed time when pending
+  useEffect(() => {
+    if (!isPending || !sendStartTime) {
+      setElapsedSeconds(0);
+      return;
+    }
+
+    // Update immediately
+    setElapsedSeconds(Math.floor((Date.now() - sendStartTime) / 1000));
+
+    // Update every second
+    const interval = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - sendStartTime) / 1000));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isPending, sendStartTime]);
 
   const formatTime = (timestamp: string) => {
     return new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -390,9 +415,22 @@ function MessageBubble({ message }: { message: ThreadMessage }) {
         <div className="flex items-center gap-2 mb-1 justify-end">
           <span className="text-xs text-slate-400">{formatTime(message.timestamp)}</span>
         </div>
-        <div className="bg-blue-100 text-slate-800 rounded-2xl px-4 py-3 shadow-sm">
+        <div className={`bg-blue-100 text-slate-800 rounded-2xl px-4 py-3 shadow-sm ${isPending ? 'animate-pulse' : ''}`}>
           {renderContent()}
-          <ViewToggle className="text-blue-500" />
+          {isPending ? (
+            <div className="flex items-center gap-2 mt-2 pt-2 border-t border-blue-200">
+              <div className="flex gap-1">
+                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+              </div>
+              <span className="text-xs text-blue-600 font-medium">
+                Processing... {elapsedSeconds}s
+              </span>
+            </div>
+          ) : (
+            <ViewToggle className="text-blue-500" />
+          )}
         </div>
       </div>
     </div>
@@ -404,6 +442,8 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
   const [loading, setLoading] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [sending, setSending] = useState(false);
+  const [pendingMessageId, setPendingMessageId] = useState<string | null>(null);
+  const [sendStartTime, setSendStartTime] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const activityRef = useRef(activity);
@@ -507,8 +547,11 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
     if (!inputValue.trim() || !selectedThreadId || sending) return;
 
     const messageContent = inputValue.trim();
+    const tempId = `temp-${Date.now()}`;
     setSending(true);
     setInputValue("");
+    setPendingMessageId(tempId);
+    setSendStartTime(Date.now());
 
     // Reset textarea height
     if (textareaRef.current) {
@@ -517,7 +560,7 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
 
     // Optimistically add user message to UI
     const tempUserMessage: ThreadMessage = {
-      id: `temp-${Date.now()}`,
+      id: tempId,
       role: "user",
       content: messageContent,
       timestamp: new Date().toISOString(),
@@ -561,6 +604,8 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
       setMessages(prev => prev.filter(m => m.id !== tempUserMessage.id));
     } finally {
       setSending(false);
+      setPendingMessageId(null);
+      setSendStartTime(null);
     }
   };
 
@@ -638,7 +683,12 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
             ) : (
               <div className="space-y-4">
                 {messages.map((message) => (
-                  <MessageBubble key={message.id} message={message} />
+                  <MessageBubble
+                    key={message.id}
+                    message={message}
+                    isPending={message.id === pendingMessageId}
+                    sendStartTime={sendStartTime || undefined}
+                  />
                 ))}
                 <div ref={messagesEndRef} />
               </div>
