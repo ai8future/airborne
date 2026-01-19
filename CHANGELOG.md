@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.11] - 2026-01-19
+
+### Added
+- **Airplane favicon**: Blue gradient circle with white airplane SVG icon
+
+Agent: Claude:Opus 4.5
+
 ## [1.3.10] - 2026-01-19
 
 ### Fixed
