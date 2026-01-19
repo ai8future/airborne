@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.6] - 2026-01-19
+
+### Fixed
+- **Request JSON fallback**: Show reconstructed metadata when raw request JSON not captured
+  - Displays provider, model, system_prompt, user_input, timestamp
+  - Indicates with "_note" that raw request was not available
+  - Also added fallback for response JSON
+
+Agent: Claude:Opus 4.5
+
 ## [1.4.5] - 2026-01-19
 
 ### Added
