@@ -432,7 +432,9 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
   const [sendStartTime, setSendStartTime] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const activityRef = useRef(activity);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   // Keep activity ref updated
   useEffect(() => {
@@ -785,6 +787,29 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-slate-100 via-slate-100/95 to-transparent z-50">
         <div className="max-w-2xl mx-auto">
           <div className="glass-input-container flex items-center gap-3 p-3 rounded-2xl">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!selectedThreadId || sending}
+              className="size-9 flex items-center justify-center rounded-xl text-slate-500 hover:text-slate-700 hover:bg-slate-200/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title={selectedFile ? selectedFile.name : "Attach file"}
+            >
+              {selectedFile ? (
+                <svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2l5 5h-5V4zM6 20V4h6v6h6v10H6z"/>
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                </svg>
+              )}
+            </button>
             <textarea
               ref={textareaRef}
               placeholder={selectedThreadId ? "Ask anything..." : "Select a conversation first..."}

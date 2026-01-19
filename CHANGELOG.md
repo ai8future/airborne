@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.14] - 2026-01-19
+
+### Added
+- **File upload button in chat input**: Added a file attachment button with paperclip icon to the left side of the message input box
+  - Hidden file input with ref for programmatic triggering
+  - Visual feedback: icon changes to document icon when file is selected
+  - Tooltip shows selected filename
+  - Disabled state matches input field behavior
+
+Agent: Claude:Opus 4.5
+
 ## [1.4.13] - 2026-01-19
 
 ### Added
