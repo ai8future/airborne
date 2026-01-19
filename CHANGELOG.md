@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.2] - 2026-01-19
+
+### Changed
+- **Tenant-prefixed tables migration**: Converted from row-level tenant isolation to table-level isolation
+  - Repository now uses dynamic table names based on tenant (e.g., `ai8_airborne_threads`)
+  - Added `NewTenantRepository()` constructor that creates tenant-scoped repositories
+  - Added tenant repository caching in `db.Client.TenantRepository()` for efficiency
+  - Removed `TenantID` field from Thread struct (isolation at table level)
+  - Chat service now uses `dbClient.TenantRepository(tenantID)` for persistence
+  - Admin server uses cross-tenant methods (`GetActivityFeedAllTenants`, `GetDebugDataAllTenants`, `GetThreadConversationAllTenants`)
+
+### Added
+- **Migration 005**: Creates tenant-prefixed file tables for ai8, email4ai, and zztest tenants
+  - `{tenant}_airborne_files` - Uploaded files for RAG and attachments
+  - `{tenant}_airborne_file_provider_uploads` - Track file uploads to AI providers
+  - `{tenant}_airborne_thread_vector_stores` - Link threads to vector stores
+- **File models**: Added `File`, `FileProviderUpload`, and `ThreadVectorStore` structs
+- **Table name helpers**: Added `filesTable()`, `fileUploadsTable()`, `vectorStoresTable()` methods
+
+Agent: Claude:Opus 4.5
+
 ## [1.5.1] - 2026-01-19
 
 ### Added
