@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
 
 interface ThreadMessage {
   id: string;
@@ -46,11 +47,66 @@ interface ConversationPanelProps {
   activity: ActivityEntry[];
 }
 
+// Message bubble component with markdown toggle
+function MessageBubble({ message }: { message: ThreadMessage }) {
+  const [showRaw, setShowRaw] = useState(false);
+
+  const formatTime = (timestamp: string) => {
+    return new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  return (
+    <div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+      <div className={`max-w-[70%] ${message.role === "user" ? "order-2" : ""}`}>
+        <div className={`flex items-center gap-2 mb-1 ${message.role === "user" ? "justify-end" : ""}`}>
+          <span className="text-xs text-slate-400">{formatTime(message.timestamp)}</span>
+          {message.role === "assistant" && message.provider && (
+            <span className="text-xs text-slate-400">
+              {message.provider}/{message.model}
+            </span>
+          )}
+        </div>
+        <div
+          className={`px-4 py-3 rounded-2xl ${
+            message.role === "user"
+              ? "glass-bubble-user text-white"
+              : "glass-bubble-ai border border-white/50"
+          }`}
+        >
+          {showRaw ? (
+            <pre className="text-sm whitespace-pre-wrap leading-relaxed font-mono text-xs overflow-x-auto">
+              {message.content}
+            </pre>
+          ) : (
+            <div className="text-sm leading-relaxed prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0">
+              <ReactMarkdown>{message.content}</ReactMarkdown>
+            </div>
+          )}
+          <button
+            onClick={() => setShowRaw(!showRaw)}
+            className={`text-xs mt-2 opacity-60 hover:opacity-100 transition-opacity ${
+              message.role === "user" ? "text-white/70" : "text-slate-500"
+            }`}
+          >
+            {showRaw ? "Show formatted" : "Show raw"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ConversationPanel({ activity }: ConversationPanelProps) {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const activityRef = useRef(activity);
+
+  // Keep activity ref updated
+  useEffect(() => {
+    activityRef.current = activity;
+  }, [activity]);
 
   // Group activity by thread_id to create thread list
   const threads = activity.reduce((acc, entry) => {
@@ -81,7 +137,7 @@ export default function ConversationPanel({ activity }: ConversationPanelProps) 
     (a, b) => new Date(b.last_timestamp).getTime() - new Date(a.last_timestamp).getTime()
   );
 
-  // Fetch thread messages when a thread is selected
+  // Fetch thread messages when a thread is selected - use ref to avoid re-fetching on activity changes
   const fetchThreadMessages = useCallback(async (threadId: string) => {
     setLoading(true);
     try {
@@ -91,7 +147,8 @@ export default function ConversationPanel({ activity }: ConversationPanelProps) 
         setMessages(data.messages);
       } else {
         // Fallback: construct messages from activity data
-        const threadActivity = activity
+        const currentActivity = activityRef.current;
+        const threadActivity = currentActivity
           .filter(a => a.thread_id === threadId)
           .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
@@ -125,7 +182,7 @@ export default function ConversationPanel({ activity }: ConversationPanelProps) 
     } finally {
       setLoading(false);
     }
-  }, [activity]);
+  }, []); // No dependencies - uses ref for activity
 
   // Auto-select first thread if none selected
   useEffect(() => {
@@ -134,7 +191,7 @@ export default function ConversationPanel({ activity }: ConversationPanelProps) 
     }
   }, [selectedThreadId, threadList]);
 
-  // Fetch messages when thread changes
+  // Fetch messages when thread changes (only when selectedThreadId changes)
   useEffect(() => {
     if (selectedThreadId) {
       fetchThreadMessages(selectedThreadId);
@@ -146,13 +203,10 @@ export default function ConversationPanel({ activity }: ConversationPanelProps) 
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const formatTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  };
-
   const formatDate = (timestamp: string) => {
     const date = new Date(timestamp);
     const today = new Date();
+    const formatTime = (ts: string) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     if (date.toDateString() === today.toDateString()) {
       return formatTime(timestamp);
     }
@@ -214,30 +268,7 @@ export default function ConversationPanel({ activity }: ConversationPanelProps) 
             ) : (
               <div className="space-y-4">
                 {messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                  >
-                    <div className={`max-w-[70%] ${message.role === "user" ? "order-2" : ""}`}>
-                      <div className={`flex items-center gap-2 mb-1 ${message.role === "user" ? "justify-end" : ""}`}>
-                        <span className="text-xs text-slate-400">{formatTime(message.timestamp)}</span>
-                        {message.role === "assistant" && message.provider && (
-                          <span className="text-xs text-slate-400">
-                            {message.provider}/{message.model}
-                          </span>
-                        )}
-                      </div>
-                      <div
-                        className={`px-4 py-3 rounded-2xl ${
-                          message.role === "user"
-                            ? "glass-bubble-user text-white"
-                            : "glass-bubble-ai border border-white/50"
-                        }`}
-                      >
-                        <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
-                      </div>
-                    </div>
-                  </div>
+                  <MessageBubble key={message.id} message={message} />
                 ))}
                 <div ref={messagesEndRef} />
               </div>

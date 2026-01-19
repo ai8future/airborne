@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.2] - 2026-01-19
+
+### Fixed
+- **Auto-reload bug**: Fixed textarea auto-reload by using ref for activity data instead of dependency
+- **Markdown rendering**: Added react-markdown for proper message formatting
+- **View toggle**: Each message bubble now has "Show raw" / "Show formatted" toggle link
+- **Typography plugin**: Added @tailwindcss/typography for better prose styling
+
+Agent: Claude:Opus 4.5
+
 ## [1.3.1] - 2026-01-19
 
 ### Fixed
