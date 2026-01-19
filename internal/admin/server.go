@@ -21,7 +21,7 @@ import (
 
 // Server is the HTTP admin server for operational endpoints.
 type Server struct {
-	repo       *db.Repository
+	dbClient   *db.Client
 	server     *http.Server
 	port       int
 	grpcAddr   string
@@ -47,9 +47,9 @@ type Config struct {
 }
 
 // NewServer creates a new admin HTTP server.
-func NewServer(repo *db.Repository, cfg Config) *Server {
+func NewServer(dbClient *db.Client, cfg Config) *Server {
 	s := &Server{
-		repo:      repo,
+		dbClient:  dbClient,
 		port:      cfg.Port,
 		grpcAddr:  cfg.GRPCAddr,
 		authToken: cfg.AuthToken,
@@ -127,8 +127,8 @@ func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 
 	tenantID := r.URL.Query().Get("tenant_id")
 
-	// Check if repository is available
-	if s.repo == nil {
+	// Check if database client is available
+	if s.dbClient == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -145,10 +145,14 @@ func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 	var entries []db.ActivityEntry
 	var err error
 
+	// Create a base repository for cross-tenant queries
+	baseRepo := db.NewRepository(s.dbClient)
+
 	if tenantID != "" {
-		entries, err = s.repo.GetActivityFeedByTenant(ctx, tenantID, limit)
+		entries, err = baseRepo.GetActivityFeedByTenant(ctx, tenantID, limit)
 	} else {
-		entries, err = s.repo.GetActivityFeed(ctx, limit)
+		// No tenant specified - get activity from ALL tenants
+		entries, err = baseRepo.GetActivityFeedAllTenants(ctx, limit)
 	}
 
 	if err != nil {
@@ -202,14 +206,13 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	status := "healthy"
 	dbStatus := "not_configured"
 
-	if s.repo != nil {
+	if s.dbClient != nil {
 		// Check database connectivity
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 
-		// Try a simple query to verify connectivity
-		_, err := s.repo.GetActivityFeed(ctx, 1)
-		if err != nil {
+		// Try ping to verify connectivity
+		if err := s.dbClient.Ping(ctx); err != nil {
 			dbStatus = "unhealthy"
 			status = "degraded"
 		} else {
@@ -265,8 +268,8 @@ func (s *Server) handleDebug(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if repository is available
-	if s.repo == nil {
+	// Check if database client is available
+	if s.dbClient == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -275,11 +278,12 @@ func (s *Server) handleDebug(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch debug data
+	// Fetch debug data - search across all tenants
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	data, err := s.repo.GetDebugData(ctx, messageID)
+	baseRepo := db.NewRepository(s.dbClient)
+	data, err := baseRepo.GetDebugDataAllTenants(ctx, messageID)
 	if err != nil {
 		slog.Warn("failed to fetch debug data", "message_id", messageID, "error", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -331,8 +335,8 @@ func (s *Server) handleThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if repository is available
-	if s.repo == nil {
+	// Check if database client is available
+	if s.dbClient == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -341,11 +345,12 @@ func (s *Server) handleThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch thread conversation
+	// Fetch thread conversation - search across all tenants
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	conv, err := s.repo.GetThreadConversation(ctx, threadID)
+	baseRepo := db.NewRepository(s.dbClient)
+	conv, err := baseRepo.GetThreadConversationAllTenants(ctx, threadID)
 	if err != nil {
 		slog.Warn("failed to fetch thread conversation", "thread_id", threadID, "error", err)
 		w.Header().Set("Content-Type", "application/json")

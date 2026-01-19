@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.1] - 2026-01-19
+
+### Added
+- **Tenant selector dropdown**: Added tenant dropdown to the top-right of the header
+  - Options: ai8 (default), email4ai, zztest
+  - Displays "Tenant: [selected]" label
+  - Click-outside dismisses dropdown
+  - New `TenantSelector` client component
+
+Agent: Claude:Opus 4.5
+
 ## [1.5.0] - 2026-01-19
 
 ### Added

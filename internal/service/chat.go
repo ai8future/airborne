@@ -289,8 +289,8 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 		}
 	}
 
-	// Persist conversation asynchronously (if repository is configured)
-	if s.repo != nil && result.Usage != nil {
+	// Persist conversation asynchronously (if database client is configured)
+	if s.dbClient != nil && result.Usage != nil {
 		s.persistConversation(ctx, req, result, prepared.provider.Name(), prepared.providerCfg.Model, htmlContent)
 	}
 
@@ -422,8 +422,8 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 				}
 			}
 
-			// Persist streaming conversation (if repository is configured)
-			if s.repo != nil && chunk.Usage != nil {
+			// Persist streaming conversation (if database client is configured)
+			if s.dbClient != nil && chunk.Usage != nil {
 				streamResult := provider.GenerateResult{
 					Text:         accumulatedText.String(),
 					Model:        chunk.Model,
@@ -982,7 +982,14 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 	// Extract tenant and user info from context
 	tenantID := auth.TenantIDFromContext(ctx)
 	if tenantID == "" {
-		tenantID = "default"
+		slog.Warn("no tenant ID in context, skipping persistence")
+		return
+	}
+
+	// Validate tenant ID is in our allowed list
+	if !db.ValidTenantIDs[tenantID] {
+		slog.Warn("invalid tenant ID, skipping persistence", "tenant_id", tenantID)
+		return
 	}
 
 	userID := ""
@@ -1032,10 +1039,19 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 		persistCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		err := s.repo.PersistConversationTurnWithDebug(
+		// Get tenant-specific repository
+		repo, err := s.dbClient.TenantRepository(tenantID)
+		if err != nil {
+			slog.Error("failed to get tenant repository",
+				"error", err,
+				"tenant_id", tenantID,
+			)
+			return
+		}
+
+		err = repo.PersistConversationTurnWithDebug(
 			persistCtx,
 			threadID,
-			tenantID,
 			userID,
 			req.UserInput,
 			result.Text,
