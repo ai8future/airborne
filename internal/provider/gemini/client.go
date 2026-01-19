@@ -327,7 +327,7 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		if capture != nil {
 			reqJSON = capture.RequestBody
 			respJSON = capture.ResponseBody
-			slog.Debug("gemini: captured HTTP payloads",
+			slog.Info("gemini: captured HTTP payloads",
 				"request_json_len", len(reqJSON),
 				"response_json_len", len(respJSON),
 				"request_id", params.RequestID,
@@ -642,7 +642,7 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 		if len(streamReqJSON) == 0 {
 			slog.Warn("gemini stream: no request body captured - SDK may not be using custom HTTPClient")
 		} else {
-			slog.Debug("gemini stream: captured request body",
+			slog.Info("gemini stream: captured request body",
 				"size", len(streamReqJSON),
 			)
 		}

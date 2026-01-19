@@ -32,7 +32,7 @@ func New() *Transport {
 // RoundTrip implements http.RoundTripper.
 // It captures the request body before sending and the response body after receiving.
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
-	slog.Debug("httpcapture: RoundTrip called",
+	slog.Info("httpcapture: RoundTrip called",
 		"method", req.Method,
 		"url", req.URL.String(),
 		"has_body", req.Body != nil,
@@ -49,9 +49,8 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		// Restore the body so the SDK can read it
 		req.Body = io.NopCloser(bytes.NewReader(body))
 
-		slog.Debug("httpcapture: captured request body",
+		slog.Info("httpcapture: captured request body",
 			"size", len(body),
-			"preview", truncateForLog(body, 200),
 		)
 	}
 
@@ -62,7 +61,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
-	slog.Debug("httpcapture: response received",
+	slog.Info("httpcapture: response received",
 		"status", resp.StatusCode,
 		"has_body", resp.Body != nil,
 	)
@@ -79,21 +78,12 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		// Restore the body so the SDK can read it
 		resp.Body = io.NopCloser(bytes.NewReader(body))
 
-		slog.Debug("httpcapture: captured response body",
+		slog.Info("httpcapture: captured response body",
 			"size", len(body),
-			"preview", truncateForLog(body, 200),
 		)
 	}
 
 	return resp, nil
-}
-
-// truncateForLog returns a truncated string representation for logging.
-func truncateForLog(data []byte, maxLen int) string {
-	if len(data) <= maxLen {
-		return string(data)
-	}
-	return string(data[:maxLen]) + "..."
 }
 
 // Client returns an *http.Client configured to use this capturing transport.

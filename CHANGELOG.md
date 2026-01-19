@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.10] - 2026-01-19
+
+### Changed
+- **Elevated debug logging to INFO level**: Changed httpcapture and Gemini provider diagnostic logs from DEBUG to INFO so they appear in production logs
+
+Agent: Claude:Opus 4.5
+
 ## [1.4.9] - 2026-01-19
 
 ### Added
