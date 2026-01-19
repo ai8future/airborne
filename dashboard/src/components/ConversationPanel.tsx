@@ -55,24 +55,49 @@ function MessageBubble({ message }: { message: ThreadMessage }) {
     return new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
-  return (
-    <div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-      <div className={`max-w-[70%] ${message.role === "user" ? "order-2" : ""}`}>
-        <div className={`flex items-center gap-2 mb-1 ${message.role === "user" ? "justify-end" : ""}`}>
-          <span className="text-xs text-slate-400">{formatTime(message.timestamp)}</span>
-          {message.role === "assistant" && message.provider && (
-            <span className="text-xs text-slate-400">
-              {message.provider}/{message.model}
-            </span>
-          )}
+  // Assistant messages: centered, white background
+  if (message.role === "assistant") {
+    return (
+      <div className="flex justify-center">
+        <div className="w-full max-w-2xl">
+          <div className="flex items-center gap-2 mb-1 justify-center">
+            <span className="text-xs text-slate-400">{formatTime(message.timestamp)}</span>
+            {message.provider && (
+              <span className="text-xs text-slate-400">
+                {message.provider}/{message.model}
+              </span>
+            )}
+          </div>
+          <div className="bg-white rounded-2xl px-5 py-4 shadow-sm border border-gray-100">
+            {showRaw ? (
+              <pre className="text-sm whitespace-pre-wrap leading-relaxed font-mono text-xs overflow-x-auto text-slate-700">
+                {message.content}
+              </pre>
+            ) : (
+              <div className="text-sm leading-relaxed prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 text-slate-700">
+                <ReactMarkdown>{message.content}</ReactMarkdown>
+              </div>
+            )}
+            <button
+              onClick={() => setShowRaw(!showRaw)}
+              className="text-xs mt-2 text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              {showRaw ? "Show formatted" : "Show raw"}
+            </button>
+          </div>
         </div>
-        <div
-          className={`px-4 py-3 rounded-2xl ${
-            message.role === "user"
-              ? "glass-bubble-user text-white"
-              : "glass-bubble-ai border border-white/50"
-          }`}
-        >
+      </div>
+    );
+  }
+
+  // User messages: right-aligned, light blue background
+  return (
+    <div className="flex justify-end">
+      <div className="max-w-[70%]">
+        <div className="flex items-center gap-2 mb-1 justify-end">
+          <span className="text-xs text-slate-400">{formatTime(message.timestamp)}</span>
+        </div>
+        <div className="bg-blue-100 text-slate-800 rounded-2xl px-4 py-3 shadow-sm">
           {showRaw ? (
             <pre className="text-sm whitespace-pre-wrap leading-relaxed font-mono text-xs overflow-x-auto">
               {message.content}
@@ -84,9 +109,7 @@ function MessageBubble({ message }: { message: ThreadMessage }) {
           )}
           <button
             onClick={() => setShowRaw(!showRaw)}
-            className={`text-xs mt-2 opacity-60 hover:opacity-100 transition-opacity ${
-              message.role === "user" ? "text-white/70" : "text-slate-500"
-            }`}
+            className="text-xs mt-2 text-blue-500 hover:text-blue-700 transition-colors"
           >
             {showRaw ? "Show formatted" : "Show raw"}
           </button>
