@@ -9,8 +9,9 @@ RUN apk add --no-cache git ca-certificates tzdata
 
 WORKDIR /build
 
-# Copy go mod files first for layer caching
+# Copy go mod files and local replace targets for layer caching
 COPY go.mod go.sum ./
+COPY markdown_svc/ ./markdown_svc/
 RUN go mod download
 
 # Copy source code

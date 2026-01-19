@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.3] - 2026-01-19
+
+### Added
+- **Chat endpoint** (`/admin/chat`): New endpoint that properly continues existing threads
+  - Accepts `thread_id` parameter to send messages to existing conversations
+  - Uses thread_id as request_id for thread continuity in chat service
+  - Fixes issue where sending messages created new threads instead of continuing existing ones
+
+Agent: Claude:Opus 4.5
+
 ## [1.4.2] - 2026-01-19
 
 ### Changed

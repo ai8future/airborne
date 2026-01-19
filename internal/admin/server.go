@@ -70,6 +70,7 @@ func NewServer(repo *db.Repository, cfg Config) *Server {
 	mux.HandleFunc("/admin/thread/", corsHandler(s.handleThread))
 	mux.HandleFunc("/admin/health", corsHandler(s.handleHealth))
 	mux.HandleFunc("/admin/test", corsHandler(s.handleTest))
+	mux.HandleFunc("/admin/chat", corsHandler(s.handleChat))
 
 	s.server = &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
@@ -487,5 +488,147 @@ func (s *Server) handleTest(w http.ResponseWriter, r *http.Request) {
 		InputTokens:  inputTokens,
 		OutputTokens: outputTokens,
 		ProcessingMs: processingMs,
+	})
+}
+
+// ChatRequest is the request body for the chat endpoint.
+type ChatRequest struct {
+	ThreadID string `json:"thread_id"`
+	Message  string `json:"message"`
+	TenantID string `json:"tenant_id,omitempty"`
+	Provider string `json:"provider,omitempty"`
+}
+
+// ChatResponse is the response from the chat endpoint.
+type ChatResponse struct {
+	ID           string `json:"id,omitempty"`
+	Content      string `json:"content,omitempty"`
+	Provider     string `json:"provider,omitempty"`
+	Model        string `json:"model,omitempty"`
+	TokensIn     int    `json:"tokens_in,omitempty"`
+	TokensOut    int    `json:"tokens_out,omitempty"`
+	CostUSD      float64 `json:"cost_usd,omitempty"`
+	Error        string `json:"error,omitempty"`
+}
+
+// handleChat sends a message to an existing thread.
+// POST /admin/chat
+// Body: {"thread_id": "uuid", "message": "Hello", "tenant_id": "optional", "provider": "gemini"}
+func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse request body
+	var req ChatRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ChatResponse{
+			Error: "invalid request body: " + err.Error(),
+		})
+		return
+	}
+
+	if strings.TrimSpace(req.Message) == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ChatResponse{
+			Error: "message is required",
+		})
+		return
+	}
+
+	if strings.TrimSpace(req.ThreadID) == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ChatResponse{
+			Error: "thread_id is required",
+		})
+		return
+	}
+
+	// Validate thread_id is a valid UUID
+	threadUUID, err := uuid.Parse(req.ThreadID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ChatResponse{
+			Error: "invalid thread_id format (must be UUID)",
+		})
+		return
+	}
+
+	// Get gRPC client
+	client, err := s.getGRPCClient()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(ChatResponse{
+			Error: err.Error(),
+		})
+		return
+	}
+
+	// Build gRPC request - use thread_id as request_id to continue the thread
+	grpcReq := &pb.GenerateReplyRequest{
+		Instructions: "You are a helpful assistant. Continue the conversation naturally.",
+		UserInput:    req.Message,
+		TenantId:     req.TenantID,
+		ClientId:     "dashboard-chat",
+		RequestId:    threadUUID.String(), // Use thread_id as request_id for thread continuity
+	}
+
+	// Set provider if specified
+	switch strings.ToLower(req.Provider) {
+	case "gemini", "":
+		grpcReq.PreferredProvider = pb.Provider_PROVIDER_GEMINI
+	case "openai":
+		grpcReq.PreferredProvider = pb.Provider_PROVIDER_OPENAI
+	case "anthropic":
+		grpcReq.PreferredProvider = pb.Provider_PROVIDER_ANTHROPIC
+	}
+
+	// Add auth token to context
+	ctx := r.Context()
+	if s.authToken != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+s.authToken)
+	}
+
+	// Set timeout
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	// Make gRPC call
+	resp, err := client.GenerateReply(ctx, grpcReq)
+	if err != nil {
+		slog.Error("chat gRPC call failed", "error", err, "thread_id", req.ThreadID)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK) // Return 200 with error in body
+		json.NewEncoder(w).Encode(ChatResponse{
+			Error: "gRPC call failed: " + err.Error(),
+		})
+		return
+	}
+
+	// Extract token usage
+	var inputTokens, outputTokens int
+	if resp.Usage != nil {
+		inputTokens = int(resp.Usage.InputTokens)
+		outputTokens = int(resp.Usage.OutputTokens)
+	}
+
+	// Convert provider enum to friendly string
+	providerName := strings.ToLower(strings.TrimPrefix(resp.Provider.String(), "PROVIDER_"))
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ChatResponse{
+		ID:        resp.ResponseId,
+		Content:   resp.Text,
+		Provider:  providerName,
+		Model:     resp.Model,
+		TokensIn:  inputTokens,
+		TokensOut: outputTokens,
 	})
 }
