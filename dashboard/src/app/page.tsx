@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import ActivityPanel from "@/components/ActivityPanel";
 import ConversationPanel from "@/components/ConversationPanel";
+import { useTenant } from "@/context/TenantContext";
 
 interface ActivityEntry {
   id: string;
@@ -24,16 +25,17 @@ interface ActivityEntry {
 }
 
 export default function Home() {
+  const { tenant } = useTenant();
   const [paused, setPaused] = useState(false);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
 
-  // Fetch activity from backend
+  // Fetch activity from backend filtered by tenant
   const fetchActivity = useCallback(async () => {
     try {
-      const res = await fetch("/api/activity?limit=50");
+      const res = await fetch(`/api/activity?limit=50&tenant_id=${tenant}`);
       const data = await res.json();
 
       if (data.error) {
@@ -47,10 +49,12 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tenant]);
 
-  // Initial fetch and polling
+  // Initial fetch and polling - re-fetch when tenant changes
   useEffect(() => {
+    setLoading(true);
+    setSelectedThreadId(null); // Clear selection when tenant changes
     fetchActivity();
 
     // Poll every 3 seconds when not paused
@@ -61,7 +65,7 @@ export default function Home() {
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [paused, fetchActivity]);
+  }, [paused, fetchActivity, tenant]);
 
   const handleClear = () => setActivity([]);
 

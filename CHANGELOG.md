@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.10] - 2026-01-20
+
+### Fixed
+- **Tenant selector now works**: Activity feed and conversations now filter by selected tenant
+  - Added tenant_id parameter to activity API calls
+  - Activity refreshes when tenant is changed
+  - Thread selection clears when switching tenants
+
+Agent: Claude:Opus 4.5
+
 ## [1.6.9] - 2026-01-20
 
 ### Improved
