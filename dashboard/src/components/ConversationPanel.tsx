@@ -809,6 +809,9 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
         setSelectedFile(null);
       }
 
+      // Generate unique request ID for idempotency
+      const requestId = crypto.randomUUID();
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -820,6 +823,7 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
           file_uri: fileUri,
           file_mime_type: fileMimeType,
           filename: filename,
+          request_id: requestId,
         }),
       });
 

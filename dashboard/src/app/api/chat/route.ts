@@ -8,9 +8,10 @@ interface ChatRequest {
   tenant_id?: string;
   provider?: string;
   system_prompt?: string;
-  file_uri?: string;      // File URI from upload endpoint
+  file_uri?: string;       // File URI from upload endpoint
   file_mime_type?: string; // MIME type of the file
   filename?: string;       // Original filename
+  request_id?: string;     // Idempotency key for retry support
 }
 
 interface ChatResponse {
@@ -22,7 +23,54 @@ interface ChatResponse {
   tokens_in?: number;
   tokens_out?: number;
   cost_usd?: number;
+  cached?: boolean;
   error?: string;
+}
+
+// Retry helper with exponential backoff
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  retries: number = 3,
+  baseDelayMs: number = 1000
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+
+      // Success or client error (4xx) - don't retry
+      if (response.ok || (response.status >= 400 && response.status < 500 && response.status !== 409)) {
+        return response;
+      }
+
+      // 409 Conflict means request is in progress - wait and retry
+      if (response.status === 409) {
+        const delay = baseDelayMs * Math.pow(2, attempt);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      // Server error (5xx) - retry with backoff
+      if (response.status >= 500) {
+        const delay = baseDelayMs * Math.pow(2, attempt);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      return response;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      // Network error - retry with backoff
+      if (attempt < retries - 1) {
+        const delay = baseDelayMs * Math.pow(2, attempt);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  throw lastError || new Error("Request failed after retries");
 }
 
 export async function POST(request: NextRequest) {
@@ -43,9 +91,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Call the chat endpoint (no retry - chat is not idempotent)
+    // Call the chat endpoint with retry (idempotent via request_id)
     try {
-      const chatResponse = await fetch(
+      const chatResponse = await fetchWithRetry(
         `${AIRBORNE_ADMIN_URL}/admin/chat`,
         {
           method: "POST",
@@ -61,8 +109,11 @@ export async function POST(request: NextRequest) {
             file_uri: body.file_uri || "",
             file_mime_type: body.file_mime_type || "",
             filename: body.filename || "",
+            request_id: body.request_id || "",
           }),
-        }
+        },
+        3,    // 3 retries
+        1000  // 1s base delay (1s, 2s, 4s)
       );
 
       if (chatResponse.ok) {

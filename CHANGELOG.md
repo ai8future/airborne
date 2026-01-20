@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.2] - 2026-01-20
+
+### Added
+- **Idempotency support for Chat API**: Added request_id parameter to enable safe retry logic
+  - Frontend generates unique request_id (UUID) per message
+  - Backend uses Redis to atomically check and cache requests:
+    - SetNX with 5-min TTL for processing lock
+    - 24-hour TTL for cached successful responses
+  - Duplicate requests return cached response with `cached: true` flag
+  - In-progress duplicates return 409 Conflict status
+  - Re-enabled retry logic in Next.js API route (3 attempts, 1s/2s/4s backoff)
+
+### Technical
+- Added `SetNX` method to Redis client for atomic set-if-not-exists
+- Added `RequestID` field to ChatRequest struct
+- Added `Cached` field to ChatResponse struct
+- Added `RedisClient` to admin server Config and wired from main.go
+- Added `fetchWithRetry` helper in dashboard API route with exponential backoff
+
+Agent: Claude:Opus 4.5
+
 ## [1.7.1] - 2026-01-20
 
 ### Fixed

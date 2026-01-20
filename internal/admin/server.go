@@ -18,6 +18,7 @@ import (
 	"github.com/ai8future/airborne/internal/db"
 	"github.com/ai8future/airborne/internal/provider"
 	"github.com/ai8future/airborne/internal/provider/gemini"
+	"github.com/ai8future/airborne/internal/redis"
 	"github.com/ai8future/airborne/internal/tenant"
 	"github.com/google/uuid"
 	"google.golang.org/genai"
@@ -28,15 +29,16 @@ import (
 
 // Server is the HTTP admin server for operational endpoints.
 type Server struct {
-	dbClient   *db.Client
-	tenantMgr  *tenant.Manager
-	server     *http.Server
-	port       int
-	grpcAddr   string
-	authToken  string
-	grpcConn   *grpc.ClientConn
-	grpcClient pb.AirborneServiceClient
-	version    VersionInfo
+	dbClient    *db.Client
+	tenantMgr   *tenant.Manager
+	redisClient *redis.Client
+	server      *http.Server
+	port        int
+	grpcAddr    string
+	authToken   string
+	grpcConn    *grpc.ClientConn
+	grpcClient  pb.AirborneServiceClient
+	version     VersionInfo
 }
 
 // VersionInfo holds version information for the service.
@@ -48,22 +50,24 @@ type VersionInfo struct {
 
 // Config holds admin server configuration.
 type Config struct {
-	Port      int
-	GRPCAddr  string          // Address of the gRPC server (e.g., "localhost:50051")
-	AuthToken string          // Auth token for gRPC calls
-	TenantMgr *tenant.Manager // Tenant manager for accessing API keys
-	Version   VersionInfo     // Version information
+	Port        int
+	GRPCAddr    string          // Address of the gRPC server (e.g., "localhost:50051")
+	AuthToken   string          // Auth token for gRPC calls
+	TenantMgr   *tenant.Manager // Tenant manager for accessing API keys
+	RedisClient *redis.Client   // Redis client for idempotency
+	Version     VersionInfo     // Version information
 }
 
 // NewServer creates a new admin HTTP server.
 func NewServer(dbClient *db.Client, cfg Config) *Server {
 	s := &Server{
-		dbClient:  dbClient,
-		tenantMgr: cfg.TenantMgr,
-		port:      cfg.Port,
-		grpcAddr:  cfg.GRPCAddr,
-		authToken: cfg.AuthToken,
-		version:   cfg.Version,
+		dbClient:    dbClient,
+		tenantMgr:   cfg.TenantMgr,
+		redisClient: cfg.RedisClient,
+		port:        cfg.Port,
+		grpcAddr:    cfg.GRPCAddr,
+		authToken:   cfg.AuthToken,
+		version:     cfg.Version,
 	}
 
 	mux := http.NewServeMux()
@@ -540,18 +544,20 @@ type ChatRequest struct {
 	FileURI      string `json:"file_uri,omitempty"`       // File URI from /admin/upload
 	FileMIMEType string `json:"file_mime_type,omitempty"` // MIME type of the file
 	Filename     string `json:"filename,omitempty"`       // Original filename
+	RequestID    string `json:"request_id,omitempty"`     // Idempotency key for retry support
 }
 
 // ChatResponse is the response from the chat endpoint.
 type ChatResponse struct {
-	ID           string `json:"id,omitempty"`
-	Content      string `json:"content,omitempty"`
-	Provider     string `json:"provider,omitempty"`
-	Model        string `json:"model,omitempty"`
-	TokensIn     int    `json:"tokens_in,omitempty"`
-	TokensOut    int    `json:"tokens_out,omitempty"`
-	CostUSD      float64 `json:"cost_usd,omitempty"`
-	Error        string `json:"error,omitempty"`
+	ID        string  `json:"id,omitempty"`
+	Content   string  `json:"content,omitempty"`
+	Provider  string  `json:"provider,omitempty"`
+	Model     string  `json:"model,omitempty"`
+	TokensIn  int     `json:"tokens_in,omitempty"`
+	TokensOut int     `json:"tokens_out,omitempty"`
+	CostUSD   float64 `json:"cost_usd,omitempty"`
+	Cached    bool    `json:"cached,omitempty"`
+	Error     string  `json:"error,omitempty"`
 }
 
 // handleChat sends a message to an existing thread.
@@ -601,6 +607,46 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 			Error: "invalid thread_id format (must be UUID)",
 		})
 		return
+	}
+
+	// Idempotency check: if request_id provided, check Redis for duplicate request
+	var idempKey string
+	if req.RequestID != "" && s.redisClient != nil {
+		idempKey = fmt.Sprintf("chat:idem:%s:%s:%s", req.TenantID, req.ThreadID, req.RequestID)
+		ctx := r.Context()
+
+		// Try atomic acquire (5 min TTL for processing)
+		acquired, acquireErr := s.redisClient.SetNX(ctx, idempKey, "processing", 5*time.Minute)
+		if acquireErr != nil {
+			slog.Warn("idempotency check failed, proceeding without", "error", acquireErr)
+		} else if !acquired {
+			// Key exists - check if completed or still processing
+			cached, getErr := s.redisClient.Get(ctx, idempKey)
+			if getErr == nil && cached != "" && cached != "processing" {
+				// Return cached JSON response
+				var cachedResp ChatResponse
+				if unmarshalErr := json.Unmarshal([]byte(cached), &cachedResp); unmarshalErr == nil {
+					cachedResp.Cached = true
+					w.Header().Set("Content-Type", "application/json")
+					json.NewEncoder(w).Encode(cachedResp)
+					slog.Info("returning cached response", "request_id", req.RequestID, "thread_id", req.ThreadID)
+					return
+				}
+			}
+			// Still processing - return 409 Conflict
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(ChatResponse{Error: "Request in progress"})
+			return
+		}
+		// Acquired the key - proceed with processing
+		// Set up cleanup on error (via defer that will delete key if response isn't cached)
+		defer func() {
+			// If idempKey is still set to "processing", delete it to allow retry
+			if val, err := s.redisClient.Get(r.Context(), idempKey); err == nil && val == "processing" {
+				s.redisClient.Del(r.Context(), idempKey)
+			}
+		}()
 	}
 
 	// If file URI is present, use direct Gemini call (bypasses gRPC)
@@ -718,15 +764,27 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// Convert provider enum to friendly string
 	providerName := strings.ToLower(strings.TrimPrefix(resp.Provider.String(), "PROVIDER_"))
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(ChatResponse{
+	// Build response
+	chatResp := ChatResponse{
 		ID:        resp.ResponseId,
 		Content:   resp.Text,
 		Provider:  providerName,
 		Model:     resp.Model,
 		TokensIn:  inputTokens,
 		TokensOut: outputTokens,
-	})
+	}
+
+	// Cache successful response for idempotency (24h TTL)
+	if idempKey != "" && s.redisClient != nil {
+		if respJSON, err := json.Marshal(chatResp); err == nil {
+			if err := s.redisClient.Set(r.Context(), idempKey, string(respJSON), 24*time.Hour); err != nil {
+				slog.Warn("failed to cache response for idempotency", "error", err)
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(chatResp)
 }
 
 // buildCompressedHistory creates a compressed conversation history to prevent context window overflow.

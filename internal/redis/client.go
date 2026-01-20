@@ -64,6 +64,12 @@ func (c *Client) Set(ctx context.Context, key string, value interface{}, expirat
 	return c.rdb.Set(ctx, key, value, expiration).Err()
 }
 
+// SetNX sets a value only if the key does not exist (atomic set-if-not-exists)
+// Returns true if the key was set, false if it already existed
+func (c *Client) SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error) {
+	return c.rdb.SetNX(ctx, key, value, expiration).Result()
+}
+
 // Del deletes keys
 func (c *Client) Del(ctx context.Context, keys ...string) error {
 	return c.rdb.Del(ctx, keys...).Err()
