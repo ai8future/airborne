@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.2] - 2026-01-20
+
+### Added
+- **Citation persistence**: AI provider citations are now stored in the database
+  - Converts provider citations (URL, file references) to database format
+  - Citations displayed in debug modal when present
+  - Supports both Gemini grounding citations and OpenAI file citations
+
+Agent: Claude:Opus 4.5
+
 ## [1.6.1] - 2026-01-20
 
 ### Fixed

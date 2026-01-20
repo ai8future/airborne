@@ -468,11 +468,11 @@ type DebugInfo struct {
 // This is the main entry point for chat service persistence.
 // Note: tenantID parameter is no longer needed - the repository is already scoped to a tenant.
 func (r *Repository) PersistConversationTurn(ctx context.Context, threadID uuid.UUID, userID string, userContent, assistantContent, provider, model, responseID string, inputTokens, outputTokens, processingTimeMs int, costUSD float64) error {
-	return r.PersistConversationTurnWithDebug(ctx, threadID, userID, userContent, assistantContent, provider, model, responseID, inputTokens, outputTokens, processingTimeMs, costUSD, nil)
+	return r.PersistConversationTurnWithDebug(ctx, threadID, userID, userContent, assistantContent, provider, model, responseID, inputTokens, outputTokens, processingTimeMs, costUSD, nil, nil)
 }
 
-// PersistConversationTurnWithDebug saves both user and assistant messages with optional debug data.
-func (r *Repository) PersistConversationTurnWithDebug(ctx context.Context, threadID uuid.UUID, userID string, userContent, assistantContent, provider, model, responseID string, inputTokens, outputTokens, processingTimeMs int, costUSD float64, debug *DebugInfo) error {
+// PersistConversationTurnWithDebug saves both user and assistant messages with optional debug data and citations.
+func (r *Repository) PersistConversationTurnWithDebug(ctx context.Context, threadID uuid.UUID, userID string, userContent, assistantContent, provider, model, responseID string, inputTokens, outputTokens, processingTimeMs int, costUSD float64, debug *DebugInfo, citations []Citation) error {
 	tx, err := r.client.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -531,16 +531,23 @@ func (r *Repository) PersistConversationTurnWithDebug(ctx context.Context, threa
 		}
 	}
 
+	// Serialize citations to JSON
+	citationsJSON, err := CitationsToJSON(citations)
+	if err != nil {
+		slog.Warn("failed to serialize citations", "error", err)
+		// Continue without citations rather than failing the entire persist
+	}
+
 	assistantInsertQuery := fmt.Sprintf(`
 		INSERT INTO %s (
 			id, thread_id, role, content, provider, model, response_id,
 			input_tokens, output_tokens, total_tokens, cost_usd, processing_time_ms, created_at,
-			system_prompt, raw_request_json, raw_response_json, rendered_html
-		) VALUES ($1, $2, 'assistant', $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12, $13, $14, $15)
+			system_prompt, raw_request_json, raw_response_json, rendered_html, citations
+		) VALUES ($1, $2, 'assistant', $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12, $13, $14, $15, $16)
 	`, r.messagesTable())
 	_, err = tx.Exec(ctx, assistantInsertQuery, assistantMsgID, threadID, assistantContent, provider, model, responseID,
 		inputTokens, outputTokens, totalTokens, costUSD, processingTimeMs,
-		systemPrompt, rawReqJSON, rawRespJSON, renderedHTML)
+		systemPrompt, rawReqJSON, rawRespJSON, renderedHTML, citationsJSON)
 	if err != nil {
 		return fmt.Errorf("failed to insert assistant message: %w", err)
 	}

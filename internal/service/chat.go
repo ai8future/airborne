@@ -1113,6 +1113,26 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 			return
 		}
 
+		// Convert provider citations to db citations
+		var dbCitations []db.Citation
+		for _, c := range result.Citations {
+			citationType := "unknown"
+			switch c.Type {
+			case provider.CitationTypeURL:
+				citationType = "url"
+			case provider.CitationTypeFile:
+				citationType = "file"
+			}
+			dbCitations = append(dbCitations, db.Citation{
+				Type:     citationType,
+				URL:      c.URL,
+				Title:    c.Title,
+				FileID:   c.FileID,
+				Filename: c.Filename,
+				Snippet:  c.Snippet,
+			})
+		}
+
 		err = repo.PersistConversationTurnWithDebug(
 			persistCtx,
 			threadID,
@@ -1127,6 +1147,7 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 			processingTimeMs,
 			costUSD,
 			debugInfo,
+			dbCitations,
 		)
 		if err != nil {
 			slog.Error("failed to persist conversation",
