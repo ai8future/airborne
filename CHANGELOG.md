@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.7] - 2026-01-20
+
+### Fixed
+- **Debug data fetch for non-UUID message IDs**: Skip debug API calls for temporary/fallback message IDs
+  - Gemini responses don't include a ResponseID, causing fallback IDs like `resp-*`
+  - Added UUID validation before fetching debug data
+  - Shows graceful message "Debug data not available" instead of 400 error
+
+Agent: Claude:Opus 4.5
+
 ## [1.6.6] - 2026-01-20
 
 ### Improved

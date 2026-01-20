@@ -196,6 +196,14 @@ function MessageBubble({ message, isPending, sendStartTime }: MessageBubbleProps
   // Fetch debug data from endpoint (includes rendered_html, request/response JSON)
   const fetchDebugData = async () => {
     if (dataFetched) return; // Already fetched
+
+    // Skip fetching if message ID isn't a valid UUID (e.g., temp-* or resp-* IDs)
+    if (!isValidUUID(message.id)) {
+      setFetchError("Debug data not available (message not persisted yet)");
+      setDataFetched(true);
+      return;
+    }
+
     setLoadingData(true);
     setFetchError(null);
     try {
@@ -566,6 +574,12 @@ function generateUUID(): string {
     const v = c === 'x' ? r : (r & 0x3 | 0x8);
     return v.toString(16);
   });
+}
+
+// Check if a string is a valid UUID
+function isValidUUID(str: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
 }
 
 export default function ConversationPanel({ activity, selectedThreadId, onSelectThread }: ConversationPanelProps) {
