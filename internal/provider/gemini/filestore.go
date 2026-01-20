@@ -17,9 +17,31 @@ import (
 
 const (
 	fileSearchBaseURL         = "https://generativelanguage.googleapis.com/v1beta"
+	filesAPIBaseURL           = "https://generativelanguage.googleapis.com/v1beta/files"
 	fileSearchPollingInterval = 2 * time.Second
 	fileSearchPollingTimeout  = 5 * time.Minute
 )
+
+// officeFileMIMETypes contains MIME types that require the Files API workaround.
+// These types cannot be uploaded directly to FileSearchStore due to MIME type validation errors.
+// Workaround: Upload to Files API first, then import into FileSearchStore.
+var officeFileMIMETypes = map[string]bool{
+	// Modern Office formats (OpenXML)
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         true, // .xlsx
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document":   true, // .docx
+	"application/vnd.openxmlformats-officedocument.presentationml.presentation": true, // .pptx
+	// Legacy Office formats
+	"application/vnd.ms-excel":      true, // .xls
+	"application/msword":            true, // .doc
+	"application/vnd.ms-powerpoint": true, // .ppt
+	// CSV
+	"text/csv": true, // .csv
+}
+
+// isOfficeFile returns true if the MIME type requires the Files API workaround.
+func isOfficeFile(mimeType string) bool {
+	return officeFileMIMETypes[mimeType]
+}
 
 // FileStoreConfig contains configuration for Gemini file store operations.
 type FileStoreConfig struct {
@@ -78,6 +100,220 @@ func (cfg FileStoreConfig) getBaseURL() string {
 		return cfg.BaseURL
 	}
 	return fileSearchBaseURL
+}
+
+// filesAPIResponse represents the response from the Files API upload.
+type filesAPIResponse struct {
+	File struct {
+		Name        string `json:"name"`
+		DisplayName string `json:"displayName"`
+		MIMEType    string `json:"mimeType"`
+		SizeBytes   string `json:"sizeBytes"`
+		CreateTime  string `json:"createTime"`
+		URI         string `json:"uri"`
+		State       string `json:"state"`
+	} `json:"file"`
+}
+
+// uploadToFilesAPI uploads a file to the Gemini Files API.
+// This is the first step of the Office file workaround.
+func uploadToFilesAPI(ctx context.Context, apiKey string, filename string, mimeType string, content []byte) (string, error) {
+	// Create the upload URL
+	uploadURL := fmt.Sprintf("https://generativelanguage.googleapis.com/upload/v1beta/files?key=%s", apiKey)
+
+	// Create metadata JSON
+	metadata := map[string]interface{}{
+		"file": map[string]string{
+			"displayName": filename,
+		},
+	}
+	metadataJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return "", fmt.Errorf("marshal metadata: %w", err)
+	}
+
+	// Use resumable upload protocol for reliability
+	// Step 1: Initiate the upload
+	initReq, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL, bytes.NewReader(metadataJSON))
+	if err != nil {
+		return "", fmt.Errorf("create init request: %w", err)
+	}
+	initReq.Header.Set("Content-Type", "application/json")
+	initReq.Header.Set("X-Goog-Upload-Protocol", "resumable")
+	initReq.Header.Set("X-Goog-Upload-Command", "start")
+	initReq.Header.Set("X-Goog-Upload-Header-Content-Length", fmt.Sprintf("%d", len(content)))
+	initReq.Header.Set("X-Goog-Upload-Header-Content-Type", mimeType)
+
+	initResp, err := http.DefaultClient.Do(initReq)
+	if err != nil {
+		return "", fmt.Errorf("execute init request: %w", err)
+	}
+	defer initResp.Body.Close()
+
+	if initResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(initResp.Body)
+		return "", fmt.Errorf("init upload failed: %s - %s", initResp.Status, string(body))
+	}
+
+	// Get the upload URL from the response header
+	resumableURL := initResp.Header.Get("X-Goog-Upload-URL")
+	if resumableURL == "" {
+		return "", fmt.Errorf("no resumable upload URL in response")
+	}
+
+	// Step 2: Upload the file content
+	uploadReq, err := http.NewRequestWithContext(ctx, http.MethodPost, resumableURL, bytes.NewReader(content))
+	if err != nil {
+		return "", fmt.Errorf("create upload request: %w", err)
+	}
+	uploadReq.Header.Set("Content-Type", mimeType)
+	uploadReq.Header.Set("X-Goog-Upload-Command", "upload, finalize")
+	uploadReq.Header.Set("X-Goog-Upload-Offset", "0")
+
+	uploadResp, err := http.DefaultClient.Do(uploadReq)
+	if err != nil {
+		return "", fmt.Errorf("execute upload request: %w", err)
+	}
+	defer uploadResp.Body.Close()
+
+	if uploadResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(uploadResp.Body)
+		return "", fmt.Errorf("upload failed: %s - %s", uploadResp.Status, string(body))
+	}
+
+	var fileResp filesAPIResponse
+	if err := json.NewDecoder(uploadResp.Body).Decode(&fileResp); err != nil {
+		return "", fmt.Errorf("decode upload response: %w", err)
+	}
+
+	slog.Info("file uploaded to Files API",
+		"name", fileResp.File.Name,
+		"display_name", fileResp.File.DisplayName,
+		"mime_type", fileResp.File.MIMEType,
+	)
+
+	return fileResp.File.Name, nil
+}
+
+// importFileToFileSearchStore imports a file from the Files API into a FileSearchStore.
+// This is the second step of the Office file workaround.
+func importFileToFileSearchStore(ctx context.Context, cfg FileStoreConfig, storeID string, fileName string, displayName string) (*UploadedFile, error) {
+	url := fmt.Sprintf("%s/fileSearchStores/%s:import?key=%s", cfg.getBaseURL(), storeID, cfg.APIKey)
+
+	reqBody := map[string]interface{}{
+		"inlinePassages": map[string]interface{}{
+			"passages": []map[string]string{
+				{
+					"id":      fileName,
+					"content": fmt.Sprintf("@%s", fileName), // Reference to the uploaded file
+				},
+			},
+		},
+	}
+
+	// Actually, the import API expects a different format - use the files reference
+	reqBody = map[string]interface{}{
+		"sourceFiles": []map[string]string{
+			{
+				"file": fileName,
+			},
+		},
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	slog.Info("importing file to FileSearchStore",
+		"store_id", storeID,
+		"file_name", fileName,
+		"display_name", displayName,
+	)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("import to file search store failed: %s - %s", resp.Status, string(body))
+	}
+
+	var opResp operationResponse
+	if err := json.NewDecoder(resp.Body).Decode(&opResp); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	slog.Info("file import initiated",
+		"store_id", storeID,
+		"file_name", fileName,
+		"operation", opResp.Name,
+	)
+
+	// Poll for completion
+	status, err := waitForOperation(ctx, cfg, opResp.Name)
+	if err != nil {
+		slog.Warn("file import incomplete",
+			"store_id", storeID,
+			"file_name", fileName,
+			"error", err,
+		)
+	}
+
+	// Extract file ID
+	fileID := ""
+	if opResp.Response != nil {
+		if name, ok := opResp.Response["name"].(string); ok {
+			if idx := strings.LastIndex(name, "/"); idx != -1 {
+				fileID = name[idx+1:]
+			} else {
+				fileID = name
+			}
+		}
+	}
+
+	return &UploadedFile{
+		FileID:    fileID,
+		StoreID:   storeID,
+		Filename:  displayName,
+		Status:    status,
+		Operation: opResp.Name,
+	}, nil
+}
+
+// deleteFromFilesAPI deletes a file from the Gemini Files API.
+// This is used for cleanup after the Office file workaround.
+func deleteFromFilesAPI(ctx context.Context, apiKey string, fileName string) error {
+	url := fmt.Sprintf("%s/%s?key=%s", filesAPIBaseURL, fileName, apiKey)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 200 OK or 404 Not Found are both acceptable
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotFound {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("delete from Files API failed: %s - %s", resp.Status, string(body))
+	}
+
+	slog.Info("file deleted from Files API", "file_name", fileName)
+	return nil
 }
 
 // CreateFileSearchStore creates a new Gemini FileSearchStore.
@@ -151,6 +387,10 @@ func CreateFileSearchStore(ctx context.Context, cfg FileStoreConfig, name string
 }
 
 // UploadFileToFileSearchStore uploads a file to a Gemini FileSearchStore.
+// For Office files (DOCX, XLSX, PPTX, CSV), uses the Files API workaround:
+// 1. Upload to Files API first (accepts these MIME types)
+// 2. Import into FileSearchStore from Files API
+// 3. Cleanup the intermediate file from Files API
 func UploadFileToFileSearchStore(ctx context.Context, cfg FileStoreConfig, storeID string, filename string, mimeType string, content io.Reader) (*UploadedFile, error) {
 	if strings.TrimSpace(cfg.APIKey) == "" {
 		return nil, fmt.Errorf("API key is required")
@@ -171,6 +411,51 @@ func UploadFileToFileSearchStore(ctx context.Context, cfg FileStoreConfig, store
 		return nil, fmt.Errorf("read file content: %w", err)
 	}
 
+	// Check if this is an Office file that requires the workaround
+	if isOfficeFile(mimeType) {
+		slog.Info("using Files API workaround for Office file",
+			"store_id", storeID,
+			"filename", filename,
+			"mime_type", mimeType,
+		)
+		return uploadOfficeFileToFileSearchStore(ctx, cfg, storeID, filename, mimeType, fileContent)
+	}
+
+	// Standard direct upload for non-Office files
+	return uploadDirectToFileSearchStore(ctx, cfg, storeID, filename, mimeType, fileContent)
+}
+
+// uploadOfficeFileToFileSearchStore implements the two-step workaround for Office files.
+func uploadOfficeFileToFileSearchStore(ctx context.Context, cfg FileStoreConfig, storeID string, filename string, mimeType string, fileContent []byte) (*UploadedFile, error) {
+	// Step 1: Upload to Files API
+	filesAPIName, err := uploadToFilesAPI(ctx, cfg.APIKey, filename, mimeType, fileContent)
+	if err != nil {
+		return nil, fmt.Errorf("upload to Files API: %w", err)
+	}
+
+	// Ensure cleanup of the Files API file
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if cleanupErr := deleteFromFilesAPI(cleanupCtx, cfg.APIKey, filesAPIName); cleanupErr != nil {
+			slog.Warn("failed to cleanup file from Files API",
+				"file_name", filesAPIName,
+				"error", cleanupErr,
+			)
+		}
+	}()
+
+	// Step 2: Import from Files API to FileSearchStore
+	result, err := importFileToFileSearchStore(ctx, cfg, storeID, filesAPIName, filename)
+	if err != nil {
+		return nil, fmt.Errorf("import to FileSearchStore: %w", err)
+	}
+
+	return result, nil
+}
+
+// uploadDirectToFileSearchStore performs a direct upload to FileSearchStore (for non-Office files).
+func uploadDirectToFileSearchStore(ctx context.Context, cfg FileStoreConfig, storeID string, filename string, mimeType string, fileContent []byte) (*UploadedFile, error) {
 	// Use the upload endpoint with multipart
 	baseURL := cfg.getBaseURL()
 	// Replace /v1beta with /upload/v1beta for media upload
@@ -182,7 +467,7 @@ func UploadFileToFileSearchStore(ctx context.Context, cfg FileStoreConfig, store
 
 	url := fmt.Sprintf("%s/fileSearchStores/%s:uploadToFileSearchStore?key=%s", baseURL, storeID, cfg.APIKey)
 
-	slog.Info("uploading file to gemini file search store",
+	slog.Info("uploading file to gemini file search store (direct)",
 		"store_id", storeID,
 		"filename", filename,
 		"mime_type", mimeType,

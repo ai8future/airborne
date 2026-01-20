@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.0] - 2026-01-20
+
+### Added
+- **Office file workaround for FileSearchStore**: DOCX, XLSX, PPTX, CSV files can now be
+  uploaded to FileSearchStore using a two-step workaround:
+  1. Upload to Gemini Files API first (accepts these MIME types)
+  2. Import into FileSearchStore from Files API
+  3. Auto-cleanup of intermediate file from Files API
+
+### Technical
+- Added `isOfficeFile()` helper to detect Office MIME types requiring workaround
+- Added `uploadToFilesAPI()` for resumable upload to Gemini Files API
+- Added `importFileToFileSearchStore()` for importing from Files API to FileSearchStore
+- Added `deleteFromFilesAPI()` for cleanup after import
+- Refactored `UploadFileToFileSearchStore` to use workaround for Office files
+- Non-Office files continue to use direct upload path
+
+### Affected MIME Types
+- `.xlsx` - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+- `.docx` - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+- `.pptx` - application/vnd.openxmlformats-officedocument.presentationml.presentation
+- `.xls` - application/vnd.ms-excel
+- `.doc` - application/msword
+- `.ppt` - application/vnd.ms-powerpoint
+- `.csv` - text/csv
+
+Agent: Claude:Opus 4.5
+
 ## [1.6.15] - 2026-01-20
 
 ### Fixed
