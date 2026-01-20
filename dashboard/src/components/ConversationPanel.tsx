@@ -244,18 +244,24 @@ function MessageBubble({ message, isPending, sendStartTime }: MessageBubbleProps
       if (loadingData) {
         return <div className="text-xs text-slate-400">Loading...</div>;
       }
+      // Truncate extremely long JSON to prevent render issues
+      const displayJson = responseJson && responseJson.length > 50000
+        ? responseJson.substring(0, 50000) + "\n\n... [truncated - " + (responseJson.length - 50000) + " more characters]"
+        : responseJson;
       return (
-        <>
+        <div style={{ contain: 'layout', maxWidth: '100%', overflow: 'hidden' }}>
           {fetchError && (
             <div className="text-xs text-amber-600 bg-amber-50 p-2 rounded mb-2">
               Note: {fetchError}
             </div>
           )}
-          <pre className="text-xs whitespace-pre-wrap leading-relaxed font-mono overflow-x-auto text-slate-700 bg-slate-50 p-3 rounded-lg max-h-96 overflow-y-auto">
-            {responseJson || "No response data available"}
-          </pre>
+          <div className="bg-slate-50 rounded-lg p-3 overflow-auto" style={{ maxHeight: '384px', maxWidth: '100%' }}>
+            <pre className="text-xs font-mono text-slate-700 m-0" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflow: 'hidden' }}>
+              {displayJson || "No response data available"}
+            </pre>
+          </div>
           <TokenSummary />
-        </>
+        </div>
       );
     }
     if (viewMode === "raw") {
@@ -430,7 +436,7 @@ function MessageBubble({ message, isPending, sendStartTime }: MessageBubbleProps
   if (message.role === "assistant") {
     return (
       <div className="flex justify-center">
-        <div className="w-[80%]">
+        <div className="w-[80%]" style={{ maxWidth: '80%', overflow: 'hidden' }}>
           <div className="flex items-center gap-2 mb-1 justify-center">
             <span className="text-xs text-slate-400">{formatTime(message.timestamp)}</span>
             {message.provider && (
@@ -439,7 +445,7 @@ function MessageBubble({ message, isPending, sendStartTime }: MessageBubbleProps
               </span>
             )}
           </div>
-          <div className="bg-white rounded-2xl px-5 py-4 shadow-sm border border-gray-100">
+          <div className="bg-white rounded-2xl px-5 py-4 shadow-sm border border-gray-100 overflow-hidden">
             {renderContent()}
             <ViewToggle className="text-slate-400" />
           </div>

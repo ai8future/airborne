@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.4] - 2026-01-20
+
+### Fixed
+- **Response view CSS collapse bug**: Fixed issue where clicking "Response" view mode caused entire Conversations panel to go blank
+  - Large JSON content was breaking flexbox layout in parent containers
+  - Added CSS containment (`contain: layout`) to isolate response content
+  - Added overflow protection and word-break to prevent layout overflow
+  - Message bubbles now properly contain their content without affecting siblings
+
+Agent: Claude:Opus 4.5
+
 ## [1.6.3] - 2026-01-20
 
 ### Fixed
