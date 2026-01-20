@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.9] - 2026-01-20
+
+### Improved
+- **Web Sources in Markdown view**: Added grounding citations to Markdown view as well
+  - Now consistent with Formatted view - sources appear at bottom of both
+
+Agent: Claude:Opus 4.5
+
 ## [1.6.8] - 2026-01-20
 
 ### Improved
