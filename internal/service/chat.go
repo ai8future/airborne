@@ -260,6 +260,9 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 		"client_id", prepared.params.ClientID,
 	)
 
+	// Track processing time
+	startTime := time.Now()
+
 	// Generate reply
 	result, err := prepared.provider.GenerateReply(ctx, prepared.params)
 	if err != nil {
@@ -325,9 +328,12 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 		}
 	}
 
+	// Calculate processing time
+	processingTimeMs := int(time.Since(startTime).Milliseconds())
+
 	// Persist conversation asynchronously (if database client is configured)
 	if s.dbClient != nil && result.Usage != nil {
-		s.persistConversation(ctx, req, result, prepared.provider.Name(), prepared.providerCfg.Model, htmlContent)
+		s.persistConversation(ctx, req, result, prepared.provider.Name(), prepared.providerCfg.Model, htmlContent, processingTimeMs)
 	}
 
 	return s.buildResponse(result, prepared.provider.Name(), false, "", "", htmlContent), nil
@@ -377,6 +383,9 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 			})
 		}
 	}
+
+	// Track processing time for streaming
+	startTime := time.Now()
 
 	// Generate streaming reply
 	streamChunks, err := prepared.provider.GenerateReplyStream(ctx, prepared.params)
@@ -495,7 +504,8 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 					RequestJSON:  chunk.RequestJSON,
 					ResponseJSON: chunk.ResponseJSON,
 				}
-				s.persistConversation(ctx, req, streamResult, prepared.provider.Name(), chunk.Model, htmlContent)
+				processingTimeMs := int(time.Since(startTime).Milliseconds())
+				s.persistConversation(ctx, req, streamResult, prepared.provider.Name(), chunk.Model, htmlContent, processingTimeMs)
 			}
 
 			complete := &pb.StreamComplete{
@@ -1035,7 +1045,7 @@ func convertStructuredMetadata(m *provider.StructuredMetadata) *pb.StructuredMet
 
 // persistConversation saves the conversation turn to the database asynchronously.
 // This runs in a goroutine to avoid blocking the response.
-func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateReplyRequest, result provider.GenerateResult, providerName, model, renderedHTML string) {
+func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateReplyRequest, result provider.GenerateResult, providerName, model, renderedHTML string, processingTimeMs int) {
 	// Extract tenant and user info from context
 	tenantID := auth.TenantIDFromContext(ctx)
 	if tenantID == "" {
@@ -1075,9 +1085,6 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 		outputTokens = int(result.Usage.OutputTokens)
 	}
 	costUSD := pricing.CalculateCost(model, inputTokens, outputTokens)
-
-	// Processing time (we don't have this in current flow, use 0)
-	processingTimeMs := 0
 
 	// Build debug info from captured JSON and rendered HTML (if available)
 	var debugInfo *db.DebugInfo

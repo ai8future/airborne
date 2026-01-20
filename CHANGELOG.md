@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.1] - 2026-01-20
+
+### Fixed
+- **Processing time tracking**: Now properly measures and stores LLM processing duration
+  - Tracks time from provider call start to completion
+  - Works for both regular and streaming responses
+  - Processing time was previously hardcoded to 0
+
+Agent: Claude:Opus 4.5
+
 ## [1.6.0] - 2026-01-20
 
 ### Added
