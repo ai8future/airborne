@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.11] - 2026-01-20
+
+### Changed
+- **New conversation button position**: Moved + icon to be right next to "Conversations" header
+
+Agent: Claude:Opus 4.5
+
 ## [1.6.10] - 2026-01-20
 
 ### Fixed
