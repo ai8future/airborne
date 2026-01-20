@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.15] - 2026-01-20
+
+### Fixed
+- **Removed retry logic from chat API**: Chat requests are not idempotent - retrying
+  on timeout caused duplicate messages to be processed by the backend, compounding
+  conversation context. Single failed request now fails cleanly without retry.
+  (Reverts retry behavior from 1.6.12)
+
+Agent: Claude:Opus 4.5
+
 ## [1.6.14] - 2026-01-20
 
 ### Added

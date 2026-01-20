@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const AIRBORNE_ADMIN_URL = process.env.AIRBORNE_ADMIN_URL || "http://localhost:50054";
-const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 1000;
 
 interface ChatRequest {
   thread_id: string;
@@ -27,33 +25,6 @@ interface ChatResponse {
   error?: string;
 }
 
-// Retry fetch with exponential backoff
-async function fetchWithRetry(
-  url: string,
-  options: RequestInit,
-  retries: number = MAX_RETRIES
-): Promise<Response> {
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt < retries; attempt++) {
-    try {
-      const response = await fetch(url, options);
-      return response;
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      console.warn(`Fetch attempt ${attempt + 1}/${retries} failed:`, lastError.message);
-
-      if (attempt < retries - 1) {
-        // Exponential backoff: 1s, 2s, 4s...
-        const delay = RETRY_DELAY_MS * Math.pow(2, attempt);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-  }
-
-  throw lastError || new Error("Fetch failed after retries");
-}
-
 export async function POST(request: NextRequest) {
   try {
     const body: ChatRequest = await request.json();
@@ -72,9 +43,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Try the chat endpoint with retry logic
+    // Call the chat endpoint (no retry - chat is not idempotent)
     try {
-      const chatResponse = await fetchWithRetry(
+      const chatResponse = await fetch(
         `${AIRBORNE_ADMIN_URL}/admin/chat`,
         {
           method: "POST",
@@ -101,7 +72,7 @@ export async function POST(request: NextRequest) {
 
       // If chat endpoint doesn't exist (404), fall back to test endpoint
       if (chatResponse.status === 404) {
-        const testResponse = await fetchWithRetry(
+        const testResponse = await fetch(
           `${AIRBORNE_ADMIN_URL}/admin/test`,
           {
             method: "POST",
@@ -141,7 +112,7 @@ export async function POST(request: NextRequest) {
     } catch (fetchError) {
       const message = fetchError instanceof Error ? fetchError.message : "Unknown error";
       return NextResponse.json(
-        { error: `Failed to connect to Airborne admin server after ${MAX_RETRIES} attempts: ${message}` },
+        { error: `Failed to connect to Airborne admin server: ${message}` },
         { status: 500 }
       );
     }
