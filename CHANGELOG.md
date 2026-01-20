@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.3] - 2026-01-20
+
+### Fixed
+- **Dashboard message rendering stability**: Added error boundary around MessageBubble components
+  - Individual message render failures no longer crash the entire chat area
+  - Failed messages display a helpful error message instead of blank content
+  - Added fetch error state to show API errors in Request/Response views
+  - Enhanced error logging for easier debugging
+
+Agent: Claude:Opus 4.5
+
 ## [1.6.2] - 2026-01-20
 
 ### Added

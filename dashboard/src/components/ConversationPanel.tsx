@@ -1,9 +1,42 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Component, ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useTenant } from "@/context/TenantContext";
+
+// Error boundary to prevent individual message crashes from breaking the whole UI
+interface ErrorBoundaryProps {
+  children: ReactNode;
+  fallback: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error?: Error;
+}
+
+class MessageErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("MessageBubble error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback;
+    }
+    return this.props.children;
+  }
+}
 
 interface ThreadMessage {
   id: string;
@@ -67,6 +100,7 @@ function MessageBubble({ message, isPending, sendStartTime }: MessageBubbleProps
   const [renderedHtml, setRenderedHtml] = useState<string | null>(null);
   const [loadingData, setLoadingData] = useState(false);
   const [dataFetched, setDataFetched] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   // Track elapsed time when pending
@@ -95,9 +129,16 @@ function MessageBubble({ message, isPending, sendStartTime }: MessageBubbleProps
   const fetchDebugData = async () => {
     if (dataFetched) return; // Already fetched
     setLoadingData(true);
+    setFetchError(null);
     try {
       const res = await fetch(`/api/debug/${message.id}`);
       const data = await res.json();
+
+      // Check for API errors
+      if (data.error) {
+        console.warn(`Debug API error for message ${message.id}:`, data.error);
+        setFetchError(data.error);
+      }
 
       // Get rendered HTML from markdown_svc
       if (data.rendered_html) {
@@ -122,10 +163,12 @@ function MessageBubble({ message, isPending, sendStartTime }: MessageBubbleProps
         }
       }
 
-
       setDataFetched(true);
-    } catch {
+    } catch (err) {
       // Fallback to constructed JSON
+      const errorMsg = err instanceof Error ? err.message : "Unknown error";
+      console.error(`Failed to fetch debug data for message ${message.id}:`, errorMsg);
+      setFetchError(errorMsg);
       const fallback = {
         provider: message.provider,
         model: message.model,
@@ -185,6 +228,11 @@ function MessageBubble({ message, isPending, sendStartTime }: MessageBubbleProps
       }
       return (
         <>
+          {fetchError && (
+            <div className="text-xs text-amber-600 bg-amber-50 p-2 rounded mb-2">
+              Note: {fetchError}
+            </div>
+          )}
           <pre className="text-xs whitespace-pre-wrap leading-relaxed font-mono overflow-x-auto text-slate-700 bg-slate-50 p-3 rounded-lg max-h-96 overflow-y-auto">
             {requestJson || "No request data available"}
           </pre>
@@ -198,6 +246,11 @@ function MessageBubble({ message, isPending, sendStartTime }: MessageBubbleProps
       }
       return (
         <>
+          {fetchError && (
+            <div className="text-xs text-amber-600 bg-amber-50 p-2 rounded mb-2">
+              Note: {fetchError}
+            </div>
+          )}
           <pre className="text-xs whitespace-pre-wrap leading-relaxed font-mono overflow-x-auto text-slate-700 bg-slate-50 p-3 rounded-lg max-h-96 overflow-y-auto">
             {responseJson || "No response data available"}
           </pre>
@@ -720,12 +773,22 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
             ) : (
               <div className="space-y-4">
                 {messages.map((message) => (
-                  <MessageBubble
+                  <MessageErrorBoundary
                     key={message.id}
-                    message={message}
-                    isPending={message.id === pendingMessageId}
-                    sendStartTime={sendStartTime || undefined}
-                  />
+                    fallback={
+                      <div className="flex justify-center">
+                        <div className="w-[80%] bg-red-50 rounded-2xl px-5 py-4 border border-red-200">
+                          <p className="text-sm text-red-600">Failed to render message. Check console for details.</p>
+                        </div>
+                      </div>
+                    }
+                  >
+                    <MessageBubble
+                      message={message}
+                      isPending={message.id === pendingMessageId}
+                      sendStartTime={sendStartTime || undefined}
+                    />
+                  </MessageErrorBoundary>
                 ))}
                 <div ref={messagesEndRef} />
               </div>
