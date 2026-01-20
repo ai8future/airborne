@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.12] - 2026-01-20
+
+### Added
+- **Chat API retry logic**: Auto-retry on connection failures with exponential backoff
+  - Up to 3 retries with delays of 1s, 2s, 4s
+  - Helps handle intermittent SSH tunnel disconnects
+  - Clearer error message when all retries exhausted
+
+Agent: Claude:Opus 4.5
+
 ## [1.6.11] - 2026-01-20
 
 ### Changed
