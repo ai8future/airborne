@@ -761,16 +761,54 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
       textareaRef.current.style.height = '24px';
     }
 
+    // Build display content (include filename if file is attached)
+    const displayContent = selectedFile
+      ? `${messageContent}\n\n[Attached: ${selectedFile.name}]`
+      : messageContent;
+
     // Optimistically add user message to UI
     const tempUserMessage: ThreadMessage = {
       id: tempId,
       role: "user",
-      content: messageContent,
+      content: displayContent,
       timestamp: new Date().toISOString(),
     };
     setMessages(prev => [...prev, tempUserMessage]);
 
     try {
+      // Upload file if selected
+      let fileUri = "";
+      let fileMimeType = "";
+      let filename = "";
+
+      if (selectedFile) {
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+        formData.append("tenant_id", tenant);
+
+        const uploadRes = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const uploadData = await uploadRes.json();
+        if (uploadData.error) {
+          console.error('File upload failed:', uploadData.error);
+          setMessages(prev => prev.filter(m => m.id !== tempUserMessage.id));
+          setSending(false);
+          setPendingMessageId(null);
+          setSendStartTime(null);
+          return;
+        }
+
+        fileUri = uploadData.file_uri || "";
+        fileMimeType = uploadData.mime_type || "";
+        filename = uploadData.filename || selectedFile.name;
+
+        // Clear the selected file after successful upload
+        setSelectedFile(null);
+      }
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -779,6 +817,9 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
           message: messageContent,
           system_prompt: getActivePrompt(),
           tenant_id: tenant,
+          file_uri: fileUri,
+          file_mime_type: fileMimeType,
+          filename: filename,
         }),
       });
 

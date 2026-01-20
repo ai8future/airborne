@@ -2,10 +2,13 @@
 package admin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,7 +16,11 @@ import (
 
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/db"
+	"github.com/ai8future/airborne/internal/provider"
+	"github.com/ai8future/airborne/internal/provider/gemini"
+	"github.com/ai8future/airborne/internal/tenant"
 	"github.com/google/uuid"
+	"google.golang.org/genai"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
@@ -22,6 +29,7 @@ import (
 // Server is the HTTP admin server for operational endpoints.
 type Server struct {
 	dbClient   *db.Client
+	tenantMgr  *tenant.Manager
 	server     *http.Server
 	port       int
 	grpcAddr   string
@@ -41,15 +49,17 @@ type VersionInfo struct {
 // Config holds admin server configuration.
 type Config struct {
 	Port      int
-	GRPCAddr  string      // Address of the gRPC server (e.g., "localhost:50051")
-	AuthToken string      // Auth token for gRPC calls
-	Version   VersionInfo // Version information
+	GRPCAddr  string          // Address of the gRPC server (e.g., "localhost:50051")
+	AuthToken string          // Auth token for gRPC calls
+	TenantMgr *tenant.Manager // Tenant manager for accessing API keys
+	Version   VersionInfo     // Version information
 }
 
 // NewServer creates a new admin HTTP server.
 func NewServer(dbClient *db.Client, cfg Config) *Server {
 	s := &Server{
 		dbClient:  dbClient,
+		tenantMgr: cfg.TenantMgr,
 		port:      cfg.Port,
 		grpcAddr:  cfg.GRPCAddr,
 		authToken: cfg.AuthToken,
@@ -82,6 +92,7 @@ func NewServer(dbClient *db.Client, cfg Config) *Server {
 	mux.HandleFunc("/admin/version", corsHandler(s.handleVersion))
 	mux.HandleFunc("/admin/test", corsHandler(s.handleTest))
 	mux.HandleFunc("/admin/chat", corsHandler(s.handleChat))
+	mux.HandleFunc("/admin/upload", corsHandler(s.handleUpload))
 
 	s.server = &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
@@ -526,6 +537,9 @@ type ChatRequest struct {
 	TenantID     string `json:"tenant_id,omitempty"`
 	Provider     string `json:"provider,omitempty"`
 	SystemPrompt string `json:"system_prompt,omitempty"`
+	FileURI      string `json:"file_uri,omitempty"`       // File URI from /admin/upload
+	FileMIMEType string `json:"file_mime_type,omitempty"` // MIME type of the file
+	Filename     string `json:"filename,omitempty"`       // Original filename
 }
 
 // ChatResponse is the response from the chat endpoint.
@@ -585,6 +599,21 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ChatResponse{
 			Error: "invalid thread_id format (must be UUID)",
+		})
+		return
+	}
+
+	// If file URI is present, use direct Gemini call (bypasses gRPC)
+	if req.FileURI != "" {
+		s.handleChatWithFile(w, r, ChatWithFileRequest{
+			ThreadID:     req.ThreadID,
+			Message:      req.Message,
+			TenantID:     req.TenantID,
+			Provider:     req.Provider,
+			SystemPrompt: req.SystemPrompt,
+			FileURI:      req.FileURI,
+			FileMIMEType: req.FileMIMEType,
+			Filename:     req.Filename,
 		})
 		return
 	}
@@ -762,4 +791,336 @@ func buildCompressedHistory(dbMessages []db.Message, previousResponseID *string)
 	}
 
 	return result
+}
+
+// UploadResponse is the response from the upload endpoint.
+type UploadResponse struct {
+	FileURI  string `json:"file_uri,omitempty"`
+	Filename string `json:"filename,omitempty"`
+	MIMEType string `json:"mime_type,omitempty"`
+	Error    string `json:"error,omitempty"`
+}
+
+// handleUpload uploads a file to Gemini Files API.
+// POST /admin/upload (multipart/form-data)
+// Returns the file URI for use in chat.
+func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse multipart form (max 100MB)
+	if err := r.ParseMultipartForm(100 << 20); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(UploadResponse{
+			Error: "failed to parse multipart form: " + err.Error(),
+		})
+		return
+	}
+
+	// Get the file
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(UploadResponse{
+			Error: "file is required",
+		})
+		return
+	}
+	defer file.Close()
+
+	// Get tenant ID
+	tenantID := r.FormValue("tenant_id")
+	if tenantID == "" {
+		tenantID = "email4ai" // Default tenant
+	}
+
+	// Get Gemini API key from tenant config
+	apiKey, err := s.getGeminiAPIKey(tenantID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(UploadResponse{
+			Error: err.Error(),
+		})
+		return
+	}
+
+	// Detect MIME type
+	mimeType := header.Header.Get("Content-Type")
+	if mimeType == "" || mimeType == "application/octet-stream" {
+		mimeType = detectMIMEType(header.Filename)
+	}
+
+	// Upload to Gemini Files API
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancel()
+
+	fileURI, err := s.uploadFileToGemini(ctx, apiKey, file, header.Filename, mimeType)
+	if err != nil {
+		slog.Error("failed to upload file to Gemini", "error", err, "filename", header.Filename)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(UploadResponse{
+			Error: "failed to upload file: " + err.Error(),
+		})
+		return
+	}
+
+	slog.Info("file uploaded to Gemini",
+		"filename", header.Filename,
+		"mime_type", mimeType,
+		"file_uri", fileURI,
+	)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(UploadResponse{
+		FileURI:  fileURI,
+		Filename: header.Filename,
+		MIMEType: mimeType,
+	})
+}
+
+// getGeminiAPIKey retrieves the Gemini API key for a tenant.
+func (s *Server) getGeminiAPIKey(tenantID string) (string, error) {
+	if s.tenantMgr == nil {
+		return "", fmt.Errorf("tenant manager not configured")
+	}
+
+	tenantCfg, ok := s.tenantMgr.Tenant(tenantID)
+	if !ok {
+		return "", fmt.Errorf("tenant not found: %s", tenantID)
+	}
+
+	providerCfg, ok := tenantCfg.GetProvider("gemini")
+	if !ok {
+		return "", fmt.Errorf("gemini provider not enabled for tenant: %s", tenantID)
+	}
+
+	if providerCfg.APIKey == "" {
+		return "", fmt.Errorf("gemini API key not configured for tenant: %s", tenantID)
+	}
+
+	return providerCfg.APIKey, nil
+}
+
+// uploadFileToGemini uploads a file to Gemini Files API and returns the URI.
+func (s *Server) uploadFileToGemini(ctx context.Context, apiKey string, file multipart.File, filename, mimeType string) (string, error) {
+	// Create Gemini client
+	clientConfig := &genai.ClientConfig{
+		APIKey:  apiKey,
+		Backend: genai.BackendGeminiAPI,
+	}
+
+	client, err := genai.NewClient(ctx, clientConfig)
+	if err != nil {
+		return "", fmt.Errorf("create Gemini client: %w", err)
+	}
+
+	// Read file content
+	content, err := io.ReadAll(file)
+	if err != nil {
+		return "", fmt.Errorf("read file: %w", err)
+	}
+
+	// Upload file
+	uploadConfig := &genai.UploadFileConfig{
+		MIMEType:    mimeType,
+		DisplayName: filename,
+	}
+
+	uploadedFile, err := client.Files.Upload(ctx, bytes.NewReader(content), uploadConfig)
+	if err != nil {
+		return "", fmt.Errorf("upload file: %w", err)
+	}
+
+	// Wait for file to be processed
+	if uploadedFile.State == genai.FileStateProcessing {
+		for i := 0; i < 30; i++ { // Max 1 minute wait
+			time.Sleep(2 * time.Second)
+			uploadedFile, err = client.Files.Get(ctx, uploadedFile.Name, nil)
+			if err != nil {
+				return "", fmt.Errorf("get file status: %w", err)
+			}
+			if uploadedFile.State == genai.FileStateActive {
+				break
+			}
+			if uploadedFile.State == genai.FileStateFailed {
+				return "", fmt.Errorf("file processing failed")
+			}
+		}
+	}
+
+	return uploadedFile.URI, nil
+}
+
+// detectMIMEType guesses MIME type from filename extension.
+func detectMIMEType(filename string) string {
+	ext := strings.ToLower(filename)
+	if idx := strings.LastIndex(ext, "."); idx != -1 {
+		ext = ext[idx:]
+	}
+
+	mimeTypes := map[string]string{
+		".pdf":  "application/pdf",
+		".txt":  "text/plain",
+		".md":   "text/markdown",
+		".csv":  "text/csv",
+		".json": "application/json",
+		".xml":  "application/xml",
+		".html": "text/html",
+		".png":  "image/png",
+		".jpg":  "image/jpeg",
+		".jpeg": "image/jpeg",
+		".gif":  "image/gif",
+		".webp": "image/webp",
+		".svg":  "image/svg+xml",
+		".mp3":  "audio/mpeg",
+		".wav":  "audio/wav",
+		".mp4":  "video/mp4",
+		".webm": "video/webm",
+		".doc":  "application/msword",
+		".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		".xls":  "application/vnd.ms-excel",
+		".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		".ppt":  "application/vnd.ms-powerpoint",
+		".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+	}
+
+	if mt, ok := mimeTypes[ext]; ok {
+		return mt
+	}
+	return "application/octet-stream"
+}
+
+// ChatWithFileRequest extends ChatRequest with file support.
+type ChatWithFileRequest struct {
+	ThreadID     string `json:"thread_id"`
+	Message      string `json:"message"`
+	TenantID     string `json:"tenant_id,omitempty"`
+	Provider     string `json:"provider,omitempty"`
+	SystemPrompt string `json:"system_prompt,omitempty"`
+	FileURI      string `json:"file_uri,omitempty"`
+	FileMIMEType string `json:"file_mime_type,omitempty"`
+	Filename     string `json:"filename,omitempty"`
+}
+
+// handleChatWithFile handles chat requests with optional file attachments.
+// This bypasses gRPC to call the Gemini provider directly when files are present.
+func (s *Server) handleChatWithFile(w http.ResponseWriter, r *http.Request, req ChatWithFileRequest) {
+	// Validate thread_id is a valid UUID
+	threadUUID, err := uuid.Parse(req.ThreadID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ChatResponse{
+			Error: "invalid thread_id format (must be UUID)",
+		})
+		return
+	}
+
+	// Get Gemini API key
+	apiKey, err := s.getGeminiAPIKey(req.TenantID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ChatResponse{
+			Error: err.Error(),
+		})
+		return
+	}
+
+	// Load conversation history
+	var conversationHistory []provider.Message
+	if s.dbClient != nil && req.TenantID != "" {
+		repo, repoErr := s.dbClient.TenantRepository(req.TenantID)
+		if repoErr == nil {
+			dbMessages, msgErr := repo.GetMessages(r.Context(), threadUUID, 50)
+			if msgErr == nil && len(dbMessages) > 0 {
+				for _, msg := range dbMessages {
+					conversationHistory = append(conversationHistory, provider.Message{
+						Role:    msg.Role,
+						Content: msg.Content,
+					})
+				}
+			}
+		}
+	}
+
+	// Build system prompt
+	systemPrompt := req.SystemPrompt
+	if strings.TrimSpace(systemPrompt) == "" {
+		systemPrompt = "You are a helpful assistant. Continue the conversation naturally."
+	}
+	if len(conversationHistory) > 0 {
+		systemPrompt = systemPrompt + "\n\n[Note: Previous conversation messages are provided for context. Focus on the most recent user message.]"
+	}
+
+	// Build inline images (files)
+	var inlineImages []provider.InlineImage
+	if req.FileURI != "" {
+		inlineImages = append(inlineImages, provider.InlineImage{
+			URI:      req.FileURI,
+			MIMEType: req.FileMIMEType,
+			Filename: req.Filename,
+		})
+	}
+
+	// Create Gemini provider params
+	params := provider.GenerateParams{
+		Instructions:        systemPrompt,
+		UserInput:           req.Message,
+		ConversationHistory: conversationHistory,
+		InlineImages:        inlineImages,
+		EnableWebSearch:     true,
+		Config: provider.ProviderConfig{
+			APIKey: apiKey,
+			Model:  "gemini-3-pro-preview",
+		},
+		RequestID: threadUUID.String(),
+		ClientID:  "dashboard-chat-file",
+	}
+
+	// Add file context to system prompt
+	if req.Filename != "" {
+		params.FileIDToFilename = map[string]string{
+			req.FileURI: req.Filename,
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	// Call Gemini directly
+	geminiClient := gemini.NewClient()
+	result, err := geminiClient.GenerateReply(ctx, params)
+	if err != nil {
+		slog.Error("Gemini chat failed", "error", err, "thread_id", req.ThreadID)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK) // Return 200 with error in body
+		json.NewEncoder(w).Encode(ChatResponse{
+			Error: "Gemini call failed: " + err.Error(),
+		})
+		return
+	}
+
+	// Extract token usage
+	var inputTokens, outputTokens int
+	if result.Usage != nil {
+		inputTokens = int(result.Usage.InputTokens)
+		outputTokens = int(result.Usage.OutputTokens)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ChatResponse{
+		ID:        result.ResponseID,
+		Content:   result.Text,
+		Provider:  "gemini",
+		Model:     result.Model,
+		TokensIn:  inputTokens,
+		TokensOut: outputTokens,
+	})
 }

@@ -116,6 +116,7 @@ func main() {
 			Port:      cfg.Admin.Port,
 			GRPCAddr:  grpcAddr,
 			AuthToken: cfg.Auth.AdminToken,
+			TenantMgr: components.TenantMgr,
 			Version: admin.VersionInfo{
 				Version:   Version,
 				GitCommit: GitCommit,

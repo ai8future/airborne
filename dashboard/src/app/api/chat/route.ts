@@ -10,6 +10,9 @@ interface ChatRequest {
   tenant_id?: string;
   provider?: string;
   system_prompt?: string;
+  file_uri?: string;      // File URI from upload endpoint
+  file_mime_type?: string; // MIME type of the file
+  filename?: string;       // Original filename
 }
 
 interface ChatResponse {
@@ -84,6 +87,9 @@ export async function POST(request: NextRequest) {
             tenant_id: body.tenant_id || "",
             provider: body.provider || "",
             system_prompt: body.system_prompt || "",
+            file_uri: body.file_uri || "",
+            file_mime_type: body.file_mime_type || "",
+            filename: body.filename || "",
           }),
         }
       );

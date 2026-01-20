@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.14] - 2026-01-20
+
+### Added
+- **File upload support in dashboard chat**: Users can now attach files when chatting
+  - New `/admin/upload` endpoint uploads files to Gemini Files API
+  - Modified `/admin/chat` to accept `file_uri`, `file_mime_type`, `filename` parameters
+  - Files are processed as inline images by Gemini for analysis
+  - Frontend shows attached file name in message and clears after send
+  - Supports PDFs, images, documents, audio, video (up to 100MB)
+  - Tenant manager integration for API key access
+
+### Technical
+- Added `TenantMgr` to admin server Config for accessing provider API keys
+- Direct Gemini provider call path for file-containing requests (bypasses gRPC)
+- Created `/api/upload` Next.js route to proxy file uploads
+- Updated `/api/chat` to pass file parameters through to backend
+
+Agent: Claude:Opus 4.5
+
 ## [1.6.13] - 2026-01-20
 
 ### Added
