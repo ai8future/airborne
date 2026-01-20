@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.8] - 2026-01-20
+
+### Improved
+- **Web Sources in Formatted view**: Grounding citations now display at the bottom of Formatted view
+  - Clickable links open in new tabs (target="_blank")
+  - Shows source title with hostname in parentheses
+  - Appears below the formatted content with a separator line
+
+Agent: Claude:Opus 4.5
+
 ## [1.6.7] - 2026-01-20
 
 ### Fixed
