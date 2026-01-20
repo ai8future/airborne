@@ -600,30 +600,26 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Load conversation history from database if available
+	// Load and compress conversation history from database if available
 	// For Gemini/Anthropic: we need to pass full conversation history (stateless APIs)
 	// For OpenAI: we can use PreviousResponseId for native continuity (more efficient)
+	// Uses progressive compression to prevent context window overflow
 	var conversationHistory []*pb.Message
 	var previousResponseID string
+	var originalMessageCount int
 	if s.dbClient != nil && req.TenantID != "" {
 		repo, repoErr := s.dbClient.TenantRepository(req.TenantID)
 		if repoErr == nil {
 			// Get up to 50 previous messages for context
 			dbMessages, msgErr := repo.GetMessages(r.Context(), threadUUID, 50)
 			if msgErr == nil && len(dbMessages) > 0 {
-				conversationHistory = make([]*pb.Message, 0, len(dbMessages))
-				for _, msg := range dbMessages {
-					conversationHistory = append(conversationHistory, &pb.Message{
-						Role:      msg.Role,
-						Content:   msg.Content,
-						Timestamp: msg.CreatedAt.Unix(),
-					})
-					// Extract the last assistant's response_id for OpenAI native continuity
-					if msg.Role == "assistant" && msg.ResponseID != nil && *msg.ResponseID != "" {
-						previousResponseID = *msg.ResponseID
-					}
-				}
-				slog.Info("loaded conversation history", "thread_id", req.ThreadID, "messages", len(conversationHistory), "previous_response_id", previousResponseID)
+				originalMessageCount = len(dbMessages)
+				conversationHistory = buildCompressedHistory(dbMessages, &previousResponseID)
+				slog.Info("loaded conversation history",
+					"thread_id", req.ThreadID,
+					"original_messages", originalMessageCount,
+					"compressed_messages", len(conversationHistory),
+					"previous_response_id", previousResponseID)
 			}
 		}
 	}
@@ -632,6 +628,11 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	systemPrompt := req.SystemPrompt
 	if strings.TrimSpace(systemPrompt) == "" {
 		systemPrompt = "You are a helpful assistant. Continue the conversation naturally."
+	}
+
+	// Add context note if there's conversation history
+	if len(conversationHistory) > 0 {
+		systemPrompt = systemPrompt + "\n\n[Note: Previous conversation messages are provided for context. Focus on the most recent user message.]"
 	}
 
 	// Build gRPC request - use thread_id as request_id to continue the thread
@@ -696,4 +697,68 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		TokensIn:  inputTokens,
 		TokensOut: outputTokens,
 	})
+}
+
+// buildCompressedHistory creates a compressed conversation history to prevent context window overflow.
+// It applies progressive compression: full AI responses for recent messages, truncated for older,
+// and drops AI responses entirely for very old conversations.
+func buildCompressedHistory(dbMessages []db.Message, previousResponseID *string) []*pb.Message {
+	const (
+		maxHistoryChars      = 30000 // ~7,500 tokens, leaves room for response
+		maxAIResponseChars   = 500   // Truncate AI responses after fullAIResponsesLimit
+		fullAIResponsesLimit = 3     // Include full AI text for first N responses
+		dropAIResponsesLimit = 6     // After N responses, only include user messages
+	)
+
+	// Count AI responses to determine compression strategy
+	aiResponseCount := 0
+	for _, msg := range dbMessages {
+		if msg.Role == "assistant" {
+			aiResponseCount++
+		}
+	}
+
+	var result []*pb.Message
+	totalChars := 0
+	currentAIResponse := 0
+
+	for _, msg := range dbMessages {
+		// Track previous response ID for OpenAI native continuity
+		if msg.Role == "assistant" && msg.ResponseID != nil && *msg.ResponseID != "" {
+			*previousResponseID = *msg.ResponseID
+			currentAIResponse++
+		}
+
+		content := strings.TrimSpace(msg.Content)
+		if content == "" {
+			continue
+		}
+
+		// Handle AI responses based on count - apply progressive compression
+		if msg.Role == "assistant" {
+			if aiResponseCount > dropAIResponsesLimit {
+				// Skip AI responses entirely when there are too many
+				continue
+			}
+			if currentAIResponse > fullAIResponsesLimit && len(content) > maxAIResponseChars {
+				// Truncate older AI responses to save tokens
+				content = content[:maxAIResponseChars] + "..."
+			}
+		}
+
+		// Check character limit - stop adding messages when we exceed
+		if totalChars+len(content) > maxHistoryChars {
+			slog.Debug("history truncated due to char limit", "total_chars", totalChars, "limit", maxHistoryChars)
+			break
+		}
+		totalChars += len(content)
+
+		result = append(result, &pb.Message{
+			Role:      msg.Role,
+			Content:   content,
+			Timestamp: msg.CreatedAt.Unix(),
+		})
+	}
+
+	return result
 }

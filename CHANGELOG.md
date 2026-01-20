@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.15] - 2026-01-20
+
+### Changed
+- **Conversation history optimization**: Prevent context window overflow by intelligently managing history
+  - Progressive AI response compression: full responses for recent (1-3), truncated for older (4-6), dropped for long threads (7+)
+  - Character limit of 30,000 (~7,500 tokens) to leave room for AI responses
+  - System prompt enhancement to clarify context structure for the AI
+  - Enhanced logging with original vs compressed message counts
+
+Agent: Claude:Opus 4.5
+
 ## [1.5.14] - 2026-01-19
 
 ### Added
