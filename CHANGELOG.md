@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.13] - 2026-01-20
+
+### Added
+- **Tenant persists in URL**: Selected tenant now syncs with URL query parameter
+  - URL updates to `?tenant=email4ai` when tenant is changed
+  - Tenant selection survives page reload
+  - Shareable URLs with specific tenant pre-selected
+
+### Fixed
+- **Chat area clears on tenant change**: Messages now properly clear when switching tenants
+
+Agent: Claude:Opus 4.5
+
 ## [1.6.12] - 2026-01-20
 
 ### Added

@@ -644,6 +644,11 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
     activityRef.current = activity;
   }, [activity]);
 
+  // Clear messages when tenant changes
+  useEffect(() => {
+    setMessages([]);
+  }, [tenant]);
+
   // Group activity by thread_id to create thread list
   const threads = activity.reduce((acc, entry) => {
     if (!entry.thread_id) return acc;
