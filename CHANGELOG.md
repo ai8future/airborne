@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.5] - 2026-01-20
+
+### Changed
+- **Enable web search by default**: Dashboard chat now enables Google Search grounding
+  - Gemini will search the web for current information when needed
+  - Responses include citations from web sources
+  - Grounding metadata captured in debug view
+
+Agent: Claude:Opus 4.5
+
 ## [1.6.4] - 2026-01-20
 
 ### Fixed

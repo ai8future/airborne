@@ -644,6 +644,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		RequestId:           threadUUID.String(),    // Use thread_id as request_id for thread continuity
 		ConversationHistory: conversationHistory,    // For Gemini/Anthropic (stateless)
 		PreviousResponseId:  previousResponseID,     // For OpenAI native continuity
+		EnableWebSearch:     true,                   // Enable Google Search grounding by default
 	}
 
 	// Set provider if specified
