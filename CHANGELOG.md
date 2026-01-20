@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.0] - 2026-01-20
+
+### Added
+- **New conversation button**: Added + icon next to "Conversations" header in dashboard
+  - Clears chat area and starts a fresh conversation thread
+  - Generates a new UUID for the thread
+
+Agent: Claude:Opus 4.5
+
 ## [1.5.15] - 2026-01-20
 
 ### Changed

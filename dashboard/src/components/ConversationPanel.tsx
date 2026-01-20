@@ -656,8 +656,18 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
 
   return (
     <div className="h-full flex flex-col bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-      <div className="flex-shrink-0 px-4 py-3 border-b border-gray-200">
+      <div className="flex-shrink-0 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
         <h3 className="font-semibold text-gray-800">Conversations</h3>
+        <button
+          type="button"
+          onClick={startNewConversation}
+          className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+          title="Start new conversation"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+        </button>
       </div>
 
       <div className="flex flex-1 min-h-0">
