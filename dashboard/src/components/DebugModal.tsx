@@ -35,6 +35,85 @@ interface DebugData {
   error?: string;
 }
 
+// Citation structure from Gemini's groundingChunks
+interface Citation {
+  type: "url" | "file";
+  uri?: string;
+  title?: string;
+  filename?: string;
+  snippet?: string;
+  start_index?: number;
+  end_index?: number;
+}
+
+// Parse citations from JSON string
+function parseCitations(citationsStr: string | undefined): Citation[] {
+  if (!citationsStr || citationsStr === "") return [];
+  try {
+    const parsed = JSON.parse(citationsStr);
+    if (Array.isArray(parsed)) {
+      return parsed as Citation[];
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+// Format citation as display component
+function CitationsList({ citations }: { citations: Citation[] }) {
+  if (citations.length === 0) return null;
+
+  const webCitations = citations.filter(c => c.type === "url" && c.uri);
+  const fileCitations = citations.filter(c => c.type === "file" && c.filename);
+
+  return (
+    <div className="space-y-3">
+      {webCitations.length > 0 && (
+        <div>
+          <h5 className="text-xs font-medium text-gray-500 mb-2">Web Sources</h5>
+          <ol className="list-decimal list-inside space-y-1.5">
+            {webCitations.map((citation, idx) => (
+              <li key={idx} className="text-sm">
+                <a
+                  href={citation.uri}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800 hover:underline"
+                >
+                  {citation.title || new URL(citation.uri!).hostname}
+                </a>
+                <span className="text-gray-400 text-xs ml-2">
+                  {citation.uri && new URL(citation.uri).hostname}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+      {fileCitations.length > 0 && (
+        <div>
+          <h5 className="text-xs font-medium text-gray-500 mb-2">File Sources</h5>
+          <ol className="list-decimal list-inside space-y-1.5">
+            {fileCitations.map((citation, idx) => (
+              <li key={idx} className="text-sm text-gray-700">
+                <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">
+                  {citation.filename}
+                </span>
+                {citation.snippet && (
+                  <p className="mt-1 ml-4 text-xs text-gray-500 italic truncate max-w-md">
+                    {citation.snippet}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface DebugModalProps {
   messageId: string;
   onClose: () => void;
@@ -297,10 +376,10 @@ export default function DebugModal({ messageId, onClose }: DebugModalProps) {
                         {/* Citations if present */}
                         {debugData.citations && debugData.citations !== "" && (
                           <div>
-                            <h4 className="text-sm font-medium text-gray-600 mb-2">Citations</h4>
-                            <pre className="bg-gray-100 rounded p-3 text-sm overflow-x-auto">
-                              {debugData.citations}
-                            </pre>
+                            <h4 className="text-sm font-medium text-gray-600 mb-2">Sources</h4>
+                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                              <CitationsList citations={parseCitations(debugData.citations)} />
+                            </div>
                           </div>
                         )}
 

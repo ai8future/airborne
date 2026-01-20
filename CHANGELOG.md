@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.6] - 2026-01-20
+
+### Improved
+- **Formatted citations display**: Web citations from Gemini's groundingChunks now display as clickable links
+  - DebugModal: Citations shown as numbered "Sources" section with titles and links
+  - ConversationPanel: Response view shows "Web Sources" section with grounding chunks
+  - Web sources display title (or hostname) with clickable links to original pages
+  - File citations shown with filename and snippet preview
+
+Agent: Claude:Opus 4.5
+
 ## [1.6.5] - 2026-01-20
 
 ### Changed
