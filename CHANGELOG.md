@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.1] - 2026-01-20
+
+### Fixed
+- **Fixed import API endpoint and request format for Office file workaround**:
+  - Changed endpoint from `:import` to `:importFile` to match genai SDK
+  - Changed request body from `sourceFiles` array to `{"fileName": "files/xxx"}` format
+  - Removed dead code where first request body was immediately overwritten
+
+Agent: Claude:Opus 4.5
+
 ## [1.7.0] - 2026-01-20
 
 ### Added

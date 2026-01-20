@@ -197,27 +197,13 @@ func uploadToFilesAPI(ctx context.Context, apiKey string, filename string, mimeT
 
 // importFileToFileSearchStore imports a file from the Files API into a FileSearchStore.
 // This is the second step of the Office file workaround.
+// Based on the genai SDK, the endpoint is :importFile and body is {"fileName": "files/xxx"}
 func importFileToFileSearchStore(ctx context.Context, cfg FileStoreConfig, storeID string, fileName string, displayName string) (*UploadedFile, error) {
-	url := fmt.Sprintf("%s/fileSearchStores/%s:import?key=%s", cfg.getBaseURL(), storeID, cfg.APIKey)
+	url := fmt.Sprintf("%s/fileSearchStores/%s:importFile?key=%s", cfg.getBaseURL(), storeID, cfg.APIKey)
 
+	// The genai SDK sends fileName directly in the body
 	reqBody := map[string]interface{}{
-		"inlinePassages": map[string]interface{}{
-			"passages": []map[string]string{
-				{
-					"id":      fileName,
-					"content": fmt.Sprintf("@%s", fileName), // Reference to the uploaded file
-				},
-			},
-		},
-	}
-
-	// Actually, the import API expects a different format - use the files reference
-	reqBody = map[string]interface{}{
-		"sourceFiles": []map[string]string{
-			{
-				"file": fileName,
-			},
-		},
+		"fileName": fileName,
 	}
 
 	jsonBody, err := json.Marshal(reqBody)
