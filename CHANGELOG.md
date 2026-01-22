@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.8] - 2026-01-22
+
+### Refactored
+- **Configuration Layer**: Extracted environment variable parsing helpers
+  - Created `internal/config/envutil` package with `GetStringEnv()`, `GetIntEnv()`, `GetBoolEnv()`
+  - Consolidates repetitive strconv.Atoi/ParseBool patterns with error logging
+  - Applied across all config sections (Server, TLS, Redis, Database, Admin, Auth, Logging, RAG)
+  - Reduces ~80 LOC of repetitive parsing code in `applyEnvOverrides()`
+  - Improves consistency in error handling and logging
+
+### Technical
+- Added type-safe environment variable helpers with default fallbacks
+- Refactored `Config.applyEnvOverrides()` to use envutil helpers
+- Removed unused `strconv` import from config package
+- All config tests pass with new helpers
+
+Agent: Claude Code:Sonnet 4.5
+
 ## [1.7.7] - 2026-01-22
 
 ### Refactored

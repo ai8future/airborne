@@ -7,11 +7,12 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/ai8future/airborne/internal/config/envutil"
 )
 
 // Config holds all server configuration
@@ -261,57 +262,24 @@ func defaultConfig() *Config {
 
 // applyEnvOverrides applies environment variable overrides
 func (c *Config) applyEnvOverrides() {
-	if port := os.Getenv("AIRBORNE_GRPC_PORT"); port != "" {
-		if p, err := strconv.Atoi(port); err == nil {
-			c.Server.GRPCPort = p
-		} else {
-			slog.Warn("invalid AIRBORNE_GRPC_PORT, using default", "value", port, "error", err)
-		}
-	}
-
-	if host := os.Getenv("AIRBORNE_HOST"); host != "" {
-		c.Server.Host = host
-	}
+	// Server configuration
+	c.Server.GRPCPort = envutil.GetIntEnv("AIRBORNE_GRPC_PORT", c.Server.GRPCPort)
+	c.Server.Host = envutil.GetStringEnv("AIRBORNE_HOST", c.Server.Host)
 
 	// TLS configuration
-	if enabled := os.Getenv("AIRBORNE_TLS_ENABLED"); enabled != "" {
-		if v, err := strconv.ParseBool(enabled); err == nil {
-			c.TLS.Enabled = v
-		} else {
-			slog.Warn("invalid AIRBORNE_TLS_ENABLED, using default", "value", enabled, "error", err)
-		}
-	}
-	if cert := os.Getenv("AIRBORNE_TLS_CERT_FILE"); cert != "" {
-		c.TLS.CertFile = cert
-	}
-	if key := os.Getenv("AIRBORNE_TLS_KEY_FILE"); key != "" {
-		c.TLS.KeyFile = key
-	}
+	c.TLS.Enabled = envutil.GetBoolEnv("AIRBORNE_TLS_ENABLED", c.TLS.Enabled)
+	c.TLS.CertFile = envutil.GetStringEnv("AIRBORNE_TLS_CERT_FILE", c.TLS.CertFile)
+	c.TLS.KeyFile = envutil.GetStringEnv("AIRBORNE_TLS_KEY_FILE", c.TLS.KeyFile)
 
-	if addr := os.Getenv("REDIS_ADDR"); addr != "" {
-		c.Redis.Addr = addr
-	}
-
-	if pass := os.Getenv("REDIS_PASSWORD"); pass != "" {
-		c.Redis.Password = pass
-	}
-
-	if db := os.Getenv("REDIS_DB"); db != "" {
-		if d, err := strconv.Atoi(db); err == nil {
-			c.Redis.DB = d
-		} else {
-			slog.Warn("invalid REDIS_DB, using default", "value", db, "error", err)
-		}
-	}
+	// Redis configuration
+	c.Redis.Addr = envutil.GetStringEnv("REDIS_ADDR", c.Redis.Addr)
+	c.Redis.Password = envutil.GetStringEnv("REDIS_PASSWORD", c.Redis.Password)
+	c.Redis.DB = envutil.GetIntEnv("REDIS_DB", c.Redis.DB)
 
 	// Database configuration
-	if enabled := os.Getenv("DATABASE_ENABLED"); enabled != "" {
-		if v, err := strconv.ParseBool(enabled); err == nil {
-			c.Database.Enabled = v
-		} else {
-			slog.Warn("invalid DATABASE_ENABLED, using default", "value", enabled, "error", err)
-		}
-	}
+	c.Database.Enabled = envutil.GetBoolEnv("DATABASE_ENABLED", c.Database.Enabled)
+
+	// Database URL - try environment first, then Doppler
 	if url := os.Getenv("DATABASE_URL"); url != "" {
 		c.Database.URL = url
 	} else {
@@ -321,7 +289,8 @@ func (c *Config) applyEnvOverrides() {
 			fmt.Fprintf(os.Stderr, "config: loaded DATABASE_URL from Doppler supabase project\n")
 		}
 	}
-	// Fetch CA certificate from environment or Doppler
+
+	// CA Certificate - try environment first, then Doppler
 	if caCert := os.Getenv("SUPABASE_CA_CERT"); caCert != "" {
 		c.Database.CACert = caCert
 		fmt.Fprintf(os.Stderr, "config: loaded SUPABASE_CA_CERT from environment\n")
@@ -332,107 +301,44 @@ func (c *Config) applyEnvOverrides() {
 			fmt.Fprintf(os.Stderr, "config: loaded SUPABASE_CA_CERT from Doppler supabase project\n")
 		}
 	}
+
 	// Database must be explicitly enabled - do not auto-enable to avoid production surprises
 	if c.Database.URL != "" && !c.Database.Enabled {
 		fmt.Fprintf(os.Stderr, "WARNING: DATABASE_URL is set but database is not enabled. Set DATABASE_ENABLED=true to use database persistence.\n")
 	}
-	if maxConn := os.Getenv("DATABASE_MAX_CONNECTIONS"); maxConn != "" {
-		if n, err := strconv.Atoi(maxConn); err == nil {
-			c.Database.MaxConnections = n
-		} else {
-			slog.Warn("invalid DATABASE_MAX_CONNECTIONS, using default", "value", maxConn, "error", err)
-		}
-	}
-	if logQueries := os.Getenv("DATABASE_LOG_QUERIES"); logQueries != "" {
-		if v, err := strconv.ParseBool(logQueries); err == nil {
-			c.Database.LogQueries = v
-		} else {
-			slog.Warn("invalid DATABASE_LOG_QUERIES, using default", "value", logQueries, "error", err)
-		}
-	}
+
+	c.Database.MaxConnections = envutil.GetIntEnv("DATABASE_MAX_CONNECTIONS", c.Database.MaxConnections)
+	c.Database.LogQueries = envutil.GetBoolEnv("DATABASE_LOG_QUERIES", c.Database.LogQueries)
 
 	// Admin HTTP server configuration
-	if enabled := os.Getenv("ADMIN_ENABLED"); enabled != "" {
-		if v, err := strconv.ParseBool(enabled); err == nil {
-			c.Admin.Enabled = v
-		} else {
-			slog.Warn("invalid ADMIN_ENABLED, using default", "value", enabled, "error", err)
-		}
-	}
-	if port := os.Getenv("ADMIN_PORT"); port != "" {
-		if p, err := strconv.Atoi(port); err == nil {
-			c.Admin.Port = p
-		} else {
-			slog.Warn("invalid ADMIN_PORT, using default", "value", port, "error", err)
-		}
-	}
+	c.Admin.Enabled = envutil.GetBoolEnv("ADMIN_ENABLED", c.Admin.Enabled)
+	c.Admin.Port = envutil.GetIntEnv("ADMIN_PORT", c.Admin.Port)
 
-	if token := os.Getenv("AIRBORNE_ADMIN_TOKEN"); token != "" {
-		c.Auth.AdminToken = token
-	}
+	// Auth configuration
+	c.Auth.AdminToken = envutil.GetStringEnv("AIRBORNE_ADMIN_TOKEN", c.Auth.AdminToken)
+	c.Auth.AuthMode = envutil.GetStringEnv("AIRBORNE_AUTH_MODE", c.Auth.AuthMode)
 
-	if mode := os.Getenv("AIRBORNE_AUTH_MODE"); mode != "" {
-		c.Auth.AuthMode = mode
-	}
+	// Logging configuration
+	c.Logging.Level = envutil.GetStringEnv("AIRBORNE_LOG_LEVEL", c.Logging.Level)
+	c.Logging.Format = envutil.GetStringEnv("AIRBORNE_LOG_FORMAT", c.Logging.Format)
 
-	if level := os.Getenv("AIRBORNE_LOG_LEVEL"); level != "" {
-		c.Logging.Level = level
-	}
-
-	if format := os.Getenv("AIRBORNE_LOG_FORMAT"); format != "" {
-		c.Logging.Format = format
-	}
-
+	// Startup mode
 	if mode := os.Getenv("AIRBORNE_STARTUP_MODE"); mode != "" {
 		c.StartupMode = StartupMode(mode)
 	}
 
 	// RAG configuration
-	if enabled := os.Getenv("RAG_ENABLED"); enabled != "" {
-		if v, err := strconv.ParseBool(enabled); err == nil {
-			c.RAG.Enabled = v
-		} else {
-			slog.Warn("invalid RAG_ENABLED, using default", "value", enabled, "error", err)
-		}
-	}
-	if url := os.Getenv("RAG_OLLAMA_URL"); url != "" {
-		c.RAG.OllamaURL = url
-	}
-	if model := os.Getenv("RAG_EMBEDDING_MODEL"); model != "" {
-		c.RAG.EmbeddingModel = model
-	}
-	if url := os.Getenv("RAG_QDRANT_URL"); url != "" {
-		c.RAG.QdrantURL = url
-	}
-	if url := os.Getenv("RAG_DOCBOX_URL"); url != "" {
-		c.RAG.DocboxURL = url
-	}
-	if size := os.Getenv("RAG_CHUNK_SIZE"); size != "" {
-		if s, err := strconv.Atoi(size); err == nil {
-			c.RAG.ChunkSize = s
-		} else {
-			slog.Warn("invalid RAG_CHUNK_SIZE, using default", "value", size, "error", err)
-		}
-	}
-	if overlap := os.Getenv("RAG_CHUNK_OVERLAP"); overlap != "" {
-		if o, err := strconv.Atoi(overlap); err == nil {
-			c.RAG.ChunkOverlap = o
-		} else {
-			slog.Warn("invalid RAG_CHUNK_OVERLAP, using default", "value", overlap, "error", err)
-		}
-	}
-	if topK := os.Getenv("RAG_RETRIEVAL_TOP_K"); topK != "" {
-		if k, err := strconv.Atoi(topK); err == nil {
-			c.RAG.RetrievalTopK = k
-		} else {
-			slog.Warn("invalid RAG_RETRIEVAL_TOP_K, using default", "value", topK, "error", err)
-		}
-	}
+	c.RAG.Enabled = envutil.GetBoolEnv("RAG_ENABLED", c.RAG.Enabled)
+	c.RAG.OllamaURL = envutil.GetStringEnv("RAG_OLLAMA_URL", c.RAG.OllamaURL)
+	c.RAG.EmbeddingModel = envutil.GetStringEnv("RAG_EMBEDDING_MODEL", c.RAG.EmbeddingModel)
+	c.RAG.QdrantURL = envutil.GetStringEnv("RAG_QDRANT_URL", c.RAG.QdrantURL)
+	c.RAG.DocboxURL = envutil.GetStringEnv("RAG_DOCBOX_URL", c.RAG.DocboxURL)
+	c.RAG.ChunkSize = envutil.GetIntEnv("RAG_CHUNK_SIZE", c.RAG.ChunkSize)
+	c.RAG.ChunkOverlap = envutil.GetIntEnv("RAG_CHUNK_OVERLAP", c.RAG.ChunkOverlap)
+	c.RAG.RetrievalTopK = envutil.GetIntEnv("RAG_RETRIEVAL_TOP_K", c.RAG.RetrievalTopK)
 
 	// Markdown service configuration
-	if addr := os.Getenv("MARKDOWN_SVC_ADDR"); addr != "" {
-		c.MarkdownSvcAddr = addr
-	}
+	c.MarkdownSvcAddr = envutil.GetStringEnv("MARKDOWN_SVC_ADDR", c.MarkdownSvcAddr)
 }
 
 // expandEnvVars expands ${VAR} patterns in string fields
