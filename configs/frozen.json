@@ -1,0 +1,123 @@
+{
+  "global_config": {
+    "Server": {
+      "GRPCPort": 50612,
+      "Host": "0.0.0.0"
+    },
+    "TLS": {
+      "Enabled": false,
+      "CertFile": "",
+      "KeyFile": ""
+    },
+    "Redis": {
+      "Addr": "localhost:6379",
+      "Password": "",
+      "DB": 0
+    },
+    "Database": {
+      "Enabled": false,
+      "URL": "",
+      "MaxConnections": 10,
+      "LogQueries": false,
+      "CACert": ""
+    },
+    "Admin": {
+      "Enabled": false,
+      "Port": 8473
+    },
+    "Auth": {
+      "AdminToken": "",
+      "AuthMode": "static"
+    },
+    "RateLimits": {
+      "DefaultRPM": 60,
+      "DefaultRPD": 10000,
+      "DefaultTPM": 100000
+    },
+    "Providers": {
+      "anthropic": {
+        "Enabled": true,
+        "DefaultModel": "claude-sonnet-4-20250514",
+        "BaseURL": ""
+      },
+      "gemini": {
+        "Enabled": true,
+        "DefaultModel": "gemini-3-pro-preview",
+        "BaseURL": ""
+      },
+      "openai": {
+        "Enabled": true,
+        "DefaultModel": "gpt-4o",
+        "BaseURL": ""
+      }
+    },
+    "Failover": {
+      "Enabled": true,
+      "DefaultOrder": [
+        "openai",
+        "gemini",
+        "anthropic"
+      ]
+    },
+    "Logging": {
+      "Level": "info",
+      "Format": "json"
+    },
+    "StartupMode": "production",
+    "RAG": {
+      "Enabled": false,
+      "OllamaURL": "http://localhost:11434",
+      "EmbeddingModel": "nomic-embed-text",
+      "QdrantURL": "http://localhost:6333",
+      "DocboxURL": "http://localhost:41273",
+      "ChunkSize": 2000,
+      "ChunkOverlap": 200,
+      "RetrievalTopK": 5
+    },
+    "MarkdownSvcAddr": ""
+  },
+  "tenant_configs": [
+    {
+      "tenant_id": "ai8",
+      "display_name": "",
+      "providers": {
+        "anthropic": {
+          "enabled": true,
+          "api_key": "ENV=ANTHROPIC_API_KEY",
+          "model": "claude-sonnet-4-20250514"
+        },
+        "gemini": {
+          "enabled": true,
+          "api_key": "ENV=GEMINI_API_KEY",
+          "model": "gemini-3-pro-preview"
+        },
+        "openai": {
+          "enabled": true,
+          "api_key": "ENV=OPENAI_API_KEY",
+          "model": "gpt-4o"
+        }
+      },
+      "rate_limits": {
+        "rpm": 0,
+        "rpd": 0,
+        "tpm": 0
+      },
+      "failover": {
+        "enabled": true,
+        "order": [
+          "gemini",
+          "openai",
+          "anthropic"
+        ]
+      },
+      "image_generation": {
+        "enabled": false,
+        "provider": "",
+        "trigger_phrases": null,
+        "fallback_on_error": false
+      }
+    }
+  ],
+  "frozen_at": "2026-01-22T19:58:35+01:00",
+  "single_tenant": true
+}
