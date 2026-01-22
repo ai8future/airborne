@@ -457,7 +457,7 @@ func TestPrepareRequest_CustomBaseURLRequiresAdmin(t *testing.T) {
 	req := &pb.GenerateReplyRequest{
 		UserInput: "Hello",
 		ProviderConfigs: map[string]*pb.ProviderConfig{
-			"openai": {BaseUrl: "https://custom.example.com"},
+			"openai": {BaseUrl: "https://api.openai.com"},
 		},
 	}
 
