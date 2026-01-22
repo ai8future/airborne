@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.4] - 2026-01-22
+
+### Added
+- **Config Freezer**: Production configuration management tool to eliminate runtime config complexity
+  - New `airborne-freeze` command to pre-resolve all configuration at build/deploy time
+  - Frozen configs contain all resolved secrets, validated tenant configs, and zero runtime logic
+  - Set `AIRBORNE_USE_FROZEN=true` to load frozen config (just JSON parsing, no Doppler/env vars)
+  - Reduces config loading from ~300-500ms to ~5ms
+  - See `docs/CONFIG_FREEZER.md` for complete documentation
+
+### Changed
+- **Fatal validation errors**: Invalid `startup_mode` now fails at startup instead of logging a warning
+- **No database auto-enable**: Database must be explicitly enabled via `DATABASE_ENABLED=true`
+  - Previously: Setting `DATABASE_URL` would auto-enable the database
+  - Now: Logs a warning if URL is set but database is not enabled
+- **Enhanced tenant loading logs**: Clear logging when using Doppler vs file-based tenant loading
+  - Shows "Loading tenant configs from Doppler API" or "DOPPLER_TOKEN not set, loading from files"
+  - Displays count of loaded tenants
+
+### Technical
+- Added `LoadFrozen()` function to `internal/config/config.go`
+- Modified `Load()` to check `AIRBORNE_USE_FROZEN` env var before complex loading
+- Added tenant loading visibility in `internal/tenant/manager.go`
+- Added `FrozenConfig` struct in freeze command for full config snapshots
+- Config validation now returns errors instead of warnings for invalid modes
+
+Agent: Claude:Sonnet 4.5
+
 ## [1.7.3] - 2026-01-22
 
 ### Added

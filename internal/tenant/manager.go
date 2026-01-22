@@ -2,6 +2,7 @@ package tenant
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"sync"
 )
@@ -43,16 +44,20 @@ func Load(configDir string) (*Manager, error) {
 
 	// Try Doppler first if configured
 	if DopplerEnabled() {
+		fmt.Fprintf(os.Stderr, "INFO: Loading tenant configs from Doppler API\n")
 		tenantCfgs, err = LoadTenantsFromDoppler()
 		if err != nil {
 			return nil, fmt.Errorf("doppler tenant load: %w", err)
 		}
+		fmt.Fprintf(os.Stderr, "INFO: Loaded %d tenant configs from Doppler\n", len(tenantCfgs))
 	} else {
 		// Fall back to file-based loading
+		fmt.Fprintf(os.Stderr, "INFO: DOPPLER_TOKEN not set, loading tenant configs from files in %s\n", effectiveDir)
 		tenantCfgs, err = loadTenants(effectiveDir)
 		if err != nil {
 			return nil, err
 		}
+		fmt.Fprintf(os.Stderr, "INFO: Loaded %d tenant configs from files\n", len(tenantCfgs))
 	}
 
 	return &Manager{

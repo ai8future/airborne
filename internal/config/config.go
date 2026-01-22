@@ -110,8 +110,19 @@ type LoggingConfig struct {
 	Format string `yaml:"format"`
 }
 
-// Load loads configuration from file and environment variables
+// Load loads configuration from file and environment variables.
+// If AIRBORNE_USE_FROZEN is set to "true", loads from frozen config instead.
 func Load() (*Config, error) {
+	// Check if we should use frozen config
+	if os.Getenv("AIRBORNE_USE_FROZEN") == "true" {
+		frozenPath := os.Getenv("AIRBORNE_FROZEN_CONFIG_PATH")
+		if frozenPath == "" {
+			frozenPath = "configs/frozen.json"
+		}
+		slog.Info("Loading frozen configuration", "path", frozenPath)
+		return LoadFrozen(frozenPath)
+	}
+
 	cfg := defaultConfig()
 
 	// Try to load from file
@@ -144,6 +155,24 @@ func Load() (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// LoadFrozen loads a pre-frozen configuration from JSON.
+// This bypasses all Doppler fetches, env var resolution, and complex loading logic.
+// Use this in production after running `airborne-freeze` to generate frozen.json
+func LoadFrozen(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read frozen config: %w", err)
+	}
+
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse frozen config: %w", err)
+	}
+
+	// No validation needed - frozen config was already validated at freeze time
+	return &cfg, nil
 }
 
 // defaultConfig returns configuration with sensible defaults
@@ -286,10 +315,9 @@ func (c *Config) applyEnvOverrides() {
 			fmt.Fprintf(os.Stderr, "config: loaded SUPABASE_CA_CERT from Doppler supabase project\n")
 		}
 	}
-	// Auto-enable database if URL is configured
+	// Database must be explicitly enabled - do not auto-enable to avoid production surprises
 	if c.Database.URL != "" && !c.Database.Enabled {
-		c.Database.Enabled = true
-		fmt.Fprintf(os.Stderr, "config: auto-enabled database persistence\n")
+		fmt.Fprintf(os.Stderr, "WARNING: DATABASE_URL is set but database is not enabled. Set DATABASE_ENABLED=true to use database persistence.\n")
 	}
 	if maxConn := os.Getenv("DATABASE_MAX_CONNECTIONS"); maxConn != "" {
 		if n, err := strconv.Atoi(maxConn); err == nil {
@@ -428,8 +456,8 @@ func (c *Config) validate() error {
 	case StartupModeProduction, StartupModeDevelopment, "":
 		// Valid modes
 	default:
-		// Log warning but treat as production (fail-safe)
-		fmt.Fprintf(os.Stderr, "Warning: unrecognized startup_mode %q, defaulting to production\n", c.StartupMode)
+		// Fatal error - do not allow invalid startup modes
+		return fmt.Errorf("invalid startup_mode %q, must be 'production' or 'development'", c.StartupMode)
 	}
 
 	return nil
