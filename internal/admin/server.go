@@ -102,7 +102,7 @@ func NewServer(dbClient *db.Client, cfg Config) *Server {
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
 		Handler:      mux,
 		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		WriteTimeout: 120 * time.Second, // Must exceed gRPC timeout (90s) to return errors
 		IdleTimeout:  60 * time.Second,
 	}
 
@@ -495,8 +495,8 @@ func (s *Server) handleTest(w http.ResponseWriter, r *http.Request) {
 		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+s.authToken)
 	}
 
-	// Set timeout
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	// Set timeout (must be less than HTTP WriteTimeout of 120s)
+	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 
 	start := time.Now()
@@ -508,7 +508,7 @@ func (s *Server) handleTest(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK) // Return 200 with error in body
 		json.NewEncoder(w).Encode(TestResponse{
-			Error: "gRPC call failed: " + err.Error(),
+			Error: err.Error(),
 		})
 		return
 	}
@@ -742,8 +742,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+s.authToken)
 	}
 
-	// Set timeout
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	// Set timeout (must be less than HTTP WriteTimeout of 120s)
+	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 
 	// Make gRPC call
@@ -753,7 +753,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK) // Return 200 with error in body
 		json.NewEncoder(w).Encode(ChatResponse{
-			Error: "gRPC call failed: " + err.Error(),
+			Error: err.Error(),
 		})
 		return
 	}
@@ -1155,7 +1155,7 @@ func (s *Server) handleChatWithFile(w http.ResponseWriter, r *http.Request, req 
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 
 	// Call Gemini directly
@@ -1166,7 +1166,7 @@ func (s *Server) handleChatWithFile(w http.ResponseWriter, r *http.Request, req 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK) // Return 200 with error in body
 		json.NewEncoder(w).Encode(ChatResponse{
-			Error: "Gemini call failed: " + err.Error(),
+			Error: err.Error(),
 		})
 		return
 	}

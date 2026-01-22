@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -311,10 +312,17 @@ func (r *Repository) GetActivityFeed(ctx context.Context, limit int) ([]Activity
 		}
 		// Set tenant ID from repository context
 		entry.TenantID = r.tenantID
-		// Set status based on provider presence (if we got a response, it's success)
-		entry.Status = "success"
-		// Truncate content for preview, keep full content
-		entry.FullContent = entry.Content
+		// Detect failed requests by content prefix
+		if strings.HasPrefix(entry.Content, "[FAILED] ") {
+			entry.Status = "failed"
+			// Remove the prefix from content for display
+			entry.Content = strings.TrimPrefix(entry.Content, "[FAILED] ")
+			entry.FullContent = entry.Content
+		} else {
+			entry.Status = "success"
+			entry.FullContent = entry.Content
+		}
+		// Truncate content for preview
 		if len(entry.Content) > 100 {
 			entry.Content = entry.Content[:100] + "..."
 		}
@@ -441,8 +449,15 @@ func (r *Repository) GetActivityFeedAllTenants(ctx context.Context, limit int) (
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan activity entry: %w", err)
 		}
-		entry.Status = "success"
-		entry.FullContent = entry.Content
+		// Detect failed requests by content prefix
+		if strings.HasPrefix(entry.Content, "[FAILED] ") {
+			entry.Status = "failed"
+			entry.Content = strings.TrimPrefix(entry.Content, "[FAILED] ")
+			entry.FullContent = entry.Content
+		} else {
+			entry.Status = "success"
+			entry.FullContent = entry.Content
+		}
 		if len(entry.Content) > 100 {
 			entry.Content = entry.Content[:100] + "..."
 		}

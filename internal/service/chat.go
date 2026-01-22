@@ -294,11 +294,15 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 				// Return original error if fallback also fails
 			}
 		}
+		processingTimeMs := int(time.Since(startTime).Milliseconds())
 		slog.Error("provider request failed",
 			"provider", prepared.provider.Name(),
 			"error", err,
 			"request_id", prepared.requestID,
+			"processing_ms", processingTimeMs,
 		)
+		// Persist the failed request for activity tracking
+		s.persistFailedRequest(ctx, req, prepared.provider.Name(), prepared.providerCfg.Model, sanitize.SanitizeForClient(err), processingTimeMs)
 		return nil, status.Error(codes.Internal, sanitize.SanitizeForClient(err))
 	}
 
@@ -1167,6 +1171,96 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 				"error", err,
 				"thread_id", threadID,
 				"tenant_id", tenantID,
+			)
+		}
+	}()
+}
+
+// persistFailedRequest stores a failed request in the database for activity tracking.
+func (s *ChatService) persistFailedRequest(ctx context.Context, req *pb.GenerateReplyRequest, providerName, model string, errorMsg string, processingTimeMs int) {
+	// Extract tenant and user info from context
+	tenantID := auth.TenantIDFromContext(ctx)
+	if tenantID == "" {
+		slog.Warn("no tenant ID in context, skipping failed request persistence")
+		return
+	}
+
+	// Validate tenant ID is in our allowed list
+	if !db.ValidTenantIDs[tenantID] {
+		slog.Warn("invalid tenant ID, skipping failed request persistence", "tenant_id", tenantID)
+		return
+	}
+
+	if s.dbClient == nil {
+		return
+	}
+
+	userID := ""
+	if client := auth.ClientFromContext(ctx); client != nil {
+		userID = client.ClientID
+	}
+	if userID == "" {
+		userID = req.ClientId
+	}
+	if userID == "" {
+		userID = "anonymous"
+	}
+
+	// Generate or use existing thread ID
+	threadID, err := uuid.Parse(req.RequestId)
+	if err != nil {
+		threadID = uuid.New()
+	}
+
+	// Build debug info with error
+	debugInfo := &db.DebugInfo{
+		SystemPrompt: req.Instructions,
+	}
+
+	// Run persistence in background goroutine
+	go func() {
+		persistCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		repo, err := s.dbClient.TenantRepository(tenantID)
+		if err != nil {
+			slog.Error("failed to get tenant repository for failed request",
+				"error", err,
+				"tenant_id", tenantID,
+			)
+			return
+		}
+
+		// Store as a failed message with error content
+		err = repo.PersistConversationTurnWithDebug(
+			persistCtx,
+			threadID,
+			userID,
+			req.UserInput,
+			"[FAILED] "+errorMsg, // Mark content as failed
+			providerName,
+			model,
+			"",  // No response ID for failed requests
+			0,   // No input tokens
+			0,   // No output tokens
+			processingTimeMs,
+			0,   // No cost
+			0,   // No grounding queries
+			0,   // No grounding cost
+			debugInfo,
+			nil, // No citations
+		)
+		if err != nil {
+			slog.Error("failed to persist failed request",
+				"error", err,
+				"thread_id", threadID,
+				"tenant_id", tenantID,
+			)
+		} else {
+			slog.Debug("persisted failed request",
+				"thread_id", threadID,
+				"tenant_id", tenantID,
+				"error", errorMsg,
 			)
 		}
 	}()
