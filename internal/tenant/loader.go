@@ -11,12 +11,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// loadTenantsWithoutSecrets loads tenant configs without resolving ENV=/FILE= secrets.
-// Used by the freeze command to preserve secret references in frozen config.
-func loadTenantsWithoutSecrets(dir string) (map[string]TenantConfig, error) {
-	return loadTenantsInternal(dir, false)
-}
-
 // loadTenants loads all tenant configurations from the given directory.
 // Supports both JSON (.json) and YAML (.yaml, .yml) files.
 func loadTenants(dir string) (map[string]TenantConfig, error) {

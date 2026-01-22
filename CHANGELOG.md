@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.6] - 2026-01-22
+
+### Fixed
+- **CRITICAL**: Fixed `expandEnv()` to handle `ENV=VAR_NAME` pattern used by frozen configs
+  - Previous version would NOT resolve `ENV=DATABASE_URL` references
+  - Frozen configs would fail in production with literal string values
+  - Now correctly resolves all three patterns: `ENV=VAR`, `${VAR}`, `$VAR`
+- **Fixed**: Added `Database.CACert` to `expandEnvVars()` for SSL certificate resolution
+- **Cleaned up**: Removed unused `loadTenantsWithoutSecrets()` function
+
+### Technical
+- Updated `expandEnv()` with ENV= prefix handling (critical for frozen configs)
+- Added Database.CACert expansion in config loading
+- Improved code documentation for environment variable expansion
+
+Agent: Claude:Sonnet 4.5
+
 ## [1.7.5] - 2026-01-22
 
 ### Changed

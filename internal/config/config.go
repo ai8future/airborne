@@ -439,17 +439,28 @@ func (c *Config) applyEnvOverrides() {
 func (c *Config) expandEnvVars() {
 	c.Redis.Password = expandEnv(c.Redis.Password)
 	c.Database.URL = expandEnv(c.Database.URL)
+	c.Database.CACert = expandEnv(c.Database.CACert)
 	c.Auth.AdminToken = expandEnv(c.Auth.AdminToken)
 	c.TLS.CertFile = expandEnv(c.TLS.CertFile)
 	c.TLS.KeyFile = expandEnv(c.TLS.KeyFile)
 }
 
-// expandEnv expands ${VAR} patterns in a string
+// expandEnv expands environment variable patterns in a string.
+// Supports ENV=VAR_NAME (used by frozen configs), ${VAR}, and $VAR syntax.
 func expandEnv(s string) string {
+	// Handle ENV= prefix (used by frozen configs)
+	if strings.HasPrefix(s, "ENV=") {
+		varName := strings.TrimPrefix(s, "ENV=")
+		return os.Getenv(varName)
+	}
+
+	// Handle ${VAR} syntax
 	if strings.HasPrefix(s, "${") && strings.HasSuffix(s, "}") {
 		varName := s[2 : len(s)-1]
 		return os.Getenv(varName)
 	}
+
+	// Handle $VAR syntax and passthrough non-variable strings
 	return os.ExpandEnv(s)
 }
 
