@@ -20,13 +20,13 @@ func TestNewDocboxExtractor_Defaults(t *testing.T) {
 }
 
 func TestNewDocboxExtractor_CustomConfig(t *testing.T) {
-	// Use HTTPS for non-localhost URLs (per SSRF validation rules)
+	// Use a real resolvable domain for testing (validation does DNS lookup)
 	ext := NewDocboxExtractor(DocboxConfig{
-		BaseURL: "https://custom.example.com:8080",
+		BaseURL: "https://api.openai.com",
 		Timeout: 60 * time.Second,
 	})
 
-	if ext.baseURL != "https://custom.example.com:8080" {
+	if ext.baseURL != "https://api.openai.com" {
 		t.Errorf("expected custom baseURL, got %s", ext.baseURL)
 	}
 }
