@@ -197,6 +197,8 @@ func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 			"output_tokens":      e.OutputTokens,
 			"tokens_used":        e.TotalTokens,
 			"cost_usd":           e.CostUSD,
+			"grounding_queries":  e.GroundingQueries,
+			"grounding_cost_usd": e.GroundingCostUSD,
 			"thread_cost_usd":    e.ThreadCostUSD,
 			"processing_time_ms": e.ProcessingTimeMs,
 			"status":             e.Status,
@@ -549,15 +551,17 @@ type ChatRequest struct {
 
 // ChatResponse is the response from the chat endpoint.
 type ChatResponse struct {
-	ID        string  `json:"id,omitempty"`
-	Content   string  `json:"content,omitempty"`
-	Provider  string  `json:"provider,omitempty"`
-	Model     string  `json:"model,omitempty"`
-	TokensIn  int     `json:"tokens_in,omitempty"`
-	TokensOut int     `json:"tokens_out,omitempty"`
-	CostUSD   float64 `json:"cost_usd,omitempty"`
-	Cached    bool    `json:"cached,omitempty"`
-	Error     string  `json:"error,omitempty"`
+	ID               string  `json:"id,omitempty"`
+	Content          string  `json:"content,omitempty"`
+	Provider         string  `json:"provider,omitempty"`
+	Model            string  `json:"model,omitempty"`
+	TokensIn         int     `json:"tokens_in,omitempty"`
+	TokensOut        int     `json:"tokens_out,omitempty"`
+	CostUSD          float64 `json:"cost_usd,omitempty"`
+	GroundingQueries int     `json:"grounding_queries,omitempty"`
+	GroundingCostUSD float64 `json:"grounding_cost_usd,omitempty"`
+	Cached           bool    `json:"cached,omitempty"`
+	Error            string  `json:"error,omitempty"`
 }
 
 // handleChat sends a message to an existing thread.
@@ -766,12 +770,14 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	// Build response
 	chatResp := ChatResponse{
-		ID:        resp.ResponseId,
-		Content:   resp.Text,
-		Provider:  providerName,
-		Model:     resp.Model,
-		TokensIn:  inputTokens,
-		TokensOut: outputTokens,
+		ID:               resp.ResponseId,
+		Content:          resp.Text,
+		Provider:         providerName,
+		Model:            resp.Model,
+		TokensIn:         inputTokens,
+		TokensOut:        outputTokens,
+		GroundingQueries: int(resp.GroundingQueries),
+		GroundingCostUSD: resp.GroundingCostUsd,
 	}
 
 	// Cache successful response for idempotency (24h TTL)

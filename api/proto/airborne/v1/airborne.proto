@@ -100,6 +100,10 @@ message GenerateReplyResponse {
 
   // Structured metadata (when enable_structured_output is true)
   StructuredMetadata structured_metadata = 15;
+
+  // Grounding/web search cost tracking
+  int32 grounding_queries = 16;    // Number of web search queries executed
+  double grounding_cost_usd = 17;  // Cost of grounding queries in USD
 }
 
 // GenerateReplyChunk is a streaming response chunk

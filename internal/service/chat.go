@@ -811,6 +811,12 @@ func (s *ChatService) buildResponse(result provider.GenerateResult, providerName
 		resp.OriginalError = originalError
 	}
 
+	// Add grounding cost tracking
+	if result.GroundingQueries > 0 {
+		resp.GroundingQueries = int32(result.GroundingQueries)
+		resp.GroundingCostUsd = pricing.CalculateGroundingCost(result.Model, result.GroundingQueries)
+	}
+
 	return resp
 }
 

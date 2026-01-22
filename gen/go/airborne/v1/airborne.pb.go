@@ -266,8 +266,11 @@ type GenerateReplyResponse struct {
 	HtmlContent string `protobuf:"bytes,14,opt,name=html_content,json=htmlContent,proto3" json:"html_content,omitempty"`
 	// Structured metadata (when enable_structured_output is true)
 	StructuredMetadata *StructuredMetadata `protobuf:"bytes,15,opt,name=structured_metadata,json=structuredMetadata,proto3" json:"structured_metadata,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// Grounding/web search cost tracking
+	GroundingQueries int32   `protobuf:"varint,16,opt,name=grounding_queries,json=groundingQueries,proto3" json:"grounding_queries,omitempty"`    // Number of web search queries executed
+	GroundingCostUsd float64 `protobuf:"fixed64,17,opt,name=grounding_cost_usd,json=groundingCostUsd,proto3" json:"grounding_cost_usd,omitempty"` // Cost of grounding queries in USD
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *GenerateReplyResponse) Reset() {
@@ -403,6 +406,20 @@ func (x *GenerateReplyResponse) GetStructuredMetadata() *StructuredMetadata {
 		return x.StructuredMetadata
 	}
 	return nil
+}
+
+func (x *GenerateReplyResponse) GetGroundingQueries() int32 {
+	if x != nil {
+		return x.GroundingQueries
+	}
+	return 0
+}
+
+func (x *GenerateReplyResponse) GetGroundingCostUsd() float64 {
+	if x != nil {
+		return x.GroundingCostUsd
+	}
+	return 0
 }
 
 // GenerateReplyChunk is a streaming response chunk
@@ -1319,7 +1336,7 @@ const file_airborne_v1_airborne_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x1b.airborne.v1.ProviderConfigR\x05value:\x028\x01\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xdd\x05\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb8\x06\n" +
 	"\x15GenerateReplyResponse\x12\x12\n" +
 	"\x04text\x18\x01 \x01(\tR\x04text\x12\x1f\n" +
 	"\vresponse_id\x18\x02 \x01(\tR\n" +
@@ -1339,7 +1356,9 @@ const file_airborne_v1_airborne_proto_rawDesc = "" +
 	"\x0fcode_executions\x18\f \x03(\v2 .airborne.v1.CodeExecutionResultR\x0ecodeExecutions\x123\n" +
 	"\x06images\x18\r \x03(\v2\x1b.airborne.v1.GeneratedImageR\x06images\x12!\n" +
 	"\fhtml_content\x18\x0e \x01(\tR\vhtmlContent\x12P\n" +
-	"\x13structured_metadata\x18\x0f \x01(\v2\x1f.airborne.v1.StructuredMetadataR\x12structuredMetadata\"\xeb\x03\n" +
+	"\x13structured_metadata\x18\x0f \x01(\v2\x1f.airborne.v1.StructuredMetadataR\x12structuredMetadata\x12+\n" +
+	"\x11grounding_queries\x18\x10 \x01(\x05R\x10groundingQueries\x12,\n" +
+	"\x12grounding_cost_usd\x18\x11 \x01(\x01R\x10groundingCostUsd\"\xeb\x03\n" +
 	"\x12GenerateReplyChunk\x127\n" +
 	"\n" +
 	"text_delta\x18\x01 \x01(\v2\x16.airborne.v1.TextDeltaH\x00R\ttextDelta\x12=\n" +
