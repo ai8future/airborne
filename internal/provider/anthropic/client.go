@@ -12,10 +12,9 @@ import (
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 
-	"github.com/ai8future/airborne/internal/httpcapture"
 	"github.com/ai8future/airborne/internal/provider"
+	"github.com/ai8future/airborne/internal/provider/httputil"
 	"github.com/ai8future/airborne/internal/retry"
-	"github.com/ai8future/airborne/internal/validation"
 )
 
 const (
@@ -113,20 +112,23 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		defer cancel()
 	}
 
-	// Create capturing transport for debug JSON (always enabled for admin dashboard)
-	capture := httpcapture.New()
+	// Create captured client config with validation
+	httpCfg, err := httputil.NewCapturedClientConfig(cfg.APIKey, cfg.BaseURL)
+	if err != nil {
+		return provider.GenerateResult{}, fmt.Errorf("client setup: %w", err)
+	}
+
+	// Convert to Anthropic-specific options
 	opts := []option.RequestOption{
-		option.WithAPIKey(cfg.APIKey),
-		option.WithHTTPClient(capture.Client()),
+		option.WithAPIKey(httpCfg.APIKey),
+		option.WithHTTPClient(httpCfg.HTTPClient),
 	}
-	if cfg.BaseURL != "" {
-		// SECURITY: Validate base URL to prevent SSRF attacks
-		if err := validation.ValidateProviderURL(cfg.BaseURL); err != nil {
-			return provider.GenerateResult{}, fmt.Errorf("invalid base URL: %w", err)
-		}
-		opts = append(opts, option.WithBaseURL(cfg.BaseURL))
+	if httpCfg.BaseURL != "" {
+		opts = append(opts, option.WithBaseURL(httpCfg.BaseURL))
 	}
+
 	client := anthropic.NewClient(opts...)
+	capture := httpCfg.Capture
 
 	// Build messages from history and current input
 	messages := buildMessages(params.UserInput, params.ConversationHistory)
@@ -321,18 +323,22 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 		model = params.OverrideModel
 	}
 
-	// Create client (no HTTP capture needed for streaming)
+	// Create captured client config with validation
+	httpCfg, err := httputil.NewCapturedClientConfig(cfg.APIKey, cfg.BaseURL)
+	if err != nil {
+		cleanup()
+		return nil, fmt.Errorf("client setup: %w", err)
+	}
+
+	// Convert to Anthropic-specific options
 	opts := []option.RequestOption{
-		option.WithAPIKey(cfg.APIKey),
+		option.WithAPIKey(httpCfg.APIKey),
+		option.WithHTTPClient(httpCfg.HTTPClient),
 	}
-	if cfg.BaseURL != "" {
-		// SECURITY: Validate base URL to prevent SSRF attacks
-		if err := validation.ValidateProviderURL(cfg.BaseURL); err != nil {
-			cleanup()
-			return nil, fmt.Errorf("invalid base URL: %w", err)
-		}
-		opts = append(opts, option.WithBaseURL(cfg.BaseURL))
+	if httpCfg.BaseURL != "" {
+		opts = append(opts, option.WithBaseURL(httpCfg.BaseURL))
 	}
+
 	client := anthropic.NewClient(opts...)
 
 	// Build messages

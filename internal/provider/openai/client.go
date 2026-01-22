@@ -17,10 +17,9 @@ import (
 	"github.com/openai/openai-go/shared"
 	"github.com/openai/openai-go/shared/constant"
 
-	"github.com/ai8future/airborne/internal/httpcapture"
 	"github.com/ai8future/airborne/internal/provider"
+	"github.com/ai8future/airborne/internal/provider/httputil"
 	"github.com/ai8future/airborne/internal/retry"
-	"github.com/ai8future/airborne/internal/validation"
 )
 
 const (
@@ -105,21 +104,23 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		model = params.OverrideModel
 	}
 
-	// Create capturing transport for debug JSON (always enabled for admin dashboard)
-	capture := httpcapture.New()
-	clientOpts := []option.RequestOption{
-		option.WithAPIKey(cfg.APIKey),
-		option.WithHTTPClient(capture.Client()),
+	// Create captured client config with validation
+	httpCfg, err := httputil.NewCapturedClientConfig(cfg.APIKey, cfg.BaseURL)
+	if err != nil {
+		return provider.GenerateResult{}, fmt.Errorf("client setup: %w", err)
 	}
-	if cfg.BaseURL != "" {
-		// SECURITY: Validate base URL to prevent SSRF attacks
-		if err := validation.ValidateProviderURL(cfg.BaseURL); err != nil {
-			return provider.GenerateResult{}, fmt.Errorf("invalid base URL: %w", err)
-		}
-		clientOpts = append(clientOpts, option.WithBaseURL(cfg.BaseURL))
+
+	// Convert to OpenAI-specific options
+	clientOpts := []option.RequestOption{
+		option.WithAPIKey(httpCfg.APIKey),
+		option.WithHTTPClient(httpCfg.HTTPClient),
+	}
+	if httpCfg.BaseURL != "" {
+		clientOpts = append(clientOpts, option.WithBaseURL(httpCfg.BaseURL))
 	}
 
 	client := openai.NewClient(clientOpts...)
+	capture := httpCfg.Capture
 
 	// Build user prompt from input and history
 	userPrompt := buildUserPrompt(params.UserInput, params.ConversationHistory)
@@ -354,16 +355,20 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 		model = params.OverrideModel
 	}
 
-	// Build client options
-	clientOpts := []option.RequestOption{
-		option.WithAPIKey(cfg.APIKey),
+	// Create captured client config with validation
+	httpCfg, err := httputil.NewCapturedClientConfig(cfg.APIKey, cfg.BaseURL)
+	if err != nil {
+		cleanup()
+		return nil, fmt.Errorf("client setup: %w", err)
 	}
-	if cfg.BaseURL != "" {
-		if err := validation.ValidateProviderURL(cfg.BaseURL); err != nil {
-			cleanup()
-			return nil, fmt.Errorf("invalid base URL: %w", err)
-		}
-		clientOpts = append(clientOpts, option.WithBaseURL(cfg.BaseURL))
+
+	// Convert to OpenAI-specific options
+	clientOpts := []option.RequestOption{
+		option.WithAPIKey(httpCfg.APIKey),
+		option.WithHTTPClient(httpCfg.HTTPClient),
+	}
+	if httpCfg.BaseURL != "" {
+		clientOpts = append(clientOpts, option.WithBaseURL(httpCfg.BaseURL))
 	}
 
 	client := openai.NewClient(clientOpts...)

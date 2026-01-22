@@ -1,27 +1,18 @@
 // Package pricing provides cost calculation for LLM API usage.
-// Pricing data is loaded from JSON files in the configs directory.
+// This is a thin wrapper around github.com/ai8future/pricing_db.
 package pricing
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
-	"sync"
+
+	pricing_db "github.com/ai8future/pricing_db"
 )
 
-// ModelPricing holds per-token costs for a model (in USD per million tokens)
-type ModelPricing struct {
-	InputPerMillion  float64 `json:"input_per_million"`
-	OutputPerMillion float64 `json:"output_per_million"`
-}
-
-// GroundingPricing holds cost per 1000 queries for Google grounding
-type GroundingPricing struct {
-	PerThousandQueries float64 `json:"per_thousand_queries"`
-	BillingModel       string  `json:"billing_model"` // "per_query" or "per_prompt"
-}
+// Type aliases for backwards compatibility
+type ModelPricing = pricing_db.ModelPricing
+type GroundingPricing = pricing_db.GroundingPricing
+type PricingMetadata = pricing_db.PricingMetadata
+type ProviderPricing = pricing_db.ProviderPricing
 
 // Cost represents the calculated cost breakdown
 type Cost struct {
@@ -31,231 +22,110 @@ type Cost struct {
 	InputCost    float64
 	OutputCost   float64
 	TotalCost    float64
-	Unknown      bool // true if model not found in pricing data
+	Unknown      bool
 }
 
-// PricingMetadata contains source and update information
-type PricingMetadata struct {
-	Updated string `json:"updated"`
-	Source  string `json:"source,omitempty"`
+// Format returns a human-readable cost breakdown
+func (c Cost) Format() string {
+	if c.Unknown {
+		return fmt.Sprintf("Cost: unknown (model %q not in pricing data)", c.Model)
+	}
+	return fmt.Sprintf("Input: $%.4f (%d tokens) | Output: $%.4f (%d tokens) | Total: $%.4f",
+		c.InputCost, c.InputTokens, c.OutputCost, c.OutputTokens, c.TotalCost)
 }
 
-// ProviderPricing holds all pricing data for a single provider
-type ProviderPricing struct {
-	Provider string                  `json:"provider"`
-	Models   map[string]ModelPricing `json:"models"`
-	Metadata PricingMetadata         `json:"metadata,omitempty"`
-}
-
-// Pricer calculates LLM API costs across all providers
+// Pricer wraps pricing_db.Pricer for backwards compatibility
 type Pricer struct {
-	models    map[string]ModelPricing
-	providers map[string]ProviderPricing
-	mu        sync.RWMutex
+	db *pricing_db.Pricer
 }
 
-// pricingFile represents the JSON structure
-type pricingFile struct {
-	Provider string                  `json:"provider,omitempty"`
-	Models   map[string]ModelPricing `json:"models"`
-	Metadata PricingMetadata         `json:"metadata,omitempty"`
-}
-
-// Package-level pricer instance (initialized lazily or via Init)
-var (
-	defaultPricer *Pricer
-	initOnce      sync.Once
-	initErr       error
-)
-
-// Init initializes the pricing system from JSON files in configDir.
-// Should be called once at startup. If not called, CalculateCost will
-// attempt lazy initialization from "configs" directory.
-func Init(configDir string) error {
-	initOnce.Do(func() {
-		defaultPricer, initErr = NewPricer(configDir)
-	})
-	return initErr
-}
-
-// NewPricer creates a pricer, loading pricing from config files.
-// Dynamically discovers all *_pricing.json files.
+// NewPricer creates a pricer using embedded pricing data.
+// The configDir parameter is ignored - pricing_db uses go:embed.
 func NewPricer(configDir string) (*Pricer, error) {
-	models := make(map[string]ModelPricing)
-	providers := make(map[string]ProviderPricing)
-
-	// Dynamically discover all *_pricing.json files
-	files, err := filepath.Glob(filepath.Join(configDir, "*_pricing.json"))
+	db, err := pricing_db.NewPricer()
 	if err != nil {
-		return nil, fmt.Errorf("glob pricing files: %w", err)
+		return nil, err
 	}
-
-	if len(files) == 0 {
-		return nil, fmt.Errorf("no pricing files found in %s", configDir)
-	}
-
-	for _, path := range files {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("read %s: %w", path, err)
-		}
-
-		var file pricingFile
-		if err := json.Unmarshal(data, &file); err != nil {
-			return nil, fmt.Errorf("parse %s: %w", filepath.Base(path), err)
-		}
-
-		filename := filepath.Base(path)
-
-		// Infer provider name from filename if not in JSON
-		providerName := file.Provider
-		if providerName == "" {
-			providerName = strings.TrimSuffix(filename, "_pricing.json")
-		}
-
-		providers[providerName] = ProviderPricing{
-			Provider: providerName,
-			Models:   file.Models,
-			Metadata: file.Metadata,
-		}
-
-		// Merge models into flat lookup
-		for model, pricing := range file.Models {
-			models[model] = pricing
-		}
-	}
-
-	return &Pricer{models: models, providers: providers}, nil
+	return &Pricer{db: db}, nil
 }
 
 // Calculate computes the cost for a given model and token counts
 func (p *Pricer) Calculate(model string, inputTokens, outputTokens int64) Cost {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	pricing, ok := p.models[model]
-	if !ok {
-		// Try prefix match for versioned models
-		pricing, ok = p.findPricingByPrefix(model)
-		if !ok {
-			return Cost{Model: model, InputTokens: inputTokens, OutputTokens: outputTokens, Unknown: true}
-		}
-	}
-
-	inputCost := float64(inputTokens) * pricing.InputPerMillion / 1_000_000
-	outputCost := float64(outputTokens) * pricing.OutputPerMillion / 1_000_000
-
+	dbCost := p.db.Calculate(model, inputTokens, outputTokens)
 	return Cost{
-		Model:        model,
-		InputTokens:  inputTokens,
-		OutputTokens: outputTokens,
-		InputCost:    inputCost,
-		OutputCost:   outputCost,
-		TotalCost:    inputCost + outputCost,
+		Model:        dbCost.Model,
+		InputTokens:  dbCost.InputTokens,
+		OutputTokens: dbCost.OutputTokens,
+		InputCost:    dbCost.InputCost,
+		OutputCost:   dbCost.OutputCost,
+		TotalCost:    dbCost.TotalCost,
+		Unknown:      dbCost.Unknown,
 	}
 }
 
-// findPricingByPrefix finds pricing for models with version suffixes.
-func (p *Pricer) findPricingByPrefix(model string) (ModelPricing, bool) {
-	for knownModel, pricing := range p.models {
-		if strings.HasPrefix(model, knownModel) {
-			return pricing, true
-		}
-	}
-	return ModelPricing{}, false
+// CalculateGrounding computes the cost for Google grounding/web search.
+// For Gemini 3: queryCount is the actual number of search queries executed.
+// For Gemini 2.5 and older: queryCount should be 1 if grounding was used, 0 otherwise.
+func (p *Pricer) CalculateGrounding(model string, queryCount int) float64 {
+	return p.db.CalculateGrounding(model, queryCount)
 }
 
 // GetPricing returns the pricing for a model
 func (p *Pricer) GetPricing(model string) (ModelPricing, bool) {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
+	return p.db.GetPricing(model)
+}
 
-	pricing, ok := p.models[model]
-	if ok {
-		return pricing, true
-	}
-	return p.findPricingByPrefix(model)
+// GetProviderMetadata returns the pricing metadata for a provider
+func (p *Pricer) GetProviderMetadata(provider string) (ProviderPricing, bool) {
+	return p.db.GetProviderMetadata(provider)
 }
 
 // ListProviders returns all loaded provider names
 func (p *Pricer) ListProviders() []string {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	names := make([]string, 0, len(p.providers))
-	for name := range p.providers {
-		names = append(names, name)
-	}
-	return names
+	return p.db.ListProviders()
 }
 
 // ModelCount returns the total number of models loaded
 func (p *Pricer) ModelCount() int {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return len(p.models)
+	return p.db.ModelCount()
 }
 
-// --- Package-level convenience functions (backwards compatible) ---
-
-// ensureInitialized lazily initializes the default pricer
-func ensureInitialized() {
-	initOnce.Do(func() {
-		defaultPricer, initErr = NewPricer("configs")
-		if initErr != nil {
-			// Log but don't fail - CalculateCost will return 0 for unknown models
-			defaultPricer = &Pricer{
-				models:    make(map[string]ModelPricing),
-				providers: make(map[string]ProviderPricing),
-			}
-		}
-	})
+// ProviderCount returns the number of providers loaded
+func (p *Pricer) ProviderCount() int {
+	return p.db.ProviderCount()
 }
+
+// --- Package-level convenience functions ---
 
 // CalculateCost calculates the USD cost for a completion.
 // Returns 0 for unknown models (graceful degradation).
 func CalculateCost(model string, inputTokens, outputTokens int) float64 {
-	ensureInitialized()
-	cost := defaultPricer.Calculate(model, int64(inputTokens), int64(outputTokens))
-	return cost.TotalCost
-}
-
-// GetPricing returns the pricing for a model, if known.
-func GetPricing(model string) (ModelPricing, bool) {
-	ensureInitialized()
-	return defaultPricer.GetPricing(model)
-}
-
-// Grounding pricing rates (USD per 1000 queries)
-// Gemini 3: $14/1000 search queries (per query)
-// Gemini 2.5 and older: $35/1000 grounded prompts (per prompt)
-var groundingRates = map[string]float64{
-	"gemini-3":   14.0,
-	"gemini-2.5": 35.0,
-	"gemini-2.0": 35.0,
-	"gemini-1.5": 35.0,
+	return pricing_db.CalculateCost(model, inputTokens, outputTokens)
 }
 
 // CalculateGroundingCost calculates the USD cost for grounding/web search.
 // For Gemini 3: queryCount is the actual number of search queries executed.
 // For Gemini 2.5 and older: queryCount should be 1 if grounding was used, 0 otherwise.
 func CalculateGroundingCost(model string, queryCount int) float64 {
-	if queryCount <= 0 {
-		return 0
-	}
+	return pricing_db.CalculateGroundingCost(model, queryCount)
+}
 
-	// Find matching rate by prefix
-	rate := 0.0
-	for prefix, r := range groundingRates {
-		if strings.HasPrefix(model, prefix) {
-			rate = r
-			break
-		}
-	}
+// GetPricing returns the pricing for a model, if known.
+func GetPricing(model string) (ModelPricing, bool) {
+	return pricing_db.GetPricing(model)
+}
 
-	if rate == 0 {
-		return 0 // Unknown model, no grounding cost
-	}
+// ListProviders returns all loaded provider names
+func ListProviders() []string {
+	return pricing_db.ListProviders()
+}
 
-	// Cost = (queries / 1000) * rate
-	return float64(queryCount) * rate / 1000.0
+// ModelCount returns the total number of models loaded
+func ModelCount() int {
+	return pricing_db.ModelCount()
+}
+
+// ProviderCount returns the number of providers loaded
+func ProviderCount() int {
+	return pricing_db.ProviderCount()
 }

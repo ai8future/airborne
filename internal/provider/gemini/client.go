@@ -12,10 +12,9 @@ import (
 
 	"google.golang.org/genai"
 
-	"github.com/ai8future/airborne/internal/httpcapture"
 	"github.com/ai8future/airborne/internal/provider"
+	"github.com/ai8future/airborne/internal/provider/httputil"
 	"github.com/ai8future/airborne/internal/retry"
-	"github.com/ai8future/airborne/internal/validation"
 )
 
 const (
@@ -97,20 +96,21 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		model = params.OverrideModel
 	}
 
-	// Create capturing transport for debug JSON (always enabled for admin dashboard)
-	capture := httpcapture.New()
-	clientConfig := &genai.ClientConfig{
-		APIKey:     cfg.APIKey,
-		Backend:    genai.BackendGeminiAPI,
-		HTTPClient: capture.Client(),
+	// Create captured client config with validation
+	httpCfg, err := httputil.NewCapturedClientConfig(cfg.APIKey, cfg.BaseURL)
+	if err != nil {
+		return provider.GenerateResult{}, fmt.Errorf("client setup: %w", err)
 	}
-	if cfg.BaseURL != "" {
-		// SECURITY: Validate base URL to prevent SSRF attacks
-		if err := validation.ValidateProviderURL(cfg.BaseURL); err != nil {
-			return provider.GenerateResult{}, fmt.Errorf("invalid base URL: %w", err)
-		}
+
+	// Convert to Gemini-specific client config
+	clientConfig := &genai.ClientConfig{
+		APIKey:     httpCfg.APIKey,
+		Backend:    genai.BackendGeminiAPI,
+		HTTPClient: httpCfg.HTTPClient,
+	}
+	if httpCfg.BaseURL != "" {
 		clientConfig.HTTPOptions = genai.HTTPOptions{
-			BaseURL: cfg.BaseURL,
+			BaseURL: httpCfg.BaseURL,
 		}
 	}
 
@@ -118,6 +118,7 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 	if err != nil {
 		return provider.GenerateResult{}, fmt.Errorf("creating gemini client: %w", err)
 	}
+	capture := httpCfg.Capture
 
 	// Build conversation content with inline images
 	contents := buildContents(params.UserInput, params.ConversationHistory, params.InlineImages)
@@ -393,20 +394,22 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 		model = params.OverrideModel
 	}
 
-	// Create capturing transport for debug JSON
-	capture := httpcapture.New()
-	clientConfig := &genai.ClientConfig{
-		APIKey:     cfg.APIKey,
-		Backend:    genai.BackendGeminiAPI,
-		HTTPClient: capture.Client(),
+	// Create captured client config with validation
+	httpCfg, err := httputil.NewCapturedClientConfig(cfg.APIKey, cfg.BaseURL)
+	if err != nil {
+		cleanup()
+		return nil, fmt.Errorf("client setup: %w", err)
 	}
-	if cfg.BaseURL != "" {
-		if err := validation.ValidateProviderURL(cfg.BaseURL); err != nil {
-			cleanup()
-			return nil, fmt.Errorf("invalid base URL: %w", err)
-		}
+
+	// Convert to Gemini-specific client config
+	clientConfig := &genai.ClientConfig{
+		APIKey:     httpCfg.APIKey,
+		Backend:    genai.BackendGeminiAPI,
+		HTTPClient: httpCfg.HTTPClient,
+	}
+	if httpCfg.BaseURL != "" {
 		clientConfig.HTTPOptions = genai.HTTPOptions{
-			BaseURL: cfg.BaseURL,
+			BaseURL: httpCfg.BaseURL,
 		}
 	}
 
@@ -415,6 +418,7 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 		cleanup()
 		return nil, fmt.Errorf("creating gemini client: %w", err)
 	}
+	capture := httpCfg.Capture
 
 	// Build conversation content with inline images
 	contents := buildContents(params.UserInput, params.ConversationHistory, params.InlineImages)

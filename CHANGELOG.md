@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.7] - 2026-01-22
+
+### Refactored
+- **Provider Layer**: Extracted HTTP client setup helper to reduce duplication
+  - Created `internal/provider/httputil` package with `NewCapturedClientConfig()`
+  - Consolidates API key validation, base URL validation, and HTTP capture setup
+  - Applied to OpenAI, Anthropic, and Gemini providers (both streaming and non-streaming)
+  - Reduces ~100 LOC duplication across provider implementations
+  - Improves maintainability with single source of truth for client initialization
+
+### Technical
+- Added `httputil.CapturedClientConfig` struct for validated client configuration
+- Updated OpenAI provider to use httputil helper (GenerateReply + GenerateReplyStream)
+- Updated Anthropic provider to use httputil helper (GenerateReply + GenerateReplyStream)
+- Updated Gemini provider to use httputil helper (GenerateReply + GenerateReplyStream)
+- All provider tests pass with new abstraction
+
+Agent: Claude Code:Sonnet 4.5
+
 ## [1.7.6] - 2026-01-22
 
 ### Fixed

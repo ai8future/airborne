@@ -4,6 +4,7 @@ go 1.25.5
 
 require (
 	github.com/ai8future/markdown_svc/clients/go v0.0.0
+	github.com/ai8future/pricing_db v0.0.0-00010101000000-000000000000
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/anthropics/anthropic-sdk-go v1.19.0
 	github.com/fatih/color v1.18.0
@@ -20,6 +21,9 @@ require (
 )
 
 replace github.com/ai8future/markdown_svc/clients/go => ./markdown_svc/clients/go
+
+// Use shared pricing_db library
+replace github.com/ai8future/pricing_db => ../pricing_db
 
 require (
 	cloud.google.com/go v0.116.0 // indirect
