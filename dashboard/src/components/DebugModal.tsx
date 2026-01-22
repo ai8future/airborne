@@ -22,6 +22,8 @@ interface DebugData {
   tokens_in: number;
   tokens_out: number;
   cost_usd: number;
+  grounding_queries?: number;
+  grounding_cost_usd?: number;
   duration_ms: number;
   response_id?: string;
   citations?: string;
@@ -295,9 +297,37 @@ export default function DebugModal({ messageId, onClose }: DebugModalProps) {
                     </div>
                   </div>
                   <div>
-                    <span className="text-gray-500">Cost:</span>
-                    <div className="font-medium text-green-600">
-                      {debugData.cost_usd > 0 ? `$${debugData.cost_usd.toFixed(4)}` : "-"}
+                    <span className="text-gray-500">Grounding:</span>
+                    <div className="font-medium text-gray-800">
+                      {debugData.grounding_queries && debugData.grounding_queries > 0
+                        ? `${debugData.grounding_queries} queries`
+                        : "None"}
+                    </div>
+                  </div>
+                </div>
+                {/* Cost Breakdown */}
+                <div className="mt-4 p-3 bg-white rounded-lg border border-gray-200">
+                  <h4 className="text-sm font-medium text-gray-600 mb-2">Cost Breakdown</h4>
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-500">Token Cost:</span>
+                      <div className="font-medium text-gray-800">
+                        ${((debugData.cost_usd || 0) - (debugData.grounding_cost_usd || 0)).toFixed(4)}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Grounding Cost:</span>
+                      <div className="font-medium text-gray-800">
+                        {debugData.grounding_cost_usd && debugData.grounding_cost_usd > 0
+                          ? `$${debugData.grounding_cost_usd.toFixed(4)}`
+                          : "$0.0000"}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Total Cost:</span>
+                      <div className="font-medium text-green-600">
+                        ${(debugData.cost_usd || 0).toFixed(4)}
+                      </div>
                     </div>
                   </div>
                 </div>

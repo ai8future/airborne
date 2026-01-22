@@ -107,6 +107,8 @@ type DebugData struct {
 	TokensIn         int     `json:"tokens_in"`
 	TokensOut        int     `json:"tokens_out"`
 	CostUSD          float64 `json:"cost_usd"`
+	GroundingQueries int     `json:"grounding_queries"`
+	GroundingCostUSD float64 `json:"grounding_cost_usd"`
 	DurationMs       int     `json:"duration_ms"`
 	ResponseID       string  `json:"response_id,omitempty"`
 	Citations        string  `json:"citations,omitempty"`
