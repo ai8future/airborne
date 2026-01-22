@@ -69,6 +69,23 @@ func resolveSecrets(cfg *TenantConfig) error {
 	return nil
 }
 
+// ReplaceSecretsWithReferences replaces actual secret values with ENV= references.
+// Used by the freeze command to avoid storing plaintext secrets in frozen config.
+func ReplaceSecretsWithReferences(cfg *TenantConfig) {
+	for name, pCfg := range cfg.Providers {
+		// If the API key doesn't already have a reference pattern, create one
+		if !strings.HasPrefix(pCfg.APIKey, "ENV=") &&
+		   !strings.HasPrefix(pCfg.APIKey, "FILE=") &&
+		   !strings.HasPrefix(pCfg.APIKey, "${") {
+			// Replace with ENV= reference
+			envVarName := strings.ToUpper(name) + "_API_KEY"
+			pCfg.APIKey = "ENV=" + envVarName
+			cfg.Providers[name] = pCfg
+		}
+		// If it already has ENV=/FILE=/${} pattern, keep it as-is
+	}
+}
+
 // loadSecret resolves a secret value from ENV=, FILE=, or inline.
 func loadSecret(value string) (string, error) {
 	if value == "" {

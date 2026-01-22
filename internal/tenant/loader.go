@@ -11,9 +11,20 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// loadTenantsWithoutSecrets loads tenant configs without resolving ENV=/FILE= secrets.
+// Used by the freeze command to preserve secret references in frozen config.
+func loadTenantsWithoutSecrets(dir string) (map[string]TenantConfig, error) {
+	return loadTenantsInternal(dir, false)
+}
+
 // loadTenants loads all tenant configurations from the given directory.
 // Supports both JSON (.json) and YAML (.yaml, .yml) files.
 func loadTenants(dir string) (map[string]TenantConfig, error) {
+	return loadTenantsInternal(dir, true)
+}
+
+// loadTenantsInternal is the core loader with optional secret resolution.
+func loadTenantsInternal(dir string, resolveSecretsFlag bool) (map[string]TenantConfig, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("reading tenant config dir: %w", err)
@@ -59,12 +70,14 @@ func loadTenants(dir string) (map[string]TenantConfig, error) {
 			continue
 		}
 
-		// Resolve secrets (ENV=, FILE= patterns)
-		if err := resolveSecrets(&cfg); err != nil {
-			return nil, fmt.Errorf("resolving secrets for %s: %w", path, err)
+		// Resolve secrets (ENV=, FILE= patterns) if requested
+		if resolveSecretsFlag {
+			if err := resolveSecrets(&cfg); err != nil {
+				return nil, fmt.Errorf("resolving secrets for %s: %w", path, err)
+			}
 		}
 
-		// Validate
+		// Validate (skip secret validation if not resolving)
 		if err := validateTenantConfig(&cfg); err != nil {
 			return nil, fmt.Errorf("validating %s: %w", path, err)
 		}

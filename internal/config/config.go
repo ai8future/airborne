@@ -157,6 +157,15 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
+// FrozenConfig represents a fully-resolved, validated configuration snapshot.
+// This matches the structure written by airborne-freeze command.
+type FrozenConfig struct {
+	GlobalConfig  *Config     `json:"global_config"`
+	TenantConfigs interface{} `json:"tenant_configs"` // Opaque - handled by tenant package
+	FrozenAt      string      `json:"frozen_at"`
+	SingleTenant  bool        `json:"single_tenant"`
+}
+
 // LoadFrozen loads a pre-frozen configuration from JSON.
 // This bypasses all Doppler fetches, env var resolution, and complex loading logic.
 // Use this in production after running `airborne-freeze` to generate frozen.json
@@ -166,13 +175,21 @@ func LoadFrozen(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to read frozen config: %w", err)
 	}
 
-	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	var frozen FrozenConfig
+	if err := json.Unmarshal(data, &frozen); err != nil {
 		return nil, fmt.Errorf("failed to parse frozen config: %w", err)
 	}
 
+	cfg := frozen.GlobalConfig
+	if cfg == nil {
+		return nil, fmt.Errorf("frozen config missing global_config")
+	}
+
+	// Resolve ENV=/FILE= references in config
+	cfg.expandEnvVars()
+
 	// No validation needed - frozen config was already validated at freeze time
-	return &cfg, nil
+	return cfg, nil
 }
 
 // defaultConfig returns configuration with sensible defaults

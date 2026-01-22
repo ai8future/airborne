@@ -1,6 +1,7 @@
 package tenant
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
@@ -15,6 +16,12 @@ type Manager struct {
 	mu        sync.RWMutex
 }
 
+// frozenConfig matches the structure written by airborne-freeze command.
+type frozenConfig struct {
+	TenantConfigs []TenantConfig `json:"tenant_configs"`
+	SingleTenant  bool           `json:"single_tenant"`
+}
+
 // ReloadDiff describes what changed during a config reload.
 type ReloadDiff struct {
 	Added     []string // Tenant IDs that were added
@@ -26,9 +33,20 @@ type ReloadDiff struct {
 // The configDir parameter can override the default configs directory.
 //
 // Tenant loading priority:
-// 1. If DOPPLER_TOKEN is set, load from Doppler (BRAND_TENANTS → AIRBORNE_TENANT_CONFIG)
-// 2. Otherwise, load from JSON/YAML files in configs directory
+// 1. If AIRBORNE_USE_FROZEN=true, load from frozen config file
+// 2. If DOPPLER_TOKEN is set, load from Doppler (BRAND_TENANTS → AIRBORNE_TENANT_CONFIG)
+// 3. Otherwise, load from JSON/YAML files in configs directory
 func Load(configDir string) (*Manager, error) {
+	// Check if we should use frozen config
+	if os.Getenv("AIRBORNE_USE_FROZEN") == "true" {
+		frozenPath := os.Getenv("AIRBORNE_FROZEN_CONFIG_PATH")
+		if frozenPath == "" {
+			frozenPath = "configs/frozen.json"
+		}
+		fmt.Fprintf(os.Stderr, "INFO: Loading tenant configs from frozen config: %s\n", frozenPath)
+		return loadFromFrozen(frozenPath)
+	}
+
 	envCfg, err := loadEnv()
 	if err != nil {
 		return nil, err
@@ -64,6 +82,44 @@ func Load(configDir string) (*Manager, error) {
 		Env:       envCfg,
 		Tenants:   tenantCfgs,
 		configDir: effectiveDir, // store effective dir for Reload()
+	}, nil
+}
+
+// loadFromFrozen loads tenant configs from a frozen config file.
+func loadFromFrozen(path string) (*Manager, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read frozen config: %w", err)
+	}
+
+	var frozen frozenConfig
+	if err := json.Unmarshal(data, &frozen); err != nil {
+		return nil, fmt.Errorf("failed to parse frozen config: %w", err)
+	}
+
+	// Convert tenant list to map
+	tenantCfgs := make(map[string]TenantConfig, len(frozen.TenantConfigs))
+	for _, tc := range frozen.TenantConfigs {
+		// Resolve ENV=/FILE= references in secrets
+		if err := resolveSecrets(&tc); err != nil {
+			return nil, fmt.Errorf("resolving secrets for %s: %w", tc.TenantID, err)
+		}
+		tenantCfgs[tc.TenantID] = tc
+	}
+
+	fmt.Fprintf(os.Stderr, "INFO: Loaded %d tenant configs from frozen file\n", len(tenantCfgs))
+
+	// Load minimal env config (for consistency, though most fields won't be used)
+	envCfg, err := loadEnv()
+	if err != nil {
+		// Non-fatal in frozen mode
+		envCfg = EnvConfig{}
+	}
+
+	return &Manager{
+		Env:       envCfg,
+		Tenants:   tenantCfgs,
+		configDir: "", // Not applicable in frozen mode
 	}, nil
 }
 

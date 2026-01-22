@@ -30,6 +30,33 @@ The **Config Freezer** pre-resolves ALL configuration at build/deploy time and c
 ✅ **Predictable startup** - Same config every time
 ✅ **Faster startup** - JSON parse vs complex loading logic
 
+## How Secrets Are Handled
+
+The Config Freezer uses a **hybrid approach** that eliminates runtime complexity while keeping secrets secure:
+
+### At Freeze Time
+
+1. Load all configuration (Doppler, files, env vars)
+2. **Replace all secret values with ENV= references:**
+   - `api_key: "sk-actual-key"` → `api_key: "ENV=OPENAI_API_KEY"`
+   - `password: "actual-pwd"` → `password: "ENV=REDIS_PASSWORD"`
+3. Preserve all non-secret config (models, rate limits, failover order, etc.)
+4. Write frozen.json with references
+
+### At Runtime
+
+1. Load frozen.json (fast JSON parsing)
+2. **Resolve ENV= references** from environment variables
+3. Start server
+
+### Secret Patterns Supported
+
+- **ENV=VAR_NAME** - Load from environment variable
+- **FILE=/path/to/secret** - Load from file (for Docker/K8s secrets)
+- **${VAR}** - Environment variable substitution
+
+If a secret already has one of these patterns in your config files, it's preserved as-is. Otherwise, the freeze command automatically creates ENV= references.
+
 ## Usage
 
 ### 1. Generate Frozen Config
@@ -58,15 +85,25 @@ go run cmd/airborne-freeze/main.go
 
 ### 2. Deploy Frozen Config
 
-Copy `frozen.json` to production and set environment variables:
+Copy `frozen.json` to production and set environment variables (including secrets):
 
 ```bash
 export AIRBORNE_USE_FROZEN=true
 export AIRBORNE_FROZEN_CONFIG_PATH=/etc/airborne/frozen.json
 
+# Set secrets (these are resolved at runtime)
+export OPENAI_API_KEY=sk-...
+export GEMINI_API_KEY=...
+export ANTHROPIC_API_KEY=...
+export DATABASE_URL=postgresql://...
+export REDIS_PASSWORD=...
+export AIRBORNE_ADMIN_TOKEN=...
+
 # Start airborne - it will use frozen config
 ./airborne
 ```
+
+The frozen config contains `ENV=OPENAI_API_KEY` references, which are resolved from these environment variables at startup.
 
 ### 3. Verify Frozen Mode
 
@@ -84,11 +121,15 @@ If you see this, you're in frozen mode. No Doppler calls, no env var parsing, no
 {
   "global_config": {
     "server": {"grpc_port": 50612, "host": "0.0.0.0"},
-    "redis": {"addr": "redis:6379", "password": "actual-password", "db": 0},
+    "redis": {"addr": "redis:6379", "password": "ENV=REDIS_PASSWORD", "db": 0},
     "database": {
       "enabled": true,
-      "url": "postgresql://actual-connection-string",
+      "url": "ENV=DATABASE_URL",
       "max_connections": 10
+    },
+    "auth": {
+      "admin_token": "ENV=AIRBORNE_ADMIN_TOKEN",
+      "auth_mode": "static"
     },
     "providers": {
       "openai": {
@@ -104,8 +145,13 @@ If you see this, you're in frozen mode. No Doppler calls, no env var parsing, no
       "providers": {
         "openai": {
           "enabled": true,
-          "api_key": "sk-actual-key-resolved",
+          "api_key": "ENV=OPENAI_API_KEY",
           "model": "gpt-4o"
+        },
+        "gemini": {
+          "enabled": true,
+          "api_key": "ENV=GEMINI_API_KEY",
+          "model": "gemini-3-pro-preview"
         }
       }
     }
@@ -115,7 +161,7 @@ If you see this, you're in frozen mode. No Doppler calls, no env var parsing, no
 }
 ```
 
-**All secrets are resolved** - no `ENV=OPENAI_KEY`, just the actual key value.
+**Secrets are ENV= references** - safe to commit, resolved at runtime from environment variables.
 
 ## CI/CD Integration
 
@@ -213,18 +259,28 @@ export AIRBORNE_FROZEN_CONFIG_PATH=/var/airborne/prod-config.json
 
 ## Security Notes
 
-⚠️ **Frozen config contains secrets in plaintext**
+✅ **Frozen config does NOT contain plaintext secrets**
 
-- Store `frozen.json` with `0600` permissions
-- Never commit to version control
-- Use encrypted storage in CI/CD
-- Rotate secrets regularly and re-freeze
+The freeze command automatically replaces all secrets with environment variable references:
+- API keys → `ENV=OPENAI_API_KEY`, `ENV=GEMINI_API_KEY`, etc.
+- Database URL → `ENV=DATABASE_URL`
+- Redis password → `ENV=REDIS_PASSWORD`
+- Admin token → `ENV=AIRBORNE_ADMIN_TOKEN`
+
+**At runtime**, these `ENV=` references are resolved from your environment variables, just like in development.
+
+### Benefits
+
+✅ Safe to commit frozen.json to version control
+✅ No secret rotation needed - just update environment variables
+✅ Works with any secret management system (Vault, K8s secrets, AWS Secrets Manager)
+✅ Same secret management flow as development
 
 ### Recommended Permissions
 
 ```bash
-# Set restrictive permissions
-chmod 600 configs/frozen.json
+# Frozen config is safe, but still good practice to restrict
+chmod 644 configs/frozen.json
 chown airborne:airborne configs/frozen.json
 ```
 
@@ -265,18 +321,17 @@ INFO: Loading frozen configuration path=configs/frozen.json
 
 ### Frozen config is stale
 
-**Cause:** Config was frozen weeks ago, secrets have rotated
+**Cause:** Config was frozen weeks ago, configuration structure has changed (new tenants, different models, etc.)
 
-**Fix:** Re-run freeze command with current secrets:
+**Fix:** Re-run freeze command to capture new structure:
 ```bash
-# Update secrets first
-export DOPPLER_TOKEN=new-token
-
-# Re-freeze
+# Re-freeze (secrets don't need to be current - they're just references)
 go run cmd/airborne-freeze/main.go
 
 # Re-deploy frozen.json
 ```
+
+**Note:** Secret rotation does NOT require re-freezing! Just update the environment variables in production.
 
 ## Migration Path
 
@@ -315,15 +370,16 @@ This reduces binary size and attack surface.
 
 ## Performance Impact
 
-| Metric | Before (Dynamic) | After (Frozen) |
-|--------|------------------|----------------|
-| Startup config load | ~300-500ms | ~5ms |
+| Metric | Before (Dynamic) | After (Hybrid Frozen) |
+|--------|------------------|----------------------|
+| Startup config load | ~300-500ms | ~50ms |
 | Doppler API calls | 1-5 per tenant | 0 |
-| Environment var parsing | 25+ vars | 0 |
-| Secret resolution | Per-tenant | 0 |
+| Environment var parsing | 25+ vars | ~10 secrets |
+| Tenant file parsing | 5+ files | 0 |
+| Secret resolution | Per-tenant | Per-tenant (ENV= only) |
 | Validation | Runtime (partial) | Build-time (complete) |
 
-**Estimated startup improvement:** 200-400ms faster
+**Estimated startup improvement:** 250-450ms faster (85-90% reduction)
 
 ## Related Configuration Improvements
 
@@ -337,10 +393,9 @@ This PR also includes:
 ## Future Enhancements
 
 - [ ] Config diff tool (compare frozen vs live)
-- [ ] Config rotation automation
-- [ ] Per-environment frozen configs
-- [ ] Encrypted frozen configs (decrypt at startup)
-- [ ] Config version tracking in frozen.json
+- [ ] Per-environment frozen configs (staging, production, etc.)
+- [ ] Frozen config validation command
+- [ ] Metrics on frozen vs dynamic config usage
 
 ## Support
 

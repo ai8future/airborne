@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ai8future/airborne/internal/config"
@@ -54,6 +55,14 @@ func main() {
 		}
 		slog.Info("✓ Tenant validated", "tenant_id", t.TenantID)
 	}
+
+	// Replace secrets with ENV= references to avoid storing plaintext secrets
+	slog.Info("Replacing secrets with environment variable references...")
+	for _, t := range tenants {
+		tenant.ReplaceSecretsWithReferences(t)
+	}
+	replaceGlobalSecretsWithReferences(cfg)
+	slog.Info("✓ Secrets replaced with references")
 
 	// Create frozen config structure
 	frozen := FrozenConfig{
@@ -108,6 +117,48 @@ func writeFrozenConfig(frozen FrozenConfig, path string) error {
 	}
 
 	return nil
+}
+
+func replaceGlobalSecretsWithReferences(cfg *config.Config) {
+	// Replace database URL if it's not already a reference
+	if cfg.Database.URL != "" &&
+	   !hasReferencePattern(cfg.Database.URL) {
+		cfg.Database.URL = "ENV=DATABASE_URL"
+	}
+
+	// Replace Redis password if it's not already a reference
+	if cfg.Redis.Password != "" &&
+	   !hasReferencePattern(cfg.Redis.Password) {
+		cfg.Redis.Password = "ENV=REDIS_PASSWORD"
+	}
+
+	// Replace admin token if it's not already a reference
+	if cfg.Auth.AdminToken != "" &&
+	   !hasReferencePattern(cfg.Auth.AdminToken) {
+		cfg.Auth.AdminToken = "ENV=AIRBORNE_ADMIN_TOKEN"
+	}
+
+	// Replace TLS certificate paths (keep FILE= patterns if present)
+	if cfg.TLS.CertFile != "" &&
+	   !hasReferencePattern(cfg.TLS.CertFile) {
+		cfg.TLS.CertFile = "ENV=AIRBORNE_TLS_CERT_FILE"
+	}
+	if cfg.TLS.KeyFile != "" &&
+	   !hasReferencePattern(cfg.TLS.KeyFile) {
+		cfg.TLS.KeyFile = "ENV=AIRBORNE_TLS_KEY_FILE"
+	}
+
+	// Replace database CA cert if present
+	if cfg.Database.CACert != "" &&
+	   !hasReferencePattern(cfg.Database.CACert) {
+		cfg.Database.CACert = "ENV=SUPABASE_CA_CERT"
+	}
+}
+
+func hasReferencePattern(value string) bool {
+	return strings.HasPrefix(value, "ENV=") ||
+	       strings.HasPrefix(value, "FILE=") ||
+	       strings.HasPrefix(value, "${")
 }
 
 func validateTenantConfig(tc *tenant.TenantConfig) error {

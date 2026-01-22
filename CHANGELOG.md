@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.5] - 2026-01-22
+
+### Changed
+- **Config Freezer now uses hybrid approach**: Secrets are stored as ENV= references, not plaintext
+  - Freeze command replaces all secret values with `ENV=VAR_NAME` references
+  - Frozen config is safe to commit to version control
+  - No re-freeze needed on secret rotation - just update environment variables
+  - Secrets resolved at runtime from environment (same flow as development)
+
+### Added
+- `ReplaceSecretsWithReferences()` function to convert secrets to ENV= references
+- `loadFromFrozen()` function to load tenant configs from frozen file
+- `replaceGlobalSecretsWithReferences()` for global config secrets
+
+### Technical
+- Updated `LoadFrozen()` to resolve ENV=/FILE= references after loading
+- Updated `tenant.Load()` to support frozen config mode
+- Added `frozenConfig` struct to tenant package
+- Modified freeze command to replace secrets before writing frozen.json
+- Updated documentation to reflect hybrid approach
+
+### Security
+- ✅ Frozen config no longer contains plaintext secrets
+- ✅ Safe to commit frozen.json to version control
+- ✅ Works with any secret management system (env vars, Vault, K8s secrets)
+
+Agent: Claude:Sonnet 4.5
+
 ## [1.7.4] - 2026-01-22
 
 ### Added
