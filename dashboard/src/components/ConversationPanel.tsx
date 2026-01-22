@@ -48,6 +48,8 @@ interface ThreadMessage {
   tokens_in?: number;
   tokens_out?: number;
   cost_usd?: number;
+  grounding_queries?: number;
+  grounding_cost_usd?: number;
 }
 
 interface Thread {
@@ -72,6 +74,8 @@ interface ActivityEntry {
   output_tokens: number;
   tokens_used: number;
   cost_usd: number;
+  grounding_queries: number;
+  grounding_cost_usd: number;
   thread_cost_usd: number;
   processing_time_ms: number;
   status: string;
@@ -254,6 +258,8 @@ function MessageBubble({ message, isPending, sendStartTime }: MessageBubbleProps
           output_tokens: message.tokens_out,
         },
         cost_usd: message.cost_usd,
+        grounding_queries: message.grounding_queries,
+        grounding_cost_usd: message.grounding_cost_usd,
       };
       setResponseJson(JSON.stringify(fallback, null, 2));
       setDataFetched(true);
@@ -282,7 +288,10 @@ function MessageBubble({ message, isPending, sendStartTime }: MessageBubbleProps
     const inTokens = message.tokens_in || 0;
     const outTokens = message.tokens_out || 0;
     const totalTokens = inTokens + outTokens;
-    const cost = message.cost_usd || 0;
+    const tokenCost = message.cost_usd || 0;
+    const groundingQueries = message.grounding_queries || 0;
+    const groundingCost = message.grounding_cost_usd || 0;
+    const totalCost = tokenCost + groundingCost;
 
     return (
       <div className="mt-2 pt-2 border-t border-slate-200 text-xs text-slate-500 font-mono">
@@ -292,7 +301,15 @@ function MessageBubble({ message, isPending, sendStartTime }: MessageBubbleProps
         {" "}&bull;{" "}
         Total: <span className="text-purple-600 font-medium">{totalTokens.toLocaleString()}</span>
         {" "}&bull;{" "}
-        Cost: <span className="text-green-600 font-medium">${cost.toFixed(4)}</span>
+        Cost: <span className="text-green-600 font-medium">${totalCost.toFixed(4)}</span>
+        {groundingCost > 0 && (
+          <>
+            {" "}
+            <span className="text-slate-400">
+              (tokens: ${tokenCost.toFixed(4)}, grounding: ${groundingCost.toFixed(4)} / {groundingQueries} queries)
+            </span>
+          </>
+        )}
       </div>
     );
   };
@@ -707,6 +724,8 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
             tokens_in: entry.input_tokens,
             tokens_out: entry.output_tokens,
             cost_usd: entry.cost_usd,
+            grounding_queries: entry.grounding_queries,
+            grounding_cost_usd: entry.grounding_cost_usd,
           });
         });
         setMessages(fallbackMessages);
@@ -845,6 +864,8 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
           tokens_in: data.tokens_in,
           tokens_out: data.tokens_out,
           cost_usd: data.cost_usd,
+          grounding_queries: data.grounding_queries,
+          grounding_cost_usd: data.grounding_cost_usd,
         };
         setMessages(prev => [...prev, assistantMessage]);
       }

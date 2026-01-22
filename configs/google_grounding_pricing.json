@@ -1,0 +1,26 @@
+{
+  "provider": "google_grounding",
+  "pricing": {
+    "gemini-3": {
+      "per_thousand_queries": 14.0,
+      "billing_model": "per_query"
+    },
+    "gemini-2.5": {
+      "per_thousand_queries": 35.0,
+      "billing_model": "per_prompt"
+    },
+    "gemini-2.0": {
+      "per_thousand_queries": 35.0,
+      "billing_model": "per_prompt"
+    },
+    "gemini-1.5": {
+      "per_thousand_queries": 35.0,
+      "billing_model": "per_prompt"
+    }
+  },
+  "metadata": {
+    "updated": "2026-01-22",
+    "source": "https://ai.google.dev/gemini-api/docs/pricing",
+    "notes": "Gemini 3 charges per search query executed. Gemini 2.5 and older charge per grounded prompt."
+  }
+}

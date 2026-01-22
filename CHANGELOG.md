@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.3] - 2026-01-22
+
+### Added
+- **Google Grounding/Web Search cost tracking**: Separate tracking for Google's grounding tool costs
+  - Gemini 3: $14/1,000 search queries (per-query billing)
+  - Gemini 2.5 and older: $35/1,000 grounded prompts (per-prompt billing)
+  - New `grounding_queries` and `grounding_cost_usd` fields in Message and ActivityEntry
+  - Database migration 006 adds grounding columns to messages and activity tables
+  - Frontend displays grounding cost breakdown when present
+
+### Technical
+- Added `google_grounding_pricing.json` configuration file
+- Added `CalculateGroundingCost()` function to pricing package
+- Added `extractGroundingQueryCount()` function to Gemini client
+- Added `GroundingQueries` field to `GenerateResult` and `StreamChunk`
+- Updated `PersistConversationTurnWithDebug` to store grounding metrics
+- Updated all activity feed queries to include grounding fields
+
+Agent: Claude:Opus 4.5
+
 ## [1.7.2] - 2026-01-20
 
 ### Added

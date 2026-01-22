@@ -40,6 +40,8 @@ type Message struct {
 	OutputTokens     *int       `json:"output_tokens,omitempty"`
 	TotalTokens      *int       `json:"total_tokens,omitempty"`
 	CostUSD          *float64   `json:"cost_usd,omitempty"`
+	GroundingQueries *int       `json:"grounding_queries,omitempty"` // Web search queries for grounding cost
+	GroundingCostUSD *float64   `json:"grounding_cost_usd,omitempty"`
 	ProcessingTimeMs *int       `json:"processing_time_ms,omitempty"`
 	Citations        *string    `json:"citations,omitempty"` // JSONB stored as string
 	CreatedAt        time.Time  `json:"created_at"`
@@ -74,6 +76,8 @@ type ActivityEntry struct {
 	OutputTokens     int       `json:"output_tokens"`
 	TotalTokens      int       `json:"tokens_used"`
 	CostUSD          float64   `json:"cost_usd"`
+	GroundingQueries int       `json:"grounding_queries"`
+	GroundingCostUSD float64   `json:"grounding_cost_usd"`
 	ThreadCostUSD    float64   `json:"thread_cost_usd"`
 	ProcessingTimeMs int       `json:"processing_time_ms"`
 	Status           string    `json:"status"` // success, failed

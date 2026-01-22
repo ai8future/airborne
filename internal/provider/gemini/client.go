@@ -314,6 +314,7 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		usage := extractUsage(resp)
 		toolCalls := extractFunctionCalls(resp)
 		codeExecutions := extractCodeExecutionResults(resp)
+		groundingQueries := extractGroundingQueryCount(resp, model)
 
 		slog.Info("gemini request completed",
 			"model", model,
@@ -321,6 +322,7 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 			"tokens_out", usage.OutputTokens,
 			"tool_calls", len(toolCalls),
 			"code_executions", len(codeExecutions),
+			"grounding_queries", groundingQueries,
 		)
 
 		var reqJSON, respJSON []byte
@@ -352,6 +354,7 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 			RequiresToolOutput: len(toolCalls) > 0,
 			CodeExecutions:     codeExecutions,
 			StructuredMetadata: structuredMetadata,
+			GroundingQueries:   groundingQueries,
 			RequestJSON:        reqJSON,
 			ResponseJSON:       respJSON,
 		}, nil
@@ -546,9 +549,11 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 		var toolCalls []provider.ToolCall
 		var codeExecutions []provider.CodeExecutionResult
 		var lastUsage *provider.Usage
+		var lastResp *genai.GenerateContentResponse // Track for grounding extraction
 
 		// Use GenerateContentStream for streaming
 		for resp, err := range client.Models.GenerateContentStream(ctx, model, contents, generateConfig) {
+			lastResp = resp // Keep last response for grounding metadata
 			if err != nil {
 				ch <- provider.StreamChunk{
 					Type:      provider.ChunkTypeError,
@@ -647,6 +652,9 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 			)
 		}
 
+		// Extract grounding query count from last response
+		groundingQueries := extractGroundingQueryCount(lastResp, model)
+
 		// Send completion chunk with captured debug JSON
 		ch <- provider.StreamChunk{
 			Type:               provider.ChunkTypeComplete,
@@ -655,6 +663,7 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 			ToolCalls:          toolCalls,
 			RequiresToolOutput: len(toolCalls) > 0,
 			CodeExecutions:     codeExecutions,
+			GroundingQueries:   groundingQueries,
 			RequestJSON:        streamReqJSON,
 			ResponseJSON:       respJSON,
 		}
@@ -905,6 +914,35 @@ func extractCitations(resp *genai.GenerateContentResponse, fileIDToFilename map[
 	}
 
 	return citations
+}
+
+// extractGroundingQueryCount returns the number of web search queries executed.
+// For Gemini 3: returns the count of webSearchQueries array (per-query billing).
+// For Gemini 2.5 and older: returns 1 if grounding was used, 0 otherwise (per-prompt billing).
+func extractGroundingQueryCount(resp *genai.GenerateContentResponse, model string) int {
+	if resp == nil || len(resp.Candidates) == 0 {
+		return 0
+	}
+
+	for _, candidate := range resp.Candidates {
+		if candidate.GroundingMetadata == nil {
+			continue
+		}
+
+		// Gemini 3 models: count actual search queries
+		if strings.HasPrefix(model, "gemini-3") {
+			return len(candidate.GroundingMetadata.WebSearchQueries)
+		}
+
+		// Gemini 2.5 and older: per-prompt billing
+		// If any grounding was used, it counts as 1 billable prompt
+		if len(candidate.GroundingMetadata.WebSearchQueries) > 0 ||
+			len(candidate.GroundingMetadata.GroundingChunks) > 0 {
+			return 1
+		}
+	}
+
+	return 0
 }
 
 // buildSafetySettings builds safety settings from threshold string.

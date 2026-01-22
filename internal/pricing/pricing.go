@@ -17,6 +17,12 @@ type ModelPricing struct {
 	OutputPerMillion float64 `json:"output_per_million"`
 }
 
+// GroundingPricing holds cost per 1000 queries for Google grounding
+type GroundingPricing struct {
+	PerThousandQueries float64 `json:"per_thousand_queries"`
+	BillingModel       string  `json:"billing_model"` // "per_query" or "per_prompt"
+}
+
 // Cost represents the calculated cost breakdown
 type Cost struct {
 	Model        string
@@ -217,4 +223,39 @@ func CalculateCost(model string, inputTokens, outputTokens int) float64 {
 func GetPricing(model string) (ModelPricing, bool) {
 	ensureInitialized()
 	return defaultPricer.GetPricing(model)
+}
+
+// Grounding pricing rates (USD per 1000 queries)
+// Gemini 3: $14/1000 search queries (per query)
+// Gemini 2.5 and older: $35/1000 grounded prompts (per prompt)
+var groundingRates = map[string]float64{
+	"gemini-3":   14.0,
+	"gemini-2.5": 35.0,
+	"gemini-2.0": 35.0,
+	"gemini-1.5": 35.0,
+}
+
+// CalculateGroundingCost calculates the USD cost for grounding/web search.
+// For Gemini 3: queryCount is the actual number of search queries executed.
+// For Gemini 2.5 and older: queryCount should be 1 if grounding was used, 0 otherwise.
+func CalculateGroundingCost(model string, queryCount int) float64 {
+	if queryCount <= 0 {
+		return 0
+	}
+
+	// Find matching rate by prefix
+	rate := 0.0
+	for prefix, r := range groundingRates {
+		if strings.HasPrefix(model, prefix) {
+			rate = r
+			break
+		}
+	}
+
+	if rate == 0 {
+		return 0 // Unknown model, no grounding cost
+	}
+
+	// Cost = (queries / 1000) * rate
+	return float64(queryCount) * rate / 1000.0
 }

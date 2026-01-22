@@ -497,12 +497,13 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 			// Persist streaming conversation (if database client is configured)
 			if s.dbClient != nil && chunk.Usage != nil {
 				streamResult := provider.GenerateResult{
-					Text:         accumulatedText.String(),
-					Model:        chunk.Model,
-					Usage:        chunk.Usage,
-					ToolCalls:    chunk.ToolCalls,
-					RequestJSON:  chunk.RequestJSON,
-					ResponseJSON: chunk.ResponseJSON,
+					Text:             accumulatedText.String(),
+					Model:            chunk.Model,
+					Usage:            chunk.Usage,
+					ToolCalls:        chunk.ToolCalls,
+					GroundingQueries: chunk.GroundingQueries,
+					RequestJSON:      chunk.RequestJSON,
+					ResponseJSON:     chunk.ResponseJSON,
 				}
 				processingTimeMs := int(time.Since(startTime).Milliseconds())
 				s.persistConversation(ctx, req, streamResult, prepared.provider.Name(), chunk.Model, htmlContent, processingTimeMs)
@@ -1086,6 +1087,10 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 	}
 	costUSD := pricing.CalculateCost(model, inputTokens, outputTokens)
 
+	// Calculate grounding cost (Google Web Search)
+	groundingQueries := result.GroundingQueries
+	groundingCostUSD := pricing.CalculateGroundingCost(model, groundingQueries)
+
 	// Build debug info from captured JSON and rendered HTML (if available)
 	var debugInfo *db.DebugInfo
 	if len(result.RequestJSON) > 0 || len(result.ResponseJSON) > 0 || renderedHTML != "" {
@@ -1146,6 +1151,8 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 			outputTokens,
 			processingTimeMs,
 			costUSD,
+			groundingQueries,
+			groundingCostUSD,
 			debugInfo,
 			dbCitations,
 		)

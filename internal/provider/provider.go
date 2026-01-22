@@ -273,6 +273,10 @@ type GenerateResult struct {
 	// StructuredMetadata contains extracted intent, entities, topics (when structured output enabled)
 	StructuredMetadata *StructuredMetadata
 
+	// GroundingQueries is the count of web search queries executed (for cost tracking)
+	// For Gemini 3: actual query count. For Gemini 2.5 and older: 1 if grounding used, 0 otherwise.
+	GroundingQueries int
+
 	// RequestJSON contains the raw API request for debugging
 	RequestJSON []byte
 
@@ -332,6 +336,9 @@ type StreamChunk struct {
 	ToolCalls          []ToolCall
 	RequiresToolOutput bool
 	CodeExecutions     []CodeExecutionResult
+
+	// GroundingQueries is the count of web search queries (set on ChunkTypeComplete)
+	GroundingQueries int
 
 	// RequestJSON contains the raw API request for debugging (set on ChunkTypeComplete)
 	RequestJSON []byte
