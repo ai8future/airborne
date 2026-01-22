@@ -20,6 +20,7 @@ import (
 	"github.com/ai8future/airborne/internal/provider/gemini"
 	"github.com/ai8future/airborne/internal/provider/openai"
 	"github.com/ai8future/airborne/internal/rag"
+	"github.com/ai8future/airborne/internal/service/config"
 	"github.com/ai8future/airborne/internal/validation"
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/google/uuid"
@@ -43,6 +44,7 @@ type ChatService struct {
 	ragService        *rag.Service
 	imageGen          *imagegen.Client
 	dbClient          *db.Client // Optional: message persistence
+	configBuilder     *config.Builder
 }
 
 // NewChatService creates a new chat service.
@@ -58,6 +60,7 @@ func NewChatService(rateLimiter *auth.RateLimiter, ragService *rag.Service, imag
 		ragService:        ragService,
 		imageGen:          imageGen,
 		dbClient:          dbClient,
+		configBuilder:     config.NewBuilder(),
 	}
 }
 
@@ -615,64 +618,9 @@ func (s *ChatService) getFallbackProvider(primary string, specified pb.Provider)
 
 // buildProviderConfig builds provider config from tenant config and request overrides.
 func (s *ChatService) buildProviderConfig(ctx context.Context, req *pb.GenerateReplyRequest, providerName string) provider.ProviderConfig {
-	cfg := provider.ProviderConfig{}
-
-	// First, try to get config from tenant
 	tenantCfg := auth.TenantFromContext(ctx)
-	if tenantCfg != nil {
-		if pCfg, ok := tenantCfg.GetProvider(providerName); ok {
-			cfg.APIKey = pCfg.APIKey
-			cfg.Model = pCfg.Model
-			cfg.Temperature = pCfg.Temperature
-			cfg.TopP = pCfg.TopP
-			cfg.MaxOutputTokens = pCfg.MaxOutputTokens
-			cfg.BaseURL = pCfg.BaseURL
-			// SECURITY: Deep copy ExtraOptions to prevent data races and tenant data leakage
-			// Maps are reference types - direct assignment would share mutable state across goroutines
-			if pCfg.ExtraOptions != nil {
-				cfg.ExtraOptions = make(map[string]string, len(pCfg.ExtraOptions))
-				for k, v := range pCfg.ExtraOptions {
-					cfg.ExtraOptions[k] = v
-				}
-			}
-		}
-	}
-
-	// Then, allow request to override (except API key for security)
-	if pbCfg, ok := req.ProviderConfigs[providerName]; ok {
-		// SECURITY: API keys must come from server-side tenant config, not requests
-		// if pbCfg.ApiKey != "" {
-		// 	cfg.APIKey = pbCfg.ApiKey
-		// }
-		if pbCfg.Model != "" {
-			cfg.Model = pbCfg.Model
-		}
-		if pbCfg.Temperature != nil {
-			temp := *pbCfg.Temperature
-			cfg.Temperature = &temp
-		}
-		if pbCfg.TopP != nil {
-			topP := *pbCfg.TopP
-			cfg.TopP = &topP
-		}
-		if pbCfg.MaxOutputTokens != nil {
-			maxTokens := int(*pbCfg.MaxOutputTokens)
-			cfg.MaxOutputTokens = &maxTokens
-		}
-		if pbCfg.BaseUrl != "" {
-			cfg.BaseURL = pbCfg.BaseUrl
-		}
-		if len(pbCfg.ExtraOptions) > 0 {
-			if cfg.ExtraOptions == nil {
-				cfg.ExtraOptions = make(map[string]string)
-			}
-			for k, v := range pbCfg.ExtraOptions {
-				cfg.ExtraOptions[k] = v
-			}
-		}
-	}
-
-	return cfg
+	requestCfg := req.ProviderConfigs[providerName]
+	return s.configBuilder.Build(providerName, tenantCfg, requestCfg)
 }
 
 // selectProviderWithTenant selects provider using tenant config for validation.

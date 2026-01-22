@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.9] - 2026-01-22
+
+### Refactored
+- **Service Layer**: Extracted provider config building logic
+  - Created `internal/service/config` package with `Builder` type
+  - Consolidates tenant config merging with request overrides
+  - Reduces `buildProviderConfig()` from ~60 LOC to 3 LOC
+  - Isolates security constraint (API keys cannot be overridden by requests)
+  - Improves testability with comprehensive unit tests
+  - Handles deep-copying of ExtraOptions map to prevent data races
+
+### Technical
+- Added `config.Builder.Build()` for merging tenant and request configs
+- Updated `ChatService` to use config builder
+- Maintains security invariant: API keys only from server-side tenant config
+- All service tests pass with new architecture
+
+Agent: Claude Code:Sonnet 4.5
+
 ## [1.7.8] - 2026-01-22
 
 ### Refactored
