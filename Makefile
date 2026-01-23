@@ -95,7 +95,12 @@ proto-lint:
 # Docker build
 docker-build:
 	@echo "Building Docker image..."
+	@echo "Copying pricing_db into build context..."
+	@rm -rf pricing_db
+	@cp -r ../pricing_db pricing_db
 	docker build -t airborne:$(VERSION) .
+	@rm -rf pricing_db
+	@echo "Cleaned up pricing_db from build context"
 
 # Help
 help:

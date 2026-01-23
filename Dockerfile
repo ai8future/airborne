@@ -12,6 +12,9 @@ WORKDIR /build
 # Copy go mod files and local replace targets for layer caching
 COPY go.mod go.sum ./
 COPY markdown_svc/ ./markdown_svc/
+# pricing_db is expected at ../pricing_db per go.mod replace directive
+# Copy to /pricing_db so ../pricing_db resolves correctly from /build
+COPY pricing_db/ /pricing_db/
 RUN go mod download
 
 # Copy source code

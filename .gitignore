@@ -55,3 +55,6 @@ dist/
 # Temporary files
 tmp/
 *.tmp
+
+# Docker build artifacts (copied from sibling directory during docker-build)
+pricing_db/

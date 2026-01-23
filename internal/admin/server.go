@@ -20,6 +20,7 @@ import (
 	"github.com/ai8future/airborne/internal/provider/gemini"
 	"github.com/ai8future/airborne/internal/redis"
 	"github.com/ai8future/airborne/internal/tenant"
+	pricing_db "github.com/ai8future/pricing_db"
 	"github.com/google/uuid"
 	"google.golang.org/genai"
 	"google.golang.org/grpc"
@@ -32,6 +33,7 @@ type Server struct {
 	dbClient    *db.Client
 	tenantMgr   *tenant.Manager
 	redisClient *redis.Client
+	pricer      *pricing_db.Pricer
 	server      *http.Server
 	port        int
 	grpcAddr    string
@@ -60,10 +62,17 @@ type Config struct {
 
 // NewServer creates a new admin HTTP server.
 func NewServer(dbClient *db.Client, cfg Config) *Server {
+	// Initialize pricer for cost calculations
+	pricer, err := pricing_db.NewPricer()
+	if err != nil {
+		slog.Warn("failed to initialize pricer, cost calculations will be disabled", "error", err)
+	}
+
 	s := &Server{
 		dbClient:    dbClient,
 		tenantMgr:   cfg.TenantMgr,
 		redisClient: cfg.RedisClient,
+		pricer:      pricer,
 		port:        cfg.Port,
 		grpcAddr:    cfg.GRPCAddr,
 		authToken:   cfg.AuthToken,
@@ -102,7 +111,7 @@ func NewServer(dbClient *db.Client, cfg Config) *Server {
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
 		Handler:      mux,
 		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 120 * time.Second, // Must exceed gRPC timeout (90s) to return errors
+		WriteTimeout: 5 * time.Minute, // Must exceed context timeout for LLM requests
 		IdleTimeout:  60 * time.Second,
 	}
 
@@ -496,7 +505,7 @@ func (s *Server) handleTest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set timeout (must be less than HTTP WriteTimeout of 120s)
-	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Minute)
 	defer cancel()
 
 	start := time.Now()
@@ -743,7 +752,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set timeout (must be less than HTTP WriteTimeout of 120s)
-	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Minute)
 	defer cancel()
 
 	// Make gRPC call
@@ -1155,7 +1164,7 @@ func (s *Server) handleChatWithFile(w http.ResponseWriter, r *http.Request, req 
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 4*time.Minute)
 	defer cancel()
 
 	// Call Gemini directly
@@ -1178,13 +1187,98 @@ func (s *Server) handleChatWithFile(w http.ResponseWriter, r *http.Request, req 
 		outputTokens = int(result.Usage.OutputTokens)
 	}
 
+	// Calculate cost using pricing_db
+	var costUSD, groundingCostUSD float64
+	if s.pricer != nil {
+		tokenCost := s.pricer.Calculate(result.Model, int64(inputTokens), int64(outputTokens))
+		costUSD = tokenCost.TotalCost
+		groundingCostUSD = s.pricer.CalculateGrounding(result.Model, result.GroundingQueries)
+	}
+
+	// Generate message ID for the assistant response
+	messageID := uuid.New()
+
+	// Persist to database if available
+	if s.dbClient != nil && req.TenantID != "" {
+		repo, repoErr := s.dbClient.TenantRepository(req.TenantID)
+		if repoErr == nil {
+			// Ensure thread exists
+			_, threadErr := repo.GetOrCreateThread(r.Context(), threadUUID, "dashboard-user")
+			if threadErr != nil {
+				slog.Warn("failed to get/create thread", "error", threadErr, "thread_id", req.ThreadID)
+			} else {
+				// Save user message
+				userMsg := &db.Message{
+					ID:        uuid.New(),
+					ThreadID:  threadUUID,
+					Role:      db.RoleUser,
+					Content:   req.Message,
+					CreatedAt: time.Now(),
+				}
+				if err := repo.CreateMessage(r.Context(), userMsg); err != nil {
+					slog.Warn("failed to save user message", "error", err)
+				}
+
+				// Prepare debug data
+				providerName := "gemini"
+				modelName := result.Model
+				totalTokens := inputTokens + outputTokens
+				groundingQueries := result.GroundingQueries
+
+				var rawRequestJSON, rawResponseJSON *string
+				if len(result.RequestJSON) > 0 {
+					str := string(result.RequestJSON)
+					rawRequestJSON = &str
+				}
+				if len(result.ResponseJSON) > 0 {
+					str := string(result.ResponseJSON)
+					rawResponseJSON = &str
+				}
+
+				// Save assistant message with debug data
+				assistantMsg := &db.Message{
+					ID:               messageID,
+					ThreadID:         threadUUID,
+					Role:             db.RoleAssistant,
+					Content:          result.Text,
+					Provider:         &providerName,
+					Model:            &modelName,
+					ResponseID:       &result.ResponseID,
+					InputTokens:      &inputTokens,
+					OutputTokens:     &outputTokens,
+					TotalTokens:      &totalTokens,
+					CostUSD:          &costUSD,
+					GroundingQueries: &groundingQueries,
+					GroundingCostUSD: &groundingCostUSD,
+					CreatedAt:        time.Now(),
+					SystemPrompt:     &systemPrompt,
+					RawRequestJSON:   rawRequestJSON,
+					RawResponseJSON:  rawResponseJSON,
+				}
+				if err := repo.CreateMessage(r.Context(), assistantMsg); err != nil {
+					slog.Warn("failed to save assistant message", "error", err)
+				} else {
+					slog.Info("persisted chat with file",
+						"thread_id", req.ThreadID,
+						"message_id", messageID,
+						"has_request_json", rawRequestJSON != nil,
+						"has_response_json", rawResponseJSON != nil,
+					)
+				}
+			}
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(ChatResponse{
-		ID:        result.ResponseID,
-		Content:   result.Text,
-		Provider:  "gemini",
-		Model:     result.Model,
-		TokensIn:  inputTokens,
-		TokensOut: outputTokens,
+		ID:               messageID.String(),
+		Content:          result.Text,
+		Provider:         "gemini",
+		Model:            result.Model,
+		TokensIn:         inputTokens,
+		TokensOut:        outputTokens,
+		CostUSD:          costUSD,
+		GroundingQueries: result.GroundingQueries,
+		GroundingCostUSD: groundingCostUSD,
 	})
 }
