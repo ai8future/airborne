@@ -21,6 +21,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Checkout pricing_db
+        uses: actions/checkout@v4
+        with:
+          repository: ai8future/pricing_db
+          path: pricing_db
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Read VERSION file
         id: version
         run: |
