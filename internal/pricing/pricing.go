@@ -14,6 +14,12 @@ type GroundingPricing = pricing_db.GroundingPricing
 type PricingMetadata = pricing_db.PricingMetadata
 type ProviderPricing = pricing_db.ProviderPricing
 
+// Type aliases for detailed Gemini pricing
+type CostDetails = pricing_db.CostDetails
+type GeminiUsageMetadata = pricing_db.GeminiUsageMetadata
+type GeminiResponse = pricing_db.GeminiResponse
+type CalculateOptions = pricing_db.CalculateOptions
+
 // Cost represents the calculated cost breakdown
 type Cost struct {
 	Model        string
@@ -128,4 +134,35 @@ func ModelCount() int {
 // ProviderCount returns the number of providers loaded
 func ProviderCount() int {
 	return pricing_db.ProviderCount()
+}
+
+// ParseGeminiResponse parses a full Gemini API JSON response and calculates the cost.
+// It extracts usageMetadata and counts non-empty webSearchQueries for grounding billing.
+// This handles cached tokens, thinking tokens, tool use tokens, and grounding queries.
+//
+// Returns CostDetails with:
+//   - StandardInputCost: cost for non-cached input tokens
+//   - CachedInputCost: cost for cached input tokens (at reduced rate)
+//   - OutputCost: cost for output tokens
+//   - ThinkingCost: cost for thinking tokens (charged at output rate)
+//   - GroundingCost: cost for web search queries
+//   - TotalCost: sum of all costs
+func ParseGeminiResponse(jsonData []byte) (CostDetails, error) {
+	return pricing_db.ParseGeminiResponse(jsonData)
+}
+
+// ParseGeminiResponseWithOptions parses a Gemini response with options like batch mode.
+func ParseGeminiResponseWithOptions(jsonData []byte, opts *CalculateOptions) (CostDetails, error) {
+	return pricing_db.ParseGeminiResponseWithOptions(jsonData, opts)
+}
+
+// CalculateGeminiCost calculates cost from parsed Gemini metadata.
+// Use ParseGeminiResponse when you have raw JSON; use this when you have parsed metadata.
+func CalculateGeminiCost(model string, metadata GeminiUsageMetadata, groundingQueries int) CostDetails {
+	return pricing_db.CalculateGeminiCost(model, metadata, groundingQueries)
+}
+
+// CalculateGeminiCostWithOptions calculates Gemini cost with options like batch mode.
+func CalculateGeminiCostWithOptions(model string, metadata GeminiUsageMetadata, groundingQueries int, opts *CalculateOptions) CostDetails {
+	return pricing_db.CalculateGeminiCostWithOptions(model, metadata, groundingQueries, opts)
 }

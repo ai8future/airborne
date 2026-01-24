@@ -766,7 +766,18 @@ func (s *ChatService) buildResponse(result provider.GenerateResult, providerName
 	// Add grounding cost tracking
 	if result.GroundingQueries > 0 {
 		resp.GroundingQueries = int32(result.GroundingQueries)
-		resp.GroundingCostUsd = pricing.CalculateGroundingCost(result.Model, result.GroundingQueries)
+
+		// For Gemini with valid response JSON, use ParseGeminiResponse for accurate grounding cost
+		if providerName == "gemini" && len(result.ResponseJSON) > 0 {
+			costDetails, err := pricing.ParseGeminiResponse(result.ResponseJSON)
+			if err == nil && !costDetails.Unknown {
+				resp.GroundingCostUsd = costDetails.GroundingCost
+			} else {
+				resp.GroundingCostUsd = pricing.CalculateGroundingCost(result.Model, result.GroundingQueries)
+			}
+		} else {
+			resp.GroundingCostUsd = pricing.CalculateGroundingCost(result.Model, result.GroundingQueries)
+		}
 	}
 
 	return resp
@@ -1043,11 +1054,42 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 		inputTokens = int(result.Usage.InputTokens)
 		outputTokens = int(result.Usage.OutputTokens)
 	}
-	costUSD := pricing.CalculateCost(model, inputTokens, outputTokens)
 
-	// Calculate grounding cost (Google Web Search)
+	var costUSD float64
+	var groundingCostUSD float64
 	groundingQueries := result.GroundingQueries
-	groundingCostUSD := pricing.CalculateGroundingCost(model, groundingQueries)
+
+	// For Gemini provider with valid response JSON, use ParseGeminiResponse for accurate pricing
+	// This handles cached tokens, thinking tokens, tool use tokens, and grounding queries
+	if providerName == "gemini" && len(result.ResponseJSON) > 0 {
+		costDetails, err := pricing.ParseGeminiResponse(result.ResponseJSON)
+		if err == nil && !costDetails.Unknown {
+			// Use detailed cost breakdown from pricing_db
+			costUSD = costDetails.TotalCost - costDetails.GroundingCost // Token costs only
+			groundingCostUSD = costDetails.GroundingCost
+
+			slog.Debug("gemini pricing from ParseGeminiResponse",
+				"total_cost", costDetails.TotalCost,
+				"standard_input_cost", costDetails.StandardInputCost,
+				"cached_input_cost", costDetails.CachedInputCost,
+				"output_cost", costDetails.OutputCost,
+				"thinking_cost", costDetails.ThinkingCost,
+				"grounding_cost", costDetails.GroundingCost,
+				"tier_applied", costDetails.TierApplied,
+			)
+		} else {
+			// Fall back to basic calculation if parsing fails
+			if err != nil {
+				slog.Debug("failed to parse gemini response for pricing, using basic calculation", "error", err)
+			}
+			costUSD = pricing.CalculateCost(model, inputTokens, outputTokens)
+			groundingCostUSD = pricing.CalculateGroundingCost(model, groundingQueries)
+		}
+	} else {
+		// Non-Gemini provider or no response JSON: use basic calculation
+		costUSD = pricing.CalculateCost(model, inputTokens, outputTokens)
+		groundingCostUSD = pricing.CalculateGroundingCost(model, groundingQueries)
+	}
 
 	// Build debug info from captured JSON and rendered HTML (if available)
 	var debugInfo *db.DebugInfo

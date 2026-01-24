@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.10] - 2026-01-24
+
+### Enhanced
+- **Gemini Pricing**: Integrated with pricing_db's `ParseGeminiResponse` for accurate cost calculations
+  - Uses raw Gemini JSON response for detailed cost breakdown
+  - Supports cached token pricing (at reduced rate)
+  - Supports thinking token pricing (charged at output rate)
+  - Supports tool use token pricing
+  - Handles tier-based pricing based on total tokens
+  - Properly counts non-empty grounding/search queries
+  - Falls back to basic calculation if JSON parsing fails (e.g., for streaming)
+
+### Added
+- Added `CostDetails`, `GeminiUsageMetadata`, `GeminiResponse`, and `CalculateOptions` type aliases to pricing wrapper
+- Added `ParseGeminiResponse()` and related functions to pricing wrapper
+- Added detailed debug logging for Gemini pricing breakdown
+
+### Technical
+- Updated `persistConversation()` to use `ParseGeminiResponse` for Gemini provider
+- Updated `buildResponse()` to calculate accurate grounding costs from Gemini JSON
+- For streaming responses, continues to use basic calculation (synthetic JSON format)
+- Non-Gemini providers continue using existing calculation methods
+
+Agent: Claude Code:Opus 4.5
+
 ## [1.7.9] - 2026-01-22
 
 ### Refactored
