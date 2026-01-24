@@ -294,6 +294,11 @@ type Usage struct {
 	InputTokens  int64
 	OutputTokens int64
 	TotalTokens  int64
+
+	// Gemini-specific fields (zero for other providers)
+	CachedTokens   int64 // Cached input tokens (10% of input rate)
+	ThinkingTokens int64 // Thinking tokens (charged at OUTPUT rate)
+	ToolUseTokens  int64 // Tool use input tokens (added to input)
 }
 
 // Citation represents a source citation

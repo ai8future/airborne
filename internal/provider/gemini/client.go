@@ -621,12 +621,16 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 				}
 			}
 
-			// Track usage from each response
+			// Track usage from each response (all 5 Gemini token types)
 			if resp.UsageMetadata != nil {
+				meta := resp.UsageMetadata
 				lastUsage = &provider.Usage{
-					InputTokens:  int64(resp.UsageMetadata.PromptTokenCount),
-					OutputTokens: int64(resp.UsageMetadata.CandidatesTokenCount),
-					TotalTokens:  int64(resp.UsageMetadata.TotalTokenCount),
+					InputTokens:    int64(meta.PromptTokenCount),
+					OutputTokens:   int64(meta.CandidatesTokenCount),
+					TotalTokens:    int64(meta.TotalTokenCount),
+					CachedTokens:   int64(meta.CachedContentTokenCount),
+					ThinkingTokens: int64(meta.ThoughtsTokenCount),
+					ToolUseTokens:  int64(meta.ToolUsePromptTokenCount),
 				}
 			}
 		}
@@ -824,15 +828,25 @@ func getBlockReason(resp *genai.GenerateContentResponse) string {
 }
 
 // extractUsage extracts token usage from the response.
+// Captures all 5 Gemini token types for accurate pricing:
+// - PromptTokenCount (standard input)
+// - CandidatesTokenCount (output)
+// - CachedContentTokenCount (cached input - 10% of input rate)
+// - ThoughtsTokenCount (thinking - charged at OUTPUT rate)
+// - ToolUsePromptTokenCount (tool use input - added to input)
 func extractUsage(resp *genai.GenerateContentResponse) *provider.Usage {
 	if resp == nil || resp.UsageMetadata == nil {
 		return &provider.Usage{}
 	}
 
+	meta := resp.UsageMetadata
 	usage := &provider.Usage{
-		InputTokens:  int64(resp.UsageMetadata.PromptTokenCount),
-		OutputTokens: int64(resp.UsageMetadata.CandidatesTokenCount),
-		TotalTokens:  int64(resp.UsageMetadata.TotalTokenCount),
+		InputTokens:    int64(meta.PromptTokenCount),
+		OutputTokens:   int64(meta.CandidatesTokenCount),
+		TotalTokens:    int64(meta.TotalTokenCount),
+		CachedTokens:   int64(meta.CachedContentTokenCount),
+		ThinkingTokens: int64(meta.ThoughtsTokenCount),
+		ToolUseTokens:  int64(meta.ToolUsePromptTokenCount),
 	}
 
 	// Ensure TotalTokens is at least sum of input + output

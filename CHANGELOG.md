@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.11] - 2026-01-24
+
+### Enhanced
+- **Gemini Pricing**: Capture ALL 5 Gemini token types for accurate cost calculations
+  - Extended `provider.Usage` struct with Gemini-specific fields: `CachedTokens`, `ThinkingTokens`, `ToolUseTokens`
+  - Updated `extractUsage()` to capture all 5 Gemini token types from SDK:
+    - `PromptTokenCount` (standard input)
+    - `CandidatesTokenCount` (output)
+    - `CachedContentTokenCount` (cached input - 10% of input rate)
+    - `ThoughtsTokenCount` (thinking - charged at OUTPUT rate)
+    - `ToolUsePromptTokenCount` (tool use input)
+  - Updated streaming to capture all Gemini token fields
+  - Service layer now uses `CalculateGeminiCost()` with structured metadata instead of raw JSON parsing
+  - This ensures accurate pricing for both streaming and non-streaming responses
+
+### Technical
+- Updated `persistConversation()` to build `GeminiUsageMetadata` from structured `Usage` data
+- Updated `buildResponse()` to use `CalculateGeminiCost()` for grounding cost calculation
+- Added comprehensive tests: `TestExtractUsage_AllFields` and `TestExtractUsage_ZeroGeminiFields`
+- Maintains backward compatibility: new fields default to zero for non-Gemini providers
+
+Agent: Claude Code:Opus 4.5
+
 ## [1.7.10] - 2026-01-24
 
 ### Enhanced

@@ -98,6 +98,79 @@ func TestExtractUsage(t *testing.T) {
 	}
 }
 
+func TestExtractUsage_AllFields(t *testing.T) {
+	// Test that all 5 Gemini token types are captured for accurate pricing:
+	// - PromptTokenCount (standard input)
+	// - CandidatesTokenCount (output)
+	// - CachedContentTokenCount (cached input - 10% of input rate)
+	// - ThoughtsTokenCount (thinking - charged at OUTPUT rate)
+	// - ToolUsePromptTokenCount (tool use input - added to input)
+	resp := &genai.GenerateContentResponse{
+		UsageMetadata: &genai.GenerateContentResponseUsageMetadata{
+			PromptTokenCount:        1000,
+			CandidatesTokenCount:    500,
+			TotalTokenCount:         1750,
+			CachedContentTokenCount: 200,
+			ThoughtsTokenCount:      50,
+			ToolUsePromptTokenCount: 100,
+		},
+	}
+
+	usage := extractUsage(resp)
+	if usage == nil {
+		t.Fatal("expected non-nil usage")
+	}
+
+	// Verify basic fields
+	if usage.InputTokens != 1000 {
+		t.Errorf("InputTokens = %d, want 1000", usage.InputTokens)
+	}
+	if usage.OutputTokens != 500 {
+		t.Errorf("OutputTokens = %d, want 500", usage.OutputTokens)
+	}
+	if usage.TotalTokens != 1750 {
+		t.Errorf("TotalTokens = %d, want 1750", usage.TotalTokens)
+	}
+
+	// Verify Gemini-specific fields
+	if usage.CachedTokens != 200 {
+		t.Errorf("CachedTokens = %d, want 200", usage.CachedTokens)
+	}
+	if usage.ThinkingTokens != 50 {
+		t.Errorf("ThinkingTokens = %d, want 50", usage.ThinkingTokens)
+	}
+	if usage.ToolUseTokens != 100 {
+		t.Errorf("ToolUseTokens = %d, want 100", usage.ToolUseTokens)
+	}
+}
+
+func TestExtractUsage_ZeroGeminiFields(t *testing.T) {
+	// Ensure Gemini fields default to zero when not present in response
+	resp := &genai.GenerateContentResponse{
+		UsageMetadata: &genai.GenerateContentResponseUsageMetadata{
+			PromptTokenCount:     100,
+			CandidatesTokenCount: 50,
+			TotalTokenCount:      150,
+			// Gemini-specific fields not set (should default to 0)
+		},
+	}
+
+	usage := extractUsage(resp)
+	if usage == nil {
+		t.Fatal("expected non-nil usage")
+	}
+
+	if usage.CachedTokens != 0 {
+		t.Errorf("CachedTokens = %d, want 0", usage.CachedTokens)
+	}
+	if usage.ThinkingTokens != 0 {
+		t.Errorf("ThinkingTokens = %d, want 0", usage.ThinkingTokens)
+	}
+	if usage.ToolUseTokens != 0 {
+		t.Errorf("ToolUseTokens = %d, want 0", usage.ToolUseTokens)
+	}
+}
+
 func TestExtractUsage_Nil(t *testing.T) {
 	// extractUsage returns zero-value usage (not nil) to avoid nil pointer errors
 	usage := extractUsage(nil)
