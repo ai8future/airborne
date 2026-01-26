@@ -48,8 +48,9 @@ func IsRetryable(err error) bool {
 	}
 
 	// Retryable errors: rate limits, server errors, network issues
+	// 499 = Gemini cancels our request (client closed request)
 	retryablePatterns := []string{
-		"429", "500", "502", "503", "504", "529",
+		"429", "499", "500", "502", "503", "504", "529",
 		"rate", "overloaded", "resource", "server_error",
 		"connection", "timeout", "temporary", "eof",
 		"tls handshake", "no such host", "api_connection",

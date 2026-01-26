@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.12] - 2026-01-26
+
+### Fixed
+- **Gemini Retry Logic**: Added HTTP 499 to retryable error patterns
+  - Gemini returns 499 when it cancels our request
+  - Previously treated as non-retryable, causing immediate failure
+  - Now properly retries with exponential backoff
+
+Agent: Claude Code:Opus 4.5
+
 ## [1.7.11] - 2026-01-24
 
 ### Enhanced
