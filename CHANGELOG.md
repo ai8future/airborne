@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.15] - 2026-01-28
+
+### Added
+- **Test Coverage**: Added unit tests for previously untested packages
+  - `internal/db/models_test.go`: Tests for Thread, Message, Citation functions
+    - NewThread, NewMessage, SetAssistantMetrics, TruncateContent
+    - ParseCitations, CitationsToJSON, round-trip validation
+  - `internal/pricing/pricing_test.go`: Tests for cost calculation
+    - Cost.Format() for known/unknown models
+    - Pricer methods: Calculate, CalculateGrounding, GetPricing
+    - Package-level helpers: CalculateCost, ListProviders, ModelCount
+
+Agent: Claude Code:Opus 4.5
+
 ## [1.7.14] - 2026-01-28
 
 ### Fixed
