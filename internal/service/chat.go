@@ -605,11 +605,11 @@ func (s *ChatService) getFallbackProvider(primary string, specified pb.Provider)
 
 	// Default fallback order
 	switch primary {
-	case "openai":
+	case provider.NameOpenAI:
 		return s.geminiProvider
-	case "gemini":
+	case provider.NameGemini:
 		return s.openaiProvider
-	case "anthropic":
+	case provider.NameAnthropic:
 		return s.openaiProvider
 	default:
 		return s.geminiProvider
@@ -659,11 +659,11 @@ func (s *ChatService) selectProviderWithTenant(ctx context.Context, req *pb.Gene
 	}
 
 	switch providerName {
-	case "openai":
+	case provider.NameOpenAI:
 		return s.openaiProvider, nil
-	case "gemini":
+	case provider.NameGemini:
 		return s.geminiProvider, nil
-	case "anthropic":
+	case provider.NameAnthropic:
 		return s.anthropicProvider, nil
 	default:
 		return nil, fmt.Errorf("unknown provider: %s", providerName)
@@ -912,11 +912,11 @@ func convertCitation(c provider.Citation) *pb.Citation {
 
 func mapProviderToProto(name string) pb.Provider {
 	switch name {
-	case "openai":
+	case provider.NameOpenAI:
 		return pb.Provider_PROVIDER_OPENAI
-	case "gemini":
+	case provider.NameGemini:
 		return pb.Provider_PROVIDER_GEMINI
-	case "anthropic":
+	case provider.NameAnthropic:
 		return pb.Provider_PROVIDER_ANTHROPIC
 	default:
 		return pb.Provider_PROVIDER_UNSPECIFIED

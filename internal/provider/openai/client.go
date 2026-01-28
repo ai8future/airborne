@@ -58,7 +58,7 @@ func NewClient(opts ...ClientOption) *Client {
 
 // Name returns the provider identifier.
 func (c *Client) Name() string {
-	return "openai"
+	return provider.NameOpenAI
 }
 
 // SupportsFileSearch returns true as OpenAI supports vector store file search.
@@ -84,11 +84,8 @@ func (c *Client) SupportsStreaming() bool {
 // GenerateReply implements provider.Provider using OpenAI's Responses API.
 func (c *Client) GenerateReply(ctx context.Context, params provider.GenerateParams) (provider.GenerateResult, error) {
 	// Ensure request has a timeout
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, retry.RequestTimeout)
-		defer cancel()
-	}
+	ctx, cancel := retry.EnsureTimeout(ctx, retry.RequestTimeout)
+	defer cancel()
 
 	cfg := params.Config
 
@@ -96,13 +93,7 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		return provider.GenerateResult{}, errors.New("OpenAI API key is required")
 	}
 
-	model := cfg.Model
-	if model == "" {
-		model = "gpt-4o"
-	}
-	if strings.TrimSpace(params.OverrideModel) != "" {
-		model = params.OverrideModel
-	}
+	model := provider.SelectModel(cfg.Model, "gpt-4o", params.OverrideModel)
 
 	// Create captured client config with validation
 	httpCfg, err := httputil.NewCapturedClientConfig(cfg.APIKey, cfg.BaseURL)
@@ -328,37 +319,21 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 // GenerateReplyStream implements streaming responses using OpenAI's Responses API.
 func (c *Client) GenerateReplyStream(ctx context.Context, params provider.GenerateParams) (<-chan provider.StreamChunk, error) {
 	// Ensure request has a timeout
-	var cancel context.CancelFunc
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		ctx, cancel = context.WithTimeout(ctx, retry.RequestTimeout)
-	}
-
-	// Helper to clean up cancel on error returns
-	cleanup := func() {
-		if cancel != nil {
-			cancel()
-		}
-	}
+	ctx, cancel := retry.EnsureTimeout(ctx, retry.RequestTimeout)
 
 	cfg := params.Config
 
 	if strings.TrimSpace(cfg.APIKey) == "" {
-		cleanup()
+		cancel()
 		return nil, errors.New("OpenAI API key is required")
 	}
 
-	model := cfg.Model
-	if model == "" {
-		model = "gpt-4o"
-	}
-	if strings.TrimSpace(params.OverrideModel) != "" {
-		model = params.OverrideModel
-	}
+	model := provider.SelectModel(cfg.Model, "gpt-4o", params.OverrideModel)
 
 	// Create captured client config with validation
 	httpCfg, err := httputil.NewCapturedClientConfig(cfg.APIKey, cfg.BaseURL)
 	if err != nil {
-		cleanup()
+		cancel()
 		return nil, fmt.Errorf("client setup: %w", err)
 	}
 

@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.13] - 2026-01-28
+
+### Refactored
+- **Stream Error Handling**: Fixed ignored error in Anthropic stream accumulation
+  - Changed silent `_ = message.Accumulate(event)` to log with `slog.Warn`
+  - Ensures stream processing errors are visible for debugging
+
+- **Timeout Helper**: Extracted `retry.EnsureTimeout()` to reduce code duplication
+  - Consolidated 8 occurrences of 5-line deadline checking pattern
+  - Used in: openai, anthropic, gemini, and compat providers
+
+- **Model Selection**: Extracted `provider.SelectModel()` utility
+  - Consolidated 8 occurrences of 6-line model selection pattern
+  - Handles priority: override > config > default
+
+- **Provider Constants**: Centralized provider name constants
+  - Created `provider.NameOpenAI`, `provider.NameGemini`, `provider.NameAnthropic`
+  - Replaced magic strings in service/chat.go and provider Name() methods
+
+Agent: Claude Code:Opus 4.5
+
 ## [1.7.12] - 2026-01-26
 
 ### Fixed

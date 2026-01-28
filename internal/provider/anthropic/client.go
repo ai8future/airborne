@@ -52,7 +52,7 @@ func NewClient(opts ...ClientOption) *Client {
 
 // Name returns the provider identifier.
 func (c *Client) Name() string {
-	return "anthropic"
+	return provider.NameAnthropic
 }
 
 // SupportsFileSearch returns false as Anthropic doesn't have native RAG.
@@ -83,13 +83,7 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		return provider.GenerateResult{}, errors.New("Anthropic API key is required")
 	}
 
-	model := cfg.Model
-	if model == "" {
-		model = defaultModel
-	}
-	if strings.TrimSpace(params.OverrideModel) != "" {
-		model = params.OverrideModel
-	}
+	model := provider.SelectModel(cfg.Model, defaultModel, params.OverrideModel)
 
 	// Check if thinking is enabled
 	thinkingEnabled := cfg.ExtraOptions["thinking_enabled"] == "true"
@@ -106,11 +100,8 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 	}
 
 	// Ensure request has a timeout
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
-	}
+	ctx, cancel := retry.EnsureTimeout(ctx, timeout)
+	defer cancel()
 
 	// Create captured client config with validation
 	httpCfg, err := httputil.NewCapturedClientConfig(cfg.APIKey, cfg.BaseURL)
@@ -298,35 +289,19 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 	}
 
 	// Ensure request has a timeout
-	var cancel context.CancelFunc
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-	}
-
-	// Helper to clean up cancel on error returns
-	cleanup := func() {
-		if cancel != nil {
-			cancel()
-		}
-	}
+	ctx, cancel := retry.EnsureTimeout(ctx, timeout)
 
 	if strings.TrimSpace(cfg.APIKey) == "" {
-		cleanup()
+		cancel()
 		return nil, errors.New("Anthropic API key is required")
 	}
 
-	model := cfg.Model
-	if model == "" {
-		model = defaultModel
-	}
-	if strings.TrimSpace(params.OverrideModel) != "" {
-		model = params.OverrideModel
-	}
+	model := provider.SelectModel(cfg.Model, defaultModel, params.OverrideModel)
 
 	// Create captured client config with validation
 	httpCfg, err := httputil.NewCapturedClientConfig(cfg.APIKey, cfg.BaseURL)
 	if err != nil {
-		cleanup()
+		cancel()
 		return nil, fmt.Errorf("client setup: %w", err)
 	}
 
@@ -394,7 +369,9 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 
 		for stream.Next() {
 			event := stream.Current()
-			_ = message.Accumulate(event)
+			if err := message.Accumulate(event); err != nil {
+			slog.Warn("failed to accumulate stream event", "error", err)
+		}
 
 			switch eventVariant := event.AsAny().(type) {
 			case anthropic.ContentBlockDeltaEvent:

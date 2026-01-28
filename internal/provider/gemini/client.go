@@ -50,7 +50,7 @@ func NewClient(opts ...ClientOption) *Client {
 
 // Name returns the provider identifier.
 func (c *Client) Name() string {
-	return "gemini"
+	return provider.NameGemini
 }
 
 // SupportsFileSearch returns true as Gemini supports FileSearchStore.
@@ -76,11 +76,8 @@ func (c *Client) SupportsStreaming() bool {
 // GenerateReply implements provider.Provider using Google's Gemini API.
 func (c *Client) GenerateReply(ctx context.Context, params provider.GenerateParams) (provider.GenerateResult, error) {
 	// Ensure request has a timeout
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, retry.RequestTimeout)
-		defer cancel()
-	}
+	ctx, cancel := retry.EnsureTimeout(ctx, retry.RequestTimeout)
+	defer cancel()
 
 	cfg := params.Config
 
@@ -88,13 +85,7 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		return provider.GenerateResult{}, errors.New("Gemini API key is required")
 	}
 
-	model := cfg.Model
-	if model == "" {
-		model = "gemini-3-pro-preview"
-	}
-	if strings.TrimSpace(params.OverrideModel) != "" {
-		model = params.OverrideModel
-	}
+	model := provider.SelectModel(cfg.Model, "gemini-3-pro-preview", params.OverrideModel)
 
 	// Create captured client config with validation
 	httpCfg, err := httputil.NewCapturedClientConfig(cfg.APIKey, cfg.BaseURL)
@@ -367,37 +358,21 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 // GenerateReplyStream implements streaming responses using Gemini's streaming API.
 func (c *Client) GenerateReplyStream(ctx context.Context, params provider.GenerateParams) (<-chan provider.StreamChunk, error) {
 	// Ensure request has a timeout
-	var cancel context.CancelFunc
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		ctx, cancel = context.WithTimeout(ctx, retry.RequestTimeout)
-	}
-
-	// Helper to clean up cancel on error returns
-	cleanup := func() {
-		if cancel != nil {
-			cancel()
-		}
-	}
+	ctx, cancel := retry.EnsureTimeout(ctx, retry.RequestTimeout)
 
 	cfg := params.Config
 
 	if strings.TrimSpace(cfg.APIKey) == "" {
-		cleanup()
+		cancel()
 		return nil, errors.New("Gemini API key is required")
 	}
 
-	model := cfg.Model
-	if model == "" {
-		model = "gemini-3-pro-preview"
-	}
-	if strings.TrimSpace(params.OverrideModel) != "" {
-		model = params.OverrideModel
-	}
+	model := provider.SelectModel(cfg.Model, "gemini-3-pro-preview", params.OverrideModel)
 
 	// Create captured client config with validation
 	httpCfg, err := httputil.NewCapturedClientConfig(cfg.APIKey, cfg.BaseURL)
 	if err != nil {
-		cleanup()
+		cancel()
 		return nil, fmt.Errorf("client setup: %w", err)
 	}
 
@@ -415,7 +390,7 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 
 	client, err := genai.NewClient(ctx, clientConfig)
 	if err != nil {
-		cleanup()
+		cancel()
 		return nil, fmt.Errorf("creating gemini client: %w", err)
 	}
 	capture := httpCfg.Capture

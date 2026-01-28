@@ -99,11 +99,8 @@ func (c *Client) SupportsStreaming() bool {
 // GenerateReply implements provider.Provider using OpenAI-compatible Chat Completions API.
 func (c *Client) GenerateReply(ctx context.Context, params provider.GenerateParams) (provider.GenerateResult, error) {
 	// Ensure request has a timeout
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, retry.RequestTimeout)
-		defer cancel()
-	}
+	ctx, cancel := retry.EnsureTimeout(ctx, retry.RequestTimeout)
+	defer cancel()
 
 	cfg := params.Config
 
@@ -111,13 +108,7 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		return provider.GenerateResult{}, fmt.Errorf("%s API key is required", c.config.Name)
 	}
 
-	model := cfg.Model
-	if model == "" {
-		model = c.config.DefaultModel
-	}
-	if strings.TrimSpace(params.OverrideModel) != "" {
-		model = params.OverrideModel
-	}
+	model := provider.SelectModel(cfg.Model, c.config.DefaultModel, params.OverrideModel)
 
 	// Determine base URL
 	baseURL := c.config.DefaultBaseURL
@@ -243,35 +234,22 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 // GenerateReplyStream implements streaming responses.
 func (c *Client) GenerateReplyStream(ctx context.Context, params provider.GenerateParams) (<-chan provider.StreamChunk, error) {
 	// Ensure request has a timeout
-	var cancel context.CancelFunc
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		ctx, cancel = context.WithTimeout(ctx, retry.RequestTimeout)
-	}
+	ctx, cancel := retry.EnsureTimeout(ctx, retry.RequestTimeout)
 
 	cfg := params.Config
 
 	if strings.TrimSpace(cfg.APIKey) == "" {
-		if cancel != nil {
-			cancel()
-		}
+		cancel()
 		return nil, fmt.Errorf("%s API key is required", c.config.Name)
 	}
 
-	model := cfg.Model
-	if model == "" {
-		model = c.config.DefaultModel
-	}
-	if strings.TrimSpace(params.OverrideModel) != "" {
-		model = params.OverrideModel
-	}
+	model := provider.SelectModel(cfg.Model, c.config.DefaultModel, params.OverrideModel)
 
 	// Determine base URL
 	baseURL := c.config.DefaultBaseURL
 	if cfg.BaseURL != "" {
 		if err := validation.ValidateProviderURL(cfg.BaseURL); err != nil {
-			if cancel != nil {
-				cancel()
-			}
+			cancel()
 			return nil, fmt.Errorf("invalid base URL: %w", err)
 		}
 		baseURL = cfg.BaseURL
