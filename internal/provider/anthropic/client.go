@@ -195,6 +195,7 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 					break
 				}
 			}
+			stream.Close()
 			if stream.Err() != nil {
 				err = stream.Err()
 			} else if err == nil {

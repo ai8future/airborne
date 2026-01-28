@@ -298,6 +298,7 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 		}
 
 		stream := client.Chat.Completions.NewStreaming(ctx, reqParams)
+		defer stream.Close()
 		var fullText strings.Builder
 		var usage *provider.Usage
 

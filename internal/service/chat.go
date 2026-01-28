@@ -1105,6 +1105,12 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 		}
 	}
 
+	// Check if context is already cancelled to avoid unnecessary work
+	if ctx.Err() != nil {
+		slog.Debug("skipping persistence, context cancelled")
+		return
+	}
+
 	// Run persistence in background goroutine
 	go func() {
 		// Create a new context with timeout for the background operation
@@ -1208,6 +1214,12 @@ func (s *ChatService) persistFailedRequest(ctx context.Context, req *pb.Generate
 	// Build debug info with error
 	debugInfo := &db.DebugInfo{
 		SystemPrompt: req.Instructions,
+	}
+
+	// Check if context is already cancelled to avoid unnecessary work
+	if ctx.Err() != nil {
+		slog.Debug("skipping persistence, context cancelled")
+		return
 	}
 
 	// Run persistence in background goroutine

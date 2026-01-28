@@ -1,5 +1,7 @@
 package tenant
 
+import "sort"
+
 // TenantConfig defines per-tenant overrides loaded from JSON/YAML files.
 type TenantConfig struct {
 	TenantID        string                    `json:"tenant_id" yaml:"tenant_id"`
@@ -68,8 +70,15 @@ func (tc *TenantConfig) DefaultProvider() (string, ProviderConfig, bool) {
 		}
 	}
 
-	// Fall back to first enabled provider
-	for name, cfg := range tc.Providers {
+	// Fall back to first enabled provider (deterministic order)
+	names := make([]string, 0, len(tc.Providers))
+	for name := range tc.Providers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		cfg := tc.Providers[name]
 		if cfg.Enabled {
 			return name, cfg, true
 		}

@@ -32,7 +32,7 @@ func New() *Transport {
 // RoundTrip implements http.RoundTripper.
 // It captures the request body before sending and the response body after receiving.
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
-	slog.Info("httpcapture: RoundTrip called",
+	slog.Debug("httpcapture: RoundTrip called",
 		"method", req.Method,
 		"url", req.URL.String(),
 		"has_body", req.Body != nil,
@@ -49,7 +49,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		// Restore the body so the SDK can read it
 		req.Body = io.NopCloser(bytes.NewReader(body))
 
-		slog.Info("httpcapture: captured request body",
+		slog.Debug("httpcapture: captured request body",
 			"size", len(body),
 		)
 	}
@@ -65,7 +65,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
-	slog.Info("httpcapture: response received",
+	slog.Debug("httpcapture: response received",
 		"status", resp.StatusCode,
 		"has_body", resp.Body != nil,
 	)
@@ -82,7 +82,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		// Restore the body so the SDK can read it
 		resp.Body = io.NopCloser(bytes.NewReader(body))
 
-		slog.Info("httpcapture: captured response body",
+		slog.Debug("httpcapture: captured response body",
 			"size", len(body),
 		)
 	}

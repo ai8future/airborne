@@ -182,7 +182,10 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 			}
 			if thinkingBudgetStr != "" {
 				var budget int
-				fmt.Sscanf(thinkingBudgetStr, "%d", &budget)
+				if _, err := fmt.Sscanf(thinkingBudgetStr, "%d", &budget); err != nil {
+					slog.Warn("invalid thinking_budget value", "value", thinkingBudgetStr, "error", err)
+					budget = 0
+				}
 				if budget > 0 {
 					budget32 := int32(budget)
 					thinkingConfig.ThinkingBudget = &budget32
@@ -466,7 +469,10 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 			}
 			if thinkingBudgetStr != "" {
 				var budget int
-				fmt.Sscanf(thinkingBudgetStr, "%d", &budget)
+				if _, err := fmt.Sscanf(thinkingBudgetStr, "%d", &budget); err != nil {
+					slog.Warn("invalid thinking_budget value", "value", thinkingBudgetStr, "error", err)
+					budget = 0
+				}
 				if budget > 0 {
 					budget32 := int32(budget)
 					thinkingConfig.ThinkingBudget = &budget32
@@ -532,6 +538,13 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 
 		// Use GenerateContentStream for streaming
 		for resp, err := range client.Models.GenerateContentStream(ctx, model, contents, generateConfig) {
+			// Check for context cancellation before processing each response
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
 			lastResp = resp // Keep last response for grounding metadata
 			if err != nil {
 				ch <- provider.StreamChunk{

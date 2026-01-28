@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.14] - 2026-01-28
+
+### Fixed
+- **Resource Leaks**: Added missing stream.Close() calls
+  - OpenAI-compat streaming now properly closes stream on completion
+  - Anthropic thinking-mode streaming now properly closes stream after accumulation
+
+- **Goroutine Leak**: Added context cancellation check in Gemini streaming
+  - Stream processing loop now checks ctx.Done() before each iteration
+  - Prevents goroutine leaks when context is cancelled
+
+- **Log Pollution**: Changed httpcapture logging from Info to Debug
+  - All 4 high-volume "httpcapture:" log calls now use slog.Debug
+  - Reduces production log noise
+
+- **Non-deterministic Behavior**: Made DefaultProvider selection deterministic
+  - Fallback provider selection now uses sorted key order
+  - Ensures consistent behavior across runs
+
+- **Unnecessary Work**: Added context check before persistence goroutine
+  - Skips background persistence if context already cancelled
+  - Avoids wasted database operations
+
+- **Silent Parse Failure**: Added error handling to thinking_budget parsing
+  - fmt.Sscanf errors now logged with slog.Warn
+  - Applied to both GenerateReply and GenerateReplyStream methods
+
+Agent: Claude Code:Opus 4.5
+
 ## [1.7.13] - 2026-01-28
 
 ### Refactored
