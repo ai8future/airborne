@@ -49,6 +49,9 @@ dist/
 # Claude
 .claude/settings.local.json
 
+# Worktrees
+.worktrees/
+
 # Generated protobuf code is now committed to allow server-side builds
 # Regenerate with: make proto
 
