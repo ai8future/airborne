@@ -55,12 +55,13 @@ type VersionInfo struct {
 
 // Config holds admin server configuration.
 type Config struct {
-	Port        int
-	GRPCAddr    string          // Address of the gRPC server (e.g., "localhost:50051")
-	AuthToken   string          // Auth token for gRPC calls
-	TenantMgr   *tenant.Manager // Tenant manager for accessing API keys
-	RedisClient *redis.Client   // Redis client for idempotency
-	Version     VersionInfo     // Version information
+	Port         int
+	GRPCAddr     string                                    // Address of the gRPC server (e.g., "localhost:50051")
+	AuthToken    string                                    // Auth token for gRPC calls
+	TenantMgr    *tenant.Manager                           // Tenant manager for accessing API keys
+	RedisClient  *redis.Client                             // Redis client for idempotency
+	Version      VersionInfo                               // Version information
+	HealthChecks map[string]func(context.Context) error    // Additional health checks (e.g., RAG dependencies)
 }
 
 // NewServer creates a new admin HTTP server.
@@ -113,6 +114,9 @@ func NewServer(dbClient *db.Client, cfg Config) *Server {
 		healthChecks["redis"] = func(ctx context.Context) error {
 			return s.redisClient.Ping(ctx)
 		}
+	}
+	for name, check := range cfg.HealthChecks {
+		healthChecks[name] = check
 	}
 
 	// Register endpoints

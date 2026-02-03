@@ -231,10 +231,10 @@ func TestOllamaEmbedder_EmbedBatch_Success(t *testing.T) {
 }
 
 func TestOllamaEmbedder_EmbedBatch_PartialFailure(t *testing.T) {
-	callCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
-		if callCount == 2 {
+		var req ollamaEmbedRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		if req.Prompt == "second" {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -283,6 +283,34 @@ func TestOllamaEmbedder_ConnectionError(t *testing.T) {
 
 	if err == nil {
 		t.Fatal("expected connection error")
+	}
+}
+
+func TestOllamaEmbedder_RetriesOnTransientError(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts < 2 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(ollamaEmbedResponse{
+			Embedding: []float64{0.1, 0.2, 0.3},
+		})
+	}))
+	defer server.Close()
+
+	emb := NewOllamaEmbedder(OllamaConfig{BaseURL: server.URL, Timeout: 5 * time.Second})
+	result, err := emb.Embed(context.Background(), "test text")
+	if err != nil {
+		t.Fatalf("expected success after retry, got: %v", err)
+	}
+	if len(result) != 3 {
+		t.Errorf("expected 3 dimensions, got %d", len(result))
+	}
+	if attempts < 2 {
+		t.Errorf("expected at least 2 attempts, got %d", attempts)
 	}
 }
 

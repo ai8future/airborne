@@ -103,8 +103,7 @@ func (c *Client) generateGemini(ctx context.Context, req *ImageRequest) (provide
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-goog-api-key", req.GeminiAPIKey)
 
-	client := &http.Client{Timeout: geminiTimeout}
-	resp, err := client.Do(httpReq)
+	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		return provider.GeneratedImage{}, fmt.Errorf("gemini request failed: %w", err)
 	}

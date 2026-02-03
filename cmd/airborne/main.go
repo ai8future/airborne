@@ -102,11 +102,12 @@ func main() {
 		grpcAddr := fmt.Sprintf("%s:%d", grpcHost, cfg.Server.GRPCPort)
 
 		adminServer = admin.NewServer(components.DBClient, admin.Config{
-			Port:        cfg.Admin.Port,
-			GRPCAddr:    grpcAddr,
-			AuthToken:   cfg.Auth.AdminToken,
-			TenantMgr:   components.TenantMgr,
-			RedisClient: components.RedisClient,
+			Port:         cfg.Admin.Port,
+			GRPCAddr:     grpcAddr,
+			AuthToken:    cfg.Auth.AdminToken,
+			TenantMgr:    components.TenantMgr,
+			RedisClient:  components.RedisClient,
+			HealthChecks: components.HealthChecks,
 			Version: admin.VersionInfo{
 				Version:   Version,
 				GitCommit: GitCommit,

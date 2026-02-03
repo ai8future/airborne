@@ -13,6 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/ai8future/airborne/internal/config/envutil"
+	"github.com/ai8future/chassis-go/call"
 )
 
 // Config holds all server configuration
@@ -413,7 +414,7 @@ func fetchDopplerSecret(project, secretName string) string {
 
 	url := fmt.Sprintf("https://api.doppler.com/v3/configs/config/secrets?project=%s&config=%s", project, config)
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := call.New(call.WithTimeout(10*time.Second), call.WithRetry(3, 1*time.Second))
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "doppler: request creation failed: %v\n", err)

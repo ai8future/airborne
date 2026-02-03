@@ -14,12 +14,13 @@ import (
 	"time"
 
 	"github.com/ai8future/airborne/internal/validation"
+	"github.com/ai8future/chassis-go/call"
 )
 
 // DocboxExtractor extracts text using Docbox's Pandoc API.
 type DocboxExtractor struct {
 	baseURL string
-	client  *http.Client
+	client  *call.Client
 }
 
 // DocboxConfig configures the Docbox extractor.
@@ -47,9 +48,11 @@ func NewDocboxExtractor(cfg DocboxConfig) *DocboxExtractor {
 
 	return &DocboxExtractor{
 		baseURL: cfg.BaseURL,
-		client: &http.Client{
-			Timeout: cfg.Timeout,
-		},
+		client: call.New(
+			call.WithTimeout(cfg.Timeout),
+			call.WithRetry(3, 500*time.Millisecond),
+			call.WithCircuitBreaker("docbox", 5, 30*time.Second),
+		),
 	}
 }
 

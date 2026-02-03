@@ -38,11 +38,12 @@ type VersionInfo struct {
 
 // ServerComponents holds components needed by both gRPC and admin servers
 type ServerComponents struct {
-	KeyStore    *auth.KeyStore
-	RateLimiter *auth.RateLimiter
-	TenantMgr   *tenant.Manager
-	RedisClient *redis.Client
-	DBClient    *db.Client
+	KeyStore     *auth.KeyStore
+	RateLimiter  *auth.RateLimiter
+	TenantMgr    *tenant.Manager
+	RedisClient  *redis.Client
+	DBClient     *db.Client
+	HealthChecks map[string]func(context.Context) error // Additional health checks (e.g., RAG dependencies)
 }
 
 // NewGRPCServer creates a new gRPC server with all services registered
@@ -253,12 +254,20 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, *Serv
 		"version", version.Version,
 	)
 
+	// Build additional health checks for RAG dependencies
+	extraHealthChecks := make(map[string]func(context.Context) error)
+	if ragService != nil {
+		extraHealthChecks["qdrant"] = ragService.PingVectorStore
+		extraHealthChecks["ollama"] = ragService.PingEmbedder
+	}
+
 	components := &ServerComponents{
-		KeyStore:    keyStore,
-		RateLimiter: rateLimiter,
-		TenantMgr:   tenantMgr,
-		RedisClient: redisClient,
-		DBClient:    dbClient,
+		KeyStore:     keyStore,
+		RateLimiter:  rateLimiter,
+		TenantMgr:    tenantMgr,
+		RedisClient:  redisClient,
+		DBClient:     dbClient,
+		HealthChecks: extraHealthChecks,
 	}
 
 	return server, components, nil

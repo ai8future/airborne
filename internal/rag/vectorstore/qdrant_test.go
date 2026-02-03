@@ -442,6 +442,30 @@ func TestQdrantStore_ContextCanceled(t *testing.T) {
 	}
 }
 
+func TestQdrantStore_RetriesOn503(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts < 3 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]any{"result": true})
+	}))
+	defer server.Close()
+
+	store := NewQdrantStore(QdrantConfig{BaseURL: server.URL, Timeout: 5 * time.Second})
+	err := store.CreateCollection(context.Background(), "test_collection", 768)
+
+	if err != nil {
+		t.Fatalf("expected success after retries, got: %v", err)
+	}
+	if attempts < 3 {
+		t.Errorf("expected at least 3 attempts, got %d", attempts)
+	}
+}
+
 // Benchmark
 func BenchmarkQdrantStore_Search(b *testing.B) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

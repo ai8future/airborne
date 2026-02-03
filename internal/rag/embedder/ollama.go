@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/ai8future/chassis-go/call"
 )
 
 // OllamaEmbedder generates embeddings using Ollama's API.
@@ -15,7 +17,7 @@ type OllamaEmbedder struct {
 	baseURL    string
 	model      string
 	dimensions int
-	client     *http.Client
+	client     *call.Client
 }
 
 // OllamaConfig configures the Ollama embedder.
@@ -61,9 +63,11 @@ func NewOllamaEmbedder(cfg OllamaConfig) *OllamaEmbedder {
 		baseURL:    cfg.BaseURL,
 		model:      cfg.Model,
 		dimensions: dimensions,
-		client: &http.Client{
-			Timeout: cfg.Timeout,
-		},
+		client: call.New(
+			call.WithTimeout(cfg.Timeout),
+			call.WithRetry(3, 500*time.Millisecond),
+			call.WithCircuitBreaker("ollama", 5, 30*time.Second),
+		),
 	}
 }
 
@@ -145,4 +149,21 @@ func (e *OllamaEmbedder) Dimensions() int {
 // Model returns the model name.
 func (e *OllamaEmbedder) Model() string {
 	return e.model
+}
+
+// Ping checks connectivity to the Ollama server.
+func (e *OllamaEmbedder) Ping(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, e.baseURL+"/api/tags", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := e.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("ollama health check returned %d", resp.StatusCode)
+	}
+	return nil
 }

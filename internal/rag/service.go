@@ -373,6 +373,27 @@ func (s *Service) collectionName(tenantID, storeID string) string {
 	return fmt.Sprintf("%s_%s", tenantID, storeID)
 }
 
+// Pinger is an optional interface for components that support health checks.
+type Pinger interface {
+	Ping(ctx context.Context) error
+}
+
+// PingVectorStore checks connectivity to the vector store, if supported.
+func (s *Service) PingVectorStore(ctx context.Context) error {
+	if p, ok := s.store.(Pinger); ok {
+		return p.Ping(ctx)
+	}
+	return nil
+}
+
+// PingEmbedder checks connectivity to the embedder, if supported.
+func (s *Service) PingEmbedder(ctx context.Context) error {
+	if p, ok := s.embedder.(Pinger); ok {
+		return p.Ping(ctx)
+	}
+	return nil
+}
+
 // Helper functions for payload extraction
 func getString(m map[string]any, key string) string {
 	if m == nil {

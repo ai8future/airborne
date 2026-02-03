@@ -8,12 +8,14 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/ai8future/chassis-go/call"
 )
 
 // QdrantStore implements the Store interface using Qdrant's REST API.
 type QdrantStore struct {
 	baseURL string
-	client  *http.Client
+	client  *call.Client
 }
 
 // QdrantConfig configures the Qdrant store.
@@ -36,9 +38,11 @@ func NewQdrantStore(cfg QdrantConfig) *QdrantStore {
 
 	return &QdrantStore{
 		baseURL: cfg.BaseURL,
-		client: &http.Client{
-			Timeout: cfg.Timeout,
-		},
+		client: call.New(
+			call.WithTimeout(cfg.Timeout),
+			call.WithRetry(3, 500*time.Millisecond),
+			call.WithCircuitBreaker("qdrant", 5, 30*time.Second),
+		),
 	}
 }
 
@@ -252,4 +256,21 @@ func (s *QdrantStore) doRequestRaw(ctx context.Context, method, path string, bod
 	}
 
 	return s.client.Do(req)
+}
+
+// Ping checks connectivity to the Qdrant server.
+func (s *QdrantStore) Ping(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.baseURL+"/healthz", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("qdrant health check returned %d", resp.StatusCode)
+	}
+	return nil
 }

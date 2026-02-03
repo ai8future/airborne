@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.1] - 2026-02-03
+
+### Added
+- **chassis-go `call.Client` adoption**: Replaced raw `http.Client` with resilient `call.Client` across all outbound HTTP clients
+  - `internal/rag/vectorstore/qdrant.go`: Qdrant vector store — retries, circuit breaker ("qdrant"), timeout
+  - `internal/rag/embedder/ollama.go`: Ollama embedder — retries, circuit breaker ("ollama"), timeout
+  - `internal/rag/extractor/docbox.go`: Docbox extractor — retries, circuit breaker ("docbox"), timeout
+  - `internal/imagegen/client.go` + `gemini.go`: Gemini image generation — retries, circuit breaker ("gemini-imagegen"), 90s timeout
+  - `internal/tenant/doppler.go`: Doppler tenant client — timeout only (app-level retry already exists)
+  - `internal/config/config.go`: Doppler secret fetching — retries + timeout
+- **RAG health checks**: Added `Ping()` methods to QdrantStore and OllamaEmbedder, wired through `rag.Service` → `ServerComponents` → `admin.Config` → health endpoint
+  - Qdrant: pings `/healthz`
+  - Ollama: pings `/api/tags`
+- **Retry test coverage**: Added retry integration tests for Qdrant, Ollama, and Docbox verifying 503→success retry behavior
+- **Retry package documentation**: Clarified scope distinction between `internal/retry` (SDK/provider-level) and `call.Client` (HTTP transport-level)
+
+### Changed
+- CHANGELOG [1.8.0] "Noted" section about `call.Client` context cancellation bug is now resolved — upstream fix applied
+
+Agent: Claude Code:Opus 4.5
+
 ## [1.8.0] - 2026-02-03
 
 ### Added

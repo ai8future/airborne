@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ai8future/chassis-go/call"
 )
 
 // dopplerClient fetches secrets from Doppler API.
@@ -16,7 +18,7 @@ import (
 type dopplerClient struct {
 	token      string
 	config     string // dev, stg, prod
-	httpClient *http.Client
+	httpClient *call.Client
 	cache      map[string]map[string]string // project -> secret_name -> value
 	mu         sync.RWMutex
 }
@@ -42,9 +44,9 @@ func initDopplerClient() {
 		globalDopplerClient = &dopplerClient{
 			token:  token,
 			config: config,
-			httpClient: &http.Client{
-				Timeout: 10 * time.Second,
-			},
+			httpClient: call.New(
+				call.WithTimeout(10 * time.Second),
+			),
 			cache: make(map[string]map[string]string),
 		}
 	})

@@ -4,16 +4,26 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ai8future/airborne/internal/provider"
+	"github.com/ai8future/chassis-go/call"
 )
 
 // Client handles image generation via external providers.
-type Client struct{}
+type Client struct {
+	httpClient *call.Client
+}
 
 // NewClient creates a new image generation client.
 func NewClient() *Client {
-	return &Client{}
+	return &Client{
+		httpClient: call.New(
+			call.WithTimeout(90*time.Second),
+			call.WithRetry(2, 1*time.Second),
+			call.WithCircuitBreaker("gemini-imagegen", 3, 60*time.Second),
+		),
+	}
 }
 
 // ImageRequest represents a detected image generation request.

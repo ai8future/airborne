@@ -526,6 +526,34 @@ func TestDocboxExtractor_FormatMapping(t *testing.T) {
 	}
 }
 
+func TestDocboxExtractor_RetriesOnTransientError(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts < 2 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("extracted text after retry"))
+	}))
+	defer server.Close()
+
+	ext := NewDocboxExtractor(DocboxConfig{BaseURL: server.URL, Timeout: 5 * time.Second})
+	reader := strings.NewReader("pdf content")
+
+	result, err := ext.Extract(context.Background(), reader, "doc.pdf", "application/pdf")
+	if err != nil {
+		t.Fatalf("expected success after retry, got: %v", err)
+	}
+	if result.Text != "extracted text after retry" {
+		t.Errorf("expected extracted text, got %q", result.Text)
+	}
+	if attempts < 2 {
+		t.Errorf("expected at least 2 attempts, got %d", attempts)
+	}
+}
+
 // Benchmark
 func BenchmarkDocboxExtractor_Extract_PlainText(b *testing.B) {
 	ext := NewDocboxExtractor(DocboxConfig{})

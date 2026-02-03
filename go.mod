@@ -3,7 +3,7 @@ module github.com/ai8future/airborne
 go 1.25.5
 
 require (
-	github.com/ai8future/chassis-go v0.0.0-00010101000000-000000000000
+	github.com/ai8future/chassis-go v0.0.0-20260203191922-5735cdfaeb49
 	github.com/ai8future/markdown_svc/clients/go v0.0.0
 	github.com/ai8future/pricing_db v0.0.0-00010101000000-000000000000
 	github.com/alicebob/miniredis/v2 v2.35.0
