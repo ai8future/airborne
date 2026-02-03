@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.0] - 2026-02-03
+
+### Added
+- **chassis-go integration**: Adopted chassis-go toolkit for standardized infrastructure
+  - `logz`: Structured JSON logging with trace ID propagation (replaces hand-rolled configureLogger)
+  - `grpckit`: Recovery and logging interceptors for gRPC (replaces ~95 lines of hand-rolled interceptors)
+  - `httpkit`: Recovery, RequestID, and Logging middleware on admin HTTP server (new capability)
+  - `health`: Parallel health checks at `/admin/healthz` with per-dependency status (new endpoint)
+  - `lifecycle`: Coordinated shutdown orchestration for gRPC + HTTP servers (replaces manual signal handling)
+  - `testkit`: SetEnv helper for test environment variable management
+- **Trace ID propagation**: Every gRPC request now gets a UUID trace ID stored in context, automatically included in all structured log output
+- **Request IDs on admin HTTP**: Every admin HTTP request now has a unique X-Request-ID header
+- **Panic recovery on admin HTTP**: Admin server panics now return 500 JSON errors instead of crashing the process
+- **Standard gRPC health service**: Added grpc.health.v1.Health alongside existing AdminService/Health
+- **Health check skip filter**: gRPC logging interceptor skips /Health and /Check methods to reduce noise
+
+### Changed
+- Logging output now goes to stderr (was stdout) — standard convention for structured logging
+- Logging format is always JSON (text format option removed) — consistent with production requirements
+- Shutdown is now coordinated: if gRPC server crashes, admin HTTP server also shuts down cleanly
+
+### Noted
+- chassis-go `call.Client` NOT adopted for RAG outbound HTTP calls due to a context cancellation design issue (defer cancel() in Do() cancels response body context before callers finish reading). Filed as upstream bug.
+- chassis-go `config.MustLoad` NOT adopted — existing YAML+envutil+Doppler config system is already clean and well-integrated.
+
+Agent: Claude Code:Opus 4.5
+
 ## [1.7.15] - 2026-01-28
 
 ### Added

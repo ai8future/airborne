@@ -1,13 +1,13 @@
 package envutil
 
 import (
-	"os"
 	"testing"
+
+	"github.com/ai8future/chassis-go/testkit"
 )
 
 func TestGetStringEnv(t *testing.T) {
-	os.Setenv("TEST_STRING", "value")
-	defer os.Unsetenv("TEST_STRING")
+	testkit.SetEnv(t, map[string]string{"TEST_STRING": "value"})
 
 	if got := GetStringEnv("TEST_STRING", "default"); got != "value" {
 		t.Errorf("GetStringEnv() = %q, want %q", got, "value")
@@ -19,10 +19,10 @@ func TestGetStringEnv(t *testing.T) {
 }
 
 func TestGetIntEnv(t *testing.T) {
-	os.Setenv("TEST_INT", "42")
-	os.Setenv("TEST_INVALID", "not-a-number")
-	defer os.Unsetenv("TEST_INT")
-	defer os.Unsetenv("TEST_INVALID")
+	testkit.SetEnv(t, map[string]string{
+		"TEST_INT":     "42",
+		"TEST_INVALID": "not-a-number",
+	})
 
 	if got := GetIntEnv("TEST_INT", 0); got != 42 {
 		t.Errorf("GetIntEnv() = %d, want %d", got, 42)
@@ -53,8 +53,7 @@ func TestGetBoolEnv(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.envValue, func(t *testing.T) {
-			os.Setenv("TEST_BOOL", tt.envValue)
-			defer os.Unsetenv("TEST_BOOL")
+			testkit.SetEnv(t, map[string]string{"TEST_BOOL": tt.envValue})
 
 			if got := GetBoolEnv("TEST_BOOL", false); got != tt.want {
 				t.Errorf("GetBoolEnv(%q) = %v, want %v", tt.envValue, got, tt.want)

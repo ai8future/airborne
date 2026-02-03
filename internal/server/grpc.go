@@ -5,7 +5,12 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime"
+	"strings"
 	"time"
+
+	"github.com/ai8future/chassis-go/grpckit"
+	"github.com/ai8future/chassis-go/logz"
+	"github.com/google/uuid"
 
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/auth"
@@ -20,10 +25,8 @@ import (
 	"github.com/ai8future/airborne/internal/service"
 	"github.com/ai8future/airborne/internal/tenant"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
-	"google.golang.org/grpc/status"
 )
 
 // VersionInfo contains build version information
@@ -94,14 +97,16 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, *Serv
 		tenantInterceptor = auth.NewTenantInterceptor(tenantMgr)
 	}
 
-	// Build interceptor chains
+	// Build interceptor chains using chassis-go grpckit
+	logger := slog.Default()
 	unaryInterceptors := []grpc.UnaryServerInterceptor{
-		recoveryInterceptor(),
-		loggingInterceptor(),
+		grpckit.UnaryRecovery(logger),
+		traceIDInjector(),
+		skipHealthLogging(grpckit.UnaryLogging(logger)),
 	}
 	streamInterceptors := []grpc.StreamServerInterceptor{
-		streamRecoveryInterceptor(),
-		streamLoggingInterceptor(),
+		grpckit.StreamRecovery(logger),
+		grpckit.StreamLogging(logger),
 	}
 
 	// Add tenant interceptor first (validates tenant before auth)
@@ -228,6 +233,14 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, *Serv
 		pb.RegisterFileServiceServer(server, fileService)
 	}
 
+	// Register standard gRPC health service via chassis-go
+	grpckit.RegisterHealth(server, func(ctx context.Context) error {
+		if dbClient != nil {
+			return dbClient.Ping(ctx)
+		}
+		return nil
+	})
+
 	tenantCount := 0
 	if tenantMgr != nil {
 		tenantCount = tenantMgr.TenantCount()
@@ -258,99 +271,23 @@ func (c *ServerComponents) Close() {
 	}
 }
 
-// recoveryInterceptor recovers from panics in unary handlers
-func recoveryInterceptor() grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
-		defer func() {
-			if r := recover(); r != nil {
-				// Log stack trace
-				buf := make([]byte, 4096)
-				n := runtime.Stack(buf, false)
-				slog.Error("panic recovered",
-					"method", info.FullMethod,
-					"panic", r,
-					"stack", string(buf[:n]),
-				)
-				err = status.Errorf(codes.Internal, "internal error")
-			}
-		}()
+// traceIDInjector generates a trace ID for each unary RPC and stores it in context
+// for downstream structured logging via logz.
+func traceIDInjector() grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		ctx = logz.WithTraceID(ctx, uuid.NewString())
 		return handler(ctx, req)
 	}
 }
 
-// streamRecoveryInterceptor recovers from panics in stream handlers
-func streamRecoveryInterceptor() grpc.StreamServerInterceptor {
-	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) (err error) {
-		defer func() {
-			if r := recover(); r != nil {
-				buf := make([]byte, 4096)
-				n := runtime.Stack(buf, false)
-				slog.Error("panic recovered in stream",
-					"method", info.FullMethod,
-					"panic", r,
-					"stack", string(buf[:n]),
-				)
-				err = status.Errorf(codes.Internal, "internal error")
-			}
-		}()
-		return handler(srv, ss)
-	}
-}
-
-// loggingInterceptor logs unary requests
-func loggingInterceptor() grpc.UnaryServerInterceptor {
+// skipHealthLogging wraps a unary logging interceptor to skip health check methods,
+// preventing log noise from frequent probes.
+func skipHealthLogging(inner grpc.UnaryServerInterceptor) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		start := time.Now()
-
-		resp, err := handler(ctx, req)
-
-		duration := time.Since(start)
-		code := codes.OK
-		if err != nil {
-			if st, ok := status.FromError(err); ok {
-				code = st.Code()
-			} else {
-				code = codes.Unknown
-			}
+		if strings.HasSuffix(info.FullMethod, "/Health") || strings.HasSuffix(info.FullMethod, "/Check") {
+			return handler(ctx, req)
 		}
-
-		// Skip logging for health checks
-		if info.FullMethod != "/airborne.v1.AdminService/Health" {
-			slog.Info("gRPC request",
-				"method", info.FullMethod,
-				"duration_ms", duration.Milliseconds(),
-				"code", code.String(),
-			)
-		}
-
-		return resp, err
-	}
-}
-
-// streamLoggingInterceptor logs stream requests
-func streamLoggingInterceptor() grpc.StreamServerInterceptor {
-	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		start := time.Now()
-
-		err := handler(srv, ss)
-
-		duration := time.Since(start)
-		code := codes.OK
-		if err != nil {
-			if st, ok := status.FromError(err); ok {
-				code = st.Code()
-			} else {
-				code = codes.Unknown
-			}
-		}
-
-		slog.Info("gRPC stream",
-			"method", info.FullMethod,
-			"duration_ms", duration.Milliseconds(),
-			"code", code.String(),
-		)
-
-		return err
+		return inner(ctx, req, info, handler)
 	}
 }
 

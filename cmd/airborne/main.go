@@ -8,10 +8,11 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
-	"strings"
-	"syscall"
 	"time"
+
+	chassis "github.com/ai8future/chassis-go"
+	"github.com/ai8future/chassis-go/lifecycle"
+	"github.com/ai8future/chassis-go/logz"
 
 	airbornev1 "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/admin"
@@ -52,8 +53,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Configure logging based on config
-	configureLogger(cfg.Logging)
+	// Configure structured JSON logging with trace ID support
+	logger := logz.New(cfg.Logging.Level)
+	slog.SetDefault(logger)
 
 	// Log startup info
 	slog.Info("starting Airborne",
@@ -61,6 +63,7 @@ func main() {
 		"commit", GitCommit,
 		"build_time", BuildTime,
 		"grpc_port", cfg.Server.GRPCPort,
+		"chassis_version", chassis.Version,
 	)
 
 	// Initialize markdown_svc client (optional service)
@@ -89,23 +92,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Handle shutdown gracefully
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	// Start gRPC server in goroutine
-	go func() {
-		slog.Info("gRPC server listening", "address", addr)
-		if err := grpcServer.Serve(listener); err != nil && err != grpc.ErrServerStopped {
-			slog.Error("gRPC server error", "error", err)
-			os.Exit(1)
-		}
-	}()
-
-	// Start admin HTTP server if enabled
+	// Build admin server if enabled (created before lifecycle.Run so it's available to components)
 	var adminServer *admin.Server
 	if cfg.Admin.Enabled {
-		// Build gRPC address for the test endpoint
 		grpcHost := cfg.Server.Host
 		if grpcHost == "" || grpcHost == "0.0.0.0" {
 			grpcHost = "127.0.0.1"
@@ -124,50 +113,53 @@ func main() {
 				BuildTime: BuildTime,
 			},
 		})
-		go func() {
-			if err := adminServer.Start(); err != nil && err != http.ErrServerClosed {
-				slog.Error("admin server error", "error", err)
+	}
+
+	// Use lifecycle.Run for coordinated startup and shutdown.
+	// Catches SIGTERM/SIGINT, cancels context, waits for all components.
+	components_ := []lifecycle.Component{
+		// gRPC server component
+		func(ctx context.Context) error {
+			slog.Info("gRPC server listening", "address", addr)
+			errCh := make(chan error, 1)
+			go func() { errCh <- grpcServer.Serve(listener) }()
+			select {
+			case <-ctx.Done():
+				grpcServer.GracefulStop()
+				return nil
+			case err := <-errCh:
+				if err == grpc.ErrServerStopped {
+					return nil
+				}
+				return err
 			}
-		}()
+		},
 	}
 
-	// Wait for shutdown signal
-	<-ctx.Done()
-	slog.Info("shutdown signal received, stopping servers...")
-
-	// Graceful shutdown
+	// Admin HTTP server component (only if enabled)
 	if adminServer != nil {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := adminServer.Shutdown(shutdownCtx); err != nil {
-			slog.Error("admin server shutdown error", "error", err)
-		}
+		components_ = append(components_, func(ctx context.Context) error {
+			errCh := make(chan error, 1)
+			go func() { errCh <- adminServer.Start() }()
+			select {
+			case <-ctx.Done():
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				return adminServer.Shutdown(shutdownCtx)
+			case err := <-errCh:
+				if err == http.ErrServerClosed {
+					return nil
+				}
+				return err
+			}
+		})
 	}
-	grpcServer.GracefulStop()
+
+	if err := lifecycle.Run(context.Background(), components_...); err != nil {
+		slog.Error("server exited with error", "error", err)
+		os.Exit(1)
+	}
 	slog.Info("servers stopped")
-}
-
-// configureLogger sets up the default slog logger based on config values
-func configureLogger(cfg config.LoggingConfig) {
-	level := slog.LevelInfo
-	switch strings.ToLower(cfg.Level) {
-	case "debug":
-		level = slog.LevelDebug
-	case "warn", "warning":
-		level = slog.LevelWarn
-	case "error":
-		level = slog.LevelError
-	}
-
-	opts := &slog.HandlerOptions{Level: level}
-	var handler slog.Handler
-	if strings.ToLower(cfg.Format) == "text" {
-		handler = slog.NewTextHandler(os.Stdout, opts)
-	} else {
-		handler = slog.NewJSONHandler(os.Stdout, opts)
-	}
-
-	slog.SetDefault(slog.New(handler))
 }
 
 // runHealthCheck performs a gRPC health check against the AdminService/Health endpoint

@@ -14,6 +14,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ai8future/chassis-go/health"
+	"github.com/ai8future/chassis-go/httpkit"
+
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/db"
 	"github.com/ai8future/airborne/internal/provider"
@@ -97,19 +100,43 @@ func NewServer(dbClient *db.Client, cfg Config) *Server {
 		}
 	}
 
+	// Register chassis-go health check endpoint with parallel dependency checks
+	healthChecks := map[string]health.Check{
+		"self": func(_ context.Context) error { return nil },
+	}
+	if s.dbClient != nil {
+		healthChecks["postgres"] = func(ctx context.Context) error {
+			return s.dbClient.Ping(ctx)
+		}
+	}
+	if s.redisClient != nil {
+		healthChecks["redis"] = func(ctx context.Context) error {
+			return s.redisClient.Ping(ctx)
+		}
+	}
+
 	// Register endpoints
 	mux.HandleFunc("/admin/activity", corsHandler(s.handleActivity))
 	mux.HandleFunc("/admin/debug/", corsHandler(s.handleDebug))
 	mux.HandleFunc("/admin/thread/", corsHandler(s.handleThread))
 	mux.HandleFunc("/admin/health", corsHandler(s.handleHealth))
+	mux.Handle("/admin/healthz", health.Handler(healthChecks))
 	mux.HandleFunc("/admin/version", corsHandler(s.handleVersion))
 	mux.HandleFunc("/admin/test", corsHandler(s.handleTest))
 	mux.HandleFunc("/admin/chat", corsHandler(s.handleChat))
 	mux.HandleFunc("/admin/upload", corsHandler(s.handleUpload))
 
+	// Stack chassis-go httpkit middleware: Recovery (outermost) → RequestID → Logging → routes
+	logger := slog.Default()
+	handler := httpkit.Recovery(logger)(
+		httpkit.RequestID(
+			httpkit.Logging(logger)(mux),
+		),
+	)
+
 	s.server = &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
-		Handler:      mux,
+		Handler:      handler,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 5 * time.Minute, // Must exceed context timeout for LLM requests
 		IdleTimeout:  60 * time.Second,
