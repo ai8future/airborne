@@ -1,0 +1,16 @@
+Tool:      rclaude
+Model:  opus
+Codebase:  airborne
+Output:    /Users/cliff/Desktop/_code/airborne/_rcodegen
+Command:   rclaude -m opus suite
+Started:   2026-01-26 18:35:18
+Ended:     2026-01-26 18:55:04
+Duration:  19m 46s
+Exit Code: 0
+
+--- Token Usage ---
+Input:     6304
+Output:    7033
+Cache Read: 296191
+Cache Create: 42587
+Cost:      $0.7321
