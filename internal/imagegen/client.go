@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/ai8future/airborne/internal/provider"
-	"github.com/ai8future/chassis-go/call"
+	"github.com/ai8future/chassis-go/v5/call"
 )
 
 // Client handles image generation via external providers.

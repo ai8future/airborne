@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/ai8future/airborne/internal/validation"
-	"github.com/ai8future/chassis-go/call"
+	"github.com/ai8future/chassis-go/v5/call"
 )
 
 // DocboxExtractor extracts text using Docbox's Pandoc API.

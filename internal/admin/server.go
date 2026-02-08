@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ai8future/chassis-go/guard"
-	"github.com/ai8future/chassis-go/health"
-	"github.com/ai8future/chassis-go/httpkit"
-	"github.com/ai8future/chassis-go/secval"
+	"github.com/ai8future/chassis-go/v5/guard"
+	"github.com/ai8future/chassis-go/v5/health"
+	"github.com/ai8future/chassis-go/v5/httpkit"
+	"github.com/ai8future/chassis-go/v5/secval"
 
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/db"
@@ -87,22 +87,6 @@ func NewServer(dbClient *db.Client, cfg Config) *Server {
 
 	mux := http.NewServeMux()
 
-	// CORS middleware wrapper
-	corsHandler := func(h http.HandlerFunc) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
-			if r.Method == "OPTIONS" {
-				w.WriteHeader(http.StatusOK)
-				return
-			}
-
-			h(w, r)
-		}
-	}
-
 	// Register chassis-go health check endpoint with parallel dependency checks
 	healthChecks := map[string]health.Check{
 		"self": func(_ context.Context) error { return nil },
@@ -122,24 +106,30 @@ func NewServer(dbClient *db.Client, cfg Config) *Server {
 	}
 
 	// Register endpoints
-	mux.HandleFunc("/admin/activity", corsHandler(s.handleActivity))
-	mux.HandleFunc("/admin/debug/", corsHandler(s.handleDebug))
-	mux.HandleFunc("/admin/thread/", corsHandler(s.handleThread))
-	mux.HandleFunc("/admin/health", corsHandler(s.handleHealth))
+	mux.HandleFunc("/admin/activity", s.handleActivity)
+	mux.HandleFunc("/admin/debug/", s.handleDebug)
+	mux.HandleFunc("/admin/thread/", s.handleThread)
+	mux.HandleFunc("/admin/health", s.handleHealth)
 	mux.Handle("/admin/healthz", health.Handler(healthChecks))
-	mux.HandleFunc("/admin/version", corsHandler(s.handleVersion))
+	mux.HandleFunc("/admin/version", s.handleVersion)
 	maxBody := guard.MaxBody(2 * 1024 * 1024) // 2 MB for JSON POST endpoints
-	mux.Handle("/admin/test", maxBody(http.HandlerFunc(corsHandler(s.handleTest))))
-	mux.Handle("/admin/chat", maxBody(http.HandlerFunc(corsHandler(s.handleChat))))
-	mux.HandleFunc("/admin/upload", corsHandler(s.handleUpload)) // upload has its own 100MB limit
+	mux.Handle("/admin/test", maxBody(http.HandlerFunc(s.handleTest)))
+	mux.Handle("/admin/chat", maxBody(http.HandlerFunc(s.handleChat)))
+	mux.HandleFunc("/admin/upload", s.handleUpload) // upload has its own 100MB limit
 
-	// Stack chassis-go httpkit middleware: Recovery → Tracing → RequestID → Logging → routes
+	// Stack chassis-go httpkit middleware: Recovery → CORS → Tracing → RequestID → Logging → routes
 	logger := slog.Default()
 	handler := httpkit.Recovery(logger)(
-		httpkit.Tracing()(
-			httpkit.RequestID(
-				httpkit.Logging(logger)(
-					guard.Timeout(30*time.Second)(mux),
+		guard.CORS(guard.CORSConfig{
+			AllowOrigins: []string{"*"},
+			AllowMethods: []string{"GET", "POST", "OPTIONS"},
+			AllowHeaders: []string{"Content-Type", "Authorization"},
+		})(
+			httpkit.Tracing()(
+				httpkit.RequestID(
+					httpkit.Logging(logger)(
+						guard.Timeout(30*time.Second)(mux),
+					),
 				),
 			),
 		),

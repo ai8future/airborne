@@ -10,10 +10,10 @@ import (
 	"os"
 	"time"
 
-	chassis "github.com/ai8future/chassis-go"
-	"github.com/ai8future/chassis-go/lifecycle"
-	"github.com/ai8future/chassis-go/logz"
-	otelinit "github.com/ai8future/chassis-go/otel"
+	chassis "github.com/ai8future/chassis-go/v5"
+	"github.com/ai8future/chassis-go/v5/lifecycle"
+	"github.com/ai8future/chassis-go/v5/logz"
+	otelinit "github.com/ai8future/chassis-go/v5/otel"
 
 	airbornev1 "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/admin"
@@ -33,7 +33,7 @@ var (
 )
 
 func main() {
-	chassis.RequireMajor(4)
+	chassis.RequireMajor(5)
 
 	// Parse command-line flags
 	healthCheck := flag.Bool("health-check", false, "Run gRPC health check and exit")
@@ -64,6 +64,7 @@ func main() {
 	otelShutdown := otelinit.Init(otelinit.Config{
 		ServiceName:    "airborne",
 		ServiceVersion: Version,
+		Insecure:       true, // v5 defaults to TLS; use plaintext for local/dev
 	})
 	defer otelShutdown(context.Background())
 

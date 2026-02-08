@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.3] - 2026-02-08
+
+### Changed
+- **chassis-go upgraded from v4 to v5**: Updated module path to `chassis-go/v5`, all import paths across 15 source files and 5 test files, and version gates to `RequireMajor(5)`
+- **OTLP Insecure flag**: Added `Insecure: true` to `otelinit.Config` since v5 defaults to TLS for OTLP connections
+- **CORS middleware replaced**: Removed hand-rolled `corsHandler` closure in admin server, replaced with `guard.CORS` middleware from chassis-go for proper preflight handling and middleware-stack integration
+- **VERSION.chassis** updated from `4.0.0` to `5.0.0`
+
+Agent: Claude Code:Opus 4.6
+
 ## [1.8.2] - 2026-02-08
 
 ### Changed
