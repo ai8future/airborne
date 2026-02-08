@@ -23,9 +23,6 @@ require (
 
 replace github.com/ai8future/markdown_svc/clients/go => ./markdown_svc/clients/go
 
-// Use shared chassis-go library
-replace github.com/ai8future/chassis-go/v5 => ../../chassis_suite/chassis-go
-
 // Use shared pricing_db library
 replace github.com/ai8future/pricing_db => ../pricing_db
 
