@@ -14,8 +14,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ai8future/chassis-go/guard"
 	"github.com/ai8future/chassis-go/health"
 	"github.com/ai8future/chassis-go/httpkit"
+	"github.com/ai8future/chassis-go/secval"
 
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/db"
@@ -126,15 +128,20 @@ func NewServer(dbClient *db.Client, cfg Config) *Server {
 	mux.HandleFunc("/admin/health", corsHandler(s.handleHealth))
 	mux.Handle("/admin/healthz", health.Handler(healthChecks))
 	mux.HandleFunc("/admin/version", corsHandler(s.handleVersion))
-	mux.HandleFunc("/admin/test", corsHandler(s.handleTest))
-	mux.HandleFunc("/admin/chat", corsHandler(s.handleChat))
-	mux.HandleFunc("/admin/upload", corsHandler(s.handleUpload))
+	maxBody := guard.MaxBody(2 * 1024 * 1024) // 2 MB for JSON POST endpoints
+	mux.Handle("/admin/test", maxBody(http.HandlerFunc(corsHandler(s.handleTest))))
+	mux.Handle("/admin/chat", maxBody(http.HandlerFunc(corsHandler(s.handleChat))))
+	mux.HandleFunc("/admin/upload", corsHandler(s.handleUpload)) // upload has its own 100MB limit
 
-	// Stack chassis-go httpkit middleware: Recovery (outermost) → RequestID → Logging → routes
+	// Stack chassis-go httpkit middleware: Recovery → Tracing → RequestID → Logging → routes
 	logger := slog.Default()
 	handler := httpkit.Recovery(logger)(
-		httpkit.RequestID(
-			httpkit.Logging(logger)(mux),
+		httpkit.Tracing()(
+			httpkit.RequestID(
+				httpkit.Logging(logger)(
+					guard.Timeout(30*time.Second)(mux),
+				),
+			),
 		),
 	)
 
@@ -167,7 +174,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 // GET /admin/activity?limit=50&tenant_id=optional
 func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		httpkit.JSONError(w, r, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
@@ -256,7 +263,7 @@ func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 // GET /admin/health
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		httpkit.JSONError(w, r, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
@@ -288,7 +295,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 // GET /admin/version
 func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		httpkit.JSONError(w, r, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
@@ -300,7 +307,7 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 // GET /admin/debug/{message_id}
 func (s *Server) handleDebug(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		httpkit.JSONError(w, r, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
@@ -367,7 +374,7 @@ func (s *Server) handleDebug(w http.ResponseWriter, r *http.Request) {
 // GET /admin/thread/{thread_id}
 func (s *Server) handleThread(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		httpkit.JSONError(w, r, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
@@ -475,18 +482,24 @@ func (s *Server) getGRPCClient() (pb.AirborneServiceClient, error) {
 // Body: {"prompt": "Hello", "tenant_id": "optional", "provider": "gemini"}
 func (s *Server) handleTest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		httpkit.JSONError(w, r, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
-	// Parse request body
+	// Read and validate request body
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		httpkit.JSONError(w, r, http.StatusBadRequest, "failed to read request body")
+		return
+	}
+	if err := secval.ValidateJSON(body); err != nil {
+		httpkit.JSONError(w, r, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	var req TestRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(TestResponse{
-			Error: "invalid request body: " + err.Error(),
-		})
+	if err := json.Unmarshal(body, &req); err != nil {
+		httpkit.JSONError(w, r, http.StatusBadRequest, "invalid request body: "+err.Error())
 		return
 	}
 
@@ -609,18 +622,24 @@ type ChatResponse struct {
 // Body: {"thread_id": "uuid", "message": "Hello", "tenant_id": "optional", "provider": "gemini"}
 func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		httpkit.JSONError(w, r, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
-	// Parse request body
+	// Read and validate request body
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		httpkit.JSONError(w, r, http.StatusBadRequest, "failed to read request body")
+		return
+	}
+	if err := secval.ValidateJSON(body); err != nil {
+		httpkit.JSONError(w, r, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	var req ChatRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(ChatResponse{
-			Error: "invalid request body: " + err.Error(),
-		})
+	if err := json.Unmarshal(body, &req); err != nil {
+		httpkit.JSONError(w, r, http.StatusBadRequest, "invalid request body: "+err.Error())
 		return
 	}
 
@@ -910,7 +929,7 @@ type UploadResponse struct {
 // Returns the file URI for use in chat.
 func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		httpkit.JSONError(w, r, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 

@@ -13,6 +13,7 @@ import (
 	chassis "github.com/ai8future/chassis-go"
 	"github.com/ai8future/chassis-go/lifecycle"
 	"github.com/ai8future/chassis-go/logz"
+	otelinit "github.com/ai8future/chassis-go/otel"
 
 	airbornev1 "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/admin"
@@ -32,6 +33,8 @@ var (
 )
 
 func main() {
+	chassis.RequireMajor(4)
+
 	// Parse command-line flags
 	healthCheck := flag.Bool("health-check", false, "Run gRPC health check and exit")
 	flag.Parse()
@@ -56,6 +59,13 @@ func main() {
 	// Configure structured JSON logging with trace ID support
 	logger := logz.New(cfg.Logging.Level)
 	slog.SetDefault(logger)
+
+	// Initialize OpenTelemetry tracing and metrics
+	otelShutdown := otelinit.Init(otelinit.Config{
+		ServiceName:    "airborne",
+		ServiceVersion: Version,
+	})
+	defer otelShutdown(context.Background())
 
 	// Log startup info
 	slog.Info("starting Airborne",
@@ -118,9 +128,9 @@ func main() {
 
 	// Use lifecycle.Run for coordinated startup and shutdown.
 	// Catches SIGTERM/SIGINT, cancels context, waits for all components.
-	components_ := []lifecycle.Component{
+	components_ := []any{
 		// gRPC server component
-		func(ctx context.Context) error {
+		lifecycle.Component(func(ctx context.Context) error {
 			slog.Info("gRPC server listening", "address", addr)
 			errCh := make(chan error, 1)
 			go func() { errCh <- grpcServer.Serve(listener) }()
@@ -134,12 +144,12 @@ func main() {
 				}
 				return err
 			}
-		},
+		}),
 	}
 
 	// Admin HTTP server component (only if enabled)
 	if adminServer != nil {
-		components_ = append(components_, func(ctx context.Context) error {
+		components_ = append(components_, lifecycle.Component(func(ctx context.Context) error {
 			errCh := make(chan error, 1)
 			go func() { errCh <- adminServer.Start() }()
 			select {
@@ -153,7 +163,7 @@ func main() {
 				}
 				return err
 			}
-		})
+		}))
 	}
 
 	if err := lifecycle.Run(context.Background(), components_...); err != nil {

@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.2] - 2026-02-08
+
+### Changed
+- **chassis-go upgraded to v4.0.0**: Fixed broken `go.mod` replace directive (now points to `../../chassis_suite/chassis-go`), added `chassis.RequireMajor(4)` version gate to `main()`
+- **OpenTelemetry bootstrap**: Added `otel.Init()` in `main()` to enable distributed tracing and metrics across all chassis packages
+- **gRPC tracing**: Replaced custom `traceIDInjector` (UUID-based) with `grpckit.UnaryTracing()` + `grpckit.StreamTracing()` (OTel-native W3C trace context)
+- **gRPC metrics**: Added `grpckit.UnaryMetrics()` + `grpckit.StreamMetrics()` interceptors for `rpc.server.duration` histograms
+- **HTTP tracing**: Added `httpkit.Tracing()` middleware to admin HTTP server for OTel spans on all admin requests
+- **Guard middleware**: Added `guard.Timeout(30s)` for all admin endpoints and `guard.MaxBody(2MB)` for `/admin/test` and `/admin/chat` POST endpoints
+- **Input validation**: Added `secval.ValidateJSON()` to `handleTest` and `handleChat` to reject dangerous JSON keys and excessive nesting before parsing
+- **Error standardization**: Replaced all `http.Error()` calls in admin server with `httpkit.JSONError()` for consistent RFC 9457 Problem Details responses
+- **Test infrastructure**: Added `TestMain` with `chassis.RequireMajor(4)` to 5 test packages (imagegen, embedder, extractor, vectorstore, server)
+- **VERSION.chassis** updated from pre-release hash to `4.0.0`
+
+### Adopted chassis-go packages
+- `otel` — OpenTelemetry trace/metric initialization
+- `guard` — Timeout and MaxBody HTTP middleware
+- `secval` — JSON security validation
+- `errors` (via `httpkit.JSONError`) — RFC 9457 Problem Details error responses
+
+Agent: Claude Code:Opus 4.6
+
 ## [1.8.1] - 2026-02-03
 
 ### Added

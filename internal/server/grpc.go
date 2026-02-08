@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/ai8future/chassis-go/grpckit"
-	"github.com/ai8future/chassis-go/logz"
-	"github.com/google/uuid"
 
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/auth"
@@ -102,11 +100,14 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, *Serv
 	logger := slog.Default()
 	unaryInterceptors := []grpc.UnaryServerInterceptor{
 		grpckit.UnaryRecovery(logger),
-		traceIDInjector(),
+		grpckit.UnaryTracing(),
+		grpckit.UnaryMetrics(),
 		skipHealthLogging(grpckit.UnaryLogging(logger)),
 	}
 	streamInterceptors := []grpc.StreamServerInterceptor{
 		grpckit.StreamRecovery(logger),
+		grpckit.StreamTracing(),
+		grpckit.StreamMetrics(),
 		grpckit.StreamLogging(logger),
 	}
 
@@ -277,15 +278,6 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, *Serv
 func (c *ServerComponents) Close() {
 	if c.DBClient != nil {
 		c.DBClient.Close()
-	}
-}
-
-// traceIDInjector generates a trace ID for each unary RPC and stores it in context
-// for downstream structured logging via logz.
-func traceIDInjector() grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		ctx = logz.WithTraceID(ctx, uuid.NewString())
-		return handler(ctx, req)
 	}
 }
 
