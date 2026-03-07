@@ -1,6 +1,16 @@
 # Changelog
 
+## [1.8.5] - 2026-03-07
+- Sync uncommitted changes
+
 All notable changes to this project will be documented in this file.
+
+## [1.8.4] - 2026-02-17
+
+### Added
+- **README.md**: Comprehensive project documentation covering architecture, all 20+ supported providers, gRPC API reference, multi-tenancy, authentication modes, configuration, CLI tool, observability, security features, project structure, and tech stack
+
+Agent: Claude Code:Opus 4.6
 
 ## [1.8.3] - 2026-02-08
 
