@@ -13,7 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/ai8future/airborne/internal/config/envutil"
-	"github.com/ai8future/chassis-go/v5/call"
+	"github.com/ai8future/chassis-go/v6/call"
 )
 
 // Config holds all server configuration

@@ -10,10 +10,11 @@ import (
 	"os"
 	"time"
 
-	chassis "github.com/ai8future/chassis-go/v5"
-	"github.com/ai8future/chassis-go/v5/lifecycle"
-	"github.com/ai8future/chassis-go/v5/logz"
-	otelinit "github.com/ai8future/chassis-go/v5/otel"
+	chassis "github.com/ai8future/chassis-go/v6"
+	"github.com/ai8future/chassis-go/v6/lifecycle"
+	"github.com/ai8future/chassis-go/v6/logz"
+	otelinit "github.com/ai8future/chassis-go/v6/otel"
+	"github.com/ai8future/chassis-go/v6/registry"
 
 	airbornev1 "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/admin"
@@ -33,7 +34,7 @@ var (
 )
 
 func main() {
-	chassis.RequireMajor(5)
+	chassis.RequireMajor(6)
 
 	// Parse command-line flags
 	healthCheck := flag.Bool("health-check", false, "Run gRPC health check and exit")
@@ -64,7 +65,7 @@ func main() {
 	otelShutdown := otelinit.Init(otelinit.Config{
 		ServiceName:    "airborne",
 		ServiceVersion: Version,
-		Insecure:       true, // v5 defaults to TLS; use plaintext for local/dev
+		Insecure:       true, // v6 defaults to TLS; use plaintext for local/dev
 	})
 	defer otelShutdown(context.Background())
 
@@ -125,6 +126,12 @@ func main() {
 				BuildTime: BuildTime,
 			},
 		})
+	}
+
+	// Declare ports for registry visibility (before lifecycle.Run)
+	registry.Port(chassis.PortGRPC, cfg.Server.GRPCPort, "gRPC API")
+	if cfg.Admin.Enabled {
+		registry.Port(chassis.PortHTTP, cfg.Admin.Port, "Admin HTTP")
 	}
 
 	// Use lifecycle.Run for coordinated startup and shutdown.

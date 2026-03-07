@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.8.6] - 2026-03-07
+
+### Changed
+- **chassis-go upgraded from v5 to v6**: Updated module path to `chassis-go/v6`, all import paths across 12 source files and 5 test files, and version gates to `RequireMajor(6)`
+- **Registry port declarations**: Added `registry.Port()` calls in `main.go` to declare gRPC and admin HTTP ports for operational visibility via the v6 registry module
+- **VERSION.chassis** updated from `5.0.0` to `6.0.10`
+
+### New v6 features now active
+- `lifecycle.Run()` auto-initializes `registry` module (file-based service registration with heartbeat, status logging, and command system at `/tmp/chassis/`)
+- `registry.Port()` declarations for port visibility in PID registration JSON
+
+Agent: Claude Code:Opus 4.6
+
 ## [1.8.5] - 2026-03-07
 - Sync uncommitted changes
 
