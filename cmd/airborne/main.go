@@ -10,11 +10,11 @@ import (
 	"os"
 	"time"
 
-	chassis "github.com/ai8future/chassis-go/v6"
-	"github.com/ai8future/chassis-go/v6/lifecycle"
-	"github.com/ai8future/chassis-go/v6/logz"
-	otelinit "github.com/ai8future/chassis-go/v6/otel"
-	"github.com/ai8future/chassis-go/v6/registry"
+	chassis "github.com/ai8future/chassis-go/v8"
+	"github.com/ai8future/chassis-go/v8/lifecycle"
+	"github.com/ai8future/chassis-go/v8/logz"
+	otelinit "github.com/ai8future/chassis-go/v8/otel"
+	"github.com/ai8future/chassis-go/v8/registry"
 
 	airbornev1 "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/admin"
@@ -34,7 +34,7 @@ var (
 )
 
 func main() {
-	chassis.RequireMajor(6)
+	chassis.RequireMajor(8)
 
 	// Parse command-line flags
 	healthCheck := flag.Bool("health-check", false, "Run gRPC health check and exit")

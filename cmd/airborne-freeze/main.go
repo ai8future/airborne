@@ -3,17 +3,25 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	chassis "github.com/ai8future/chassis-go/v8"
+	"github.com/ai8future/chassis-go/v8/registry"
+
 	"github.com/ai8future/airborne/internal/config"
 	"github.com/ai8future/airborne/internal/tenant"
 )
 
 func main() {
+	if err := registry.InitCLI(chassis.Version); err != nil {
+		log.Fatalf("registry: %v", err)
+	}
+
 	// Setup logging
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
@@ -96,6 +104,7 @@ func main() {
 	fmt.Println("To use frozen config in production, set:")
 	fmt.Println("  export AIRBORNE_USE_FROZEN=true")
 	fmt.Printf("  export AIRBORNE_FROZEN_CONFIG_PATH=%s\n", outputPath)
+	registry.ShutdownCLI(0)
 }
 
 // FrozenConfig represents a fully-resolved, validated configuration snapshot

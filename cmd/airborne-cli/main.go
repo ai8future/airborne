@@ -1,13 +1,21 @@
 package main
 
 import (
+	"log"
 	"os"
+
+	chassis "github.com/ai8future/chassis-go/v8"
+	"github.com/ai8future/chassis-go/v8/registry"
 
 	"github.com/ai8future/airborne/internal/cli"
 	"github.com/spf13/cobra"
 )
 
 func main() {
+	if err := registry.InitCLI(chassis.Version); err != nil {
+		log.Fatalf("registry: %v", err)
+	}
+
 	rootCmd := &cobra.Command{
 		Use:   "airborne",
 		Short: "Airborne CLI - interact with the Airborne admin API",
@@ -40,6 +48,8 @@ func main() {
 	rootCmd.AddCommand(cli.WatchCmd(clientFactory))
 
 	if err := rootCmd.Execute(); err != nil {
+		registry.ShutdownCLI(1)
 		os.Exit(1)
 	}
+	registry.ShutdownCLI(0)
 }

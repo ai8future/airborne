@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.8.8] - 2026-03-08
+
+### Changed
+- **chassis-go upgraded from v7 to v8**: Updated module path to `chassis-go/v8`, all import paths across 15+ source/test files, and version gates to `RequireMajor(8)`
+- **VERSION.chassis** updated from `7.0.0` to `8.0.0`
+
+Agent: Claude Code:Opus 4.6
+
+## [1.8.7] - 2026-03-07
+
+### Changed
+- **chassis-go upgraded from v6 to v7**: Updated module path to `chassis-go/v7`, all import paths across 15 source/test files, and version gates to `RequireMajor(7)`
+- **CLI registry pattern**: Added `registry.InitCLI()` and `registry.ShutdownCLI()` to `cmd/airborne-cli` and `cmd/airborne-freeze` for v7 CLI registration
+- **VERSION.chassis** updated from `6.0.10` to `7.0.0`
+
+Agent: Claude Code:Opus 4.6
+
 ## [1.8.6] - 2026-03-07
 
 ### Changed
