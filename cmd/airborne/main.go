@@ -10,11 +10,12 @@ import (
 	"os"
 	"time"
 
-	chassis "github.com/ai8future/chassis-go/v8"
-	"github.com/ai8future/chassis-go/v8/lifecycle"
-	"github.com/ai8future/chassis-go/v8/logz"
-	otelinit "github.com/ai8future/chassis-go/v8/otel"
-	"github.com/ai8future/chassis-go/v8/registry"
+	chassis "github.com/ai8future/chassis-go/v9"
+	"github.com/ai8future/chassis-go/v9/deploy"
+	"github.com/ai8future/chassis-go/v9/lifecycle"
+	"github.com/ai8future/chassis-go/v9/logz"
+	otelinit "github.com/ai8future/chassis-go/v9/otel"
+	"github.com/ai8future/chassis-go/v9/registry"
 
 	airbornev1 "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/admin"
@@ -34,7 +35,7 @@ var (
 )
 
 func main() {
-	chassis.RequireMajor(8)
+	chassis.RequireMajor(9)
 
 	// Parse command-line flags
 	healthCheck := flag.Bool("health-check", false, "Run gRPC health check and exit")
@@ -49,6 +50,10 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Discover deploy directory and load env files before config
+	d := deploy.Discover("airborne")
+	d.LoadEnv()
+
 	// Load configuration first so we can configure logging from it
 	cfg, err := config.Load()
 	if err != nil {
@@ -60,6 +65,11 @@ func main() {
 	// Configure structured JSON logging with trace ID support
 	logger := logz.New(cfg.Logging.Level)
 	slog.SetDefault(logger)
+
+	if d.Found() {
+		env := d.Environment()
+		slog.Info("deploy", "dir", d.Dir(), "runtime", env.Runtime, "env", env.Env)
+	}
 
 	// Initialize OpenTelemetry tracing and metrics
 	otelShutdown := otelinit.Init(otelinit.Config{

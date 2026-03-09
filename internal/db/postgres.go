@@ -9,14 +9,15 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
+	"github.com/ai8future/chassis-go-addons/pgkit"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Client wraps a PostgreSQL connection pool.
 type Client struct {
-	pool        *pgxpool.Pool
+	pg          *pgkit.Pool
+	pool        *pgxpool.Pool // cached reference for internal package access
 	logQueries  bool
 	tenantRepos map[string]*Repository
 	mu          sync.RWMutex
@@ -58,41 +59,23 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 		slog.Info("database SSL configured with custom CA certificate", "cert_path", certPath)
 	}
 
-	poolConfig, err := pgxpool.ParseConfig(dbURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse database URL: %w", err)
-	}
-
-	// Configure pool settings
+	opts := pgkit.Options{DSN: dbURL}
 	if cfg.MaxConnections > 0 {
-		poolConfig.MaxConns = int32(cfg.MaxConnections)
-	} else {
-		poolConfig.MaxConns = 10 // Default
+		opts.MaxConns = int32(cfg.MaxConnections)
 	}
 
-	// Connection health check settings
-	poolConfig.MaxConnLifetime = 30 * time.Minute
-	poolConfig.MaxConnIdleTime = 5 * time.Minute
-	poolConfig.HealthCheckPeriod = 1 * time.Minute
-
-	// Create the pool
-	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
+	pg, err := pgkit.Open(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create connection pool: %w", err)
-	}
-
-	// Verify connectivity
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		return nil, fmt.Errorf("failed to ping database: %w", err)
+		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
 	slog.Info("database connection established",
-		"max_connections", poolConfig.MaxConns,
+		"max_connections", opts.MaxConns,
 	)
 
 	return &Client{
-		pool:        pool,
+		pg:          pg,
+		pool:        pg.Pool(),
 		logQueries:  cfg.LogQueries,
 		tenantRepos: make(map[string]*Repository),
 	}, nil
@@ -100,20 +83,18 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 
 // Pool returns the underlying connection pool for direct access.
 func (c *Client) Pool() *pgxpool.Pool {
-	return c.pool
+	return c.pg.Pool()
 }
 
 // Close closes the database connection pool.
 func (c *Client) Close() {
-	if c.pool != nil {
-		c.pool.Close()
-		slog.Info("database connection closed")
-	}
+	c.pg.Close()
+	slog.Info("database connection closed")
 }
 
 // Ping verifies the database connection is alive.
 func (c *Client) Ping(ctx context.Context) error {
-	return c.pool.Ping(ctx)
+	return c.pg.Ping(ctx)
 }
 
 // TenantRepository returns a repository scoped to a specific tenant's tables.

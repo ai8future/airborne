@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ai8future/chassis-go/v8/guard"
-	"github.com/ai8future/chassis-go/v8/health"
-	"github.com/ai8future/chassis-go/v8/httpkit"
-	"github.com/ai8future/chassis-go/v8/secval"
+	"github.com/ai8future/chassis-go/v9/guard"
+	"github.com/ai8future/chassis-go/v9/health"
+	"github.com/ai8future/chassis-go/v9/httpkit"
+	"github.com/ai8future/chassis-go/v9/secval"
 
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/db"

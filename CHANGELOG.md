@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.8.11] - 2026-03-09
+
+### Fixed
+- **rediskit integration bug**: `IsNil()` in `internal/redis/client.go` used `==` comparison against `redis.Nil`, which fails when rediskit wraps the error. Changed to `errors.Is()` so wrapped redis.Nil errors are correctly detected as key-not-found.
+- **ssrfcheck integration bug**: `TestIsPrivateIP` in `internal/validation/url_test.go` referenced the removed `isPrivateIP` function (replaced by `ssrfcheck.IsBlockedIP` during addon integration). Rewrote test as `TestIsBlockedIP` calling `ssrfcheck.IsBlockedIP` with corrected expectations (loopback is now blocked). Removed dead `parseIPHelper`/`parseIPv4` helper functions.
+
+Agent: Claude Code:Opus 4.6
+
+## [1.8.10] - 2026-03-08
+
+### Changed
+- Fix stale VERSION.chassis (was 8.0.0, now 9.0.0)
+
+Agent: Claude Code:Opus 4.6
+
+## [1.8.9] - 2026-03-08
+
+### Changed
+- **chassis-go upgraded from v8 to v9**: Updated module path to `chassis-go/v9`, all import paths across 17 source/test files, and version gates to `RequireMajor(9)`
+- **deploy package integration**: Added `deploy.Discover`/`LoadEnv` in main server entrypoint for environment detection and env file loading
+
+Agent: Claude Code:Opus 4.6
+
 ## [1.8.8] - 2026-03-08
 
 ### Changed

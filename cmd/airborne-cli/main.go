@@ -4,8 +4,8 @@ import (
 	"log"
 	"os"
 
-	chassis "github.com/ai8future/chassis-go/v8"
-	"github.com/ai8future/chassis-go/v8/registry"
+	chassis "github.com/ai8future/chassis-go/v9"
+	"github.com/ai8future/chassis-go/v9/registry"
 
 	"github.com/ai8future/airborne/internal/cli"
 	"github.com/spf13/cobra"

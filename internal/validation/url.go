@@ -6,6 +6,8 @@ import (
 	"net"
 	"net/url"
 	"strings"
+
+	"github.com/ai8future/chassis-go-addons/ssrfcheck"
 )
 
 var (
@@ -61,7 +63,7 @@ func validateHostnameResolvesPublic(hostname string) error {
 		if isMetadataEndpoint(ip.String()) {
 			return fmt.Errorf("%w: %s resolves to metadata IP %s", ErrMetadataEndpoint, hostname, ip.String())
 		}
-		if ip.IsLoopback() || isPrivateIP(ip) {
+		if ip.IsLoopback() || ssrfcheck.IsBlockedIP(ip) {
 			return fmt.Errorf("%w: %s resolves to private IP %s", ErrPrivateIP, hostname, ip.String())
 		}
 	}
@@ -128,8 +130,8 @@ func ValidateProviderURL(rawURL string) error {
 			return nil
 		}
 
-		// Block private IPs
-		if isPrivateIP(ip) {
+		// Block private IPs via ssrfcheck
+		if ssrfcheck.IsBlockedIP(ip) {
 			return fmt.Errorf("%w: %s is in a private IP range", ErrPrivateIP, hostname)
 		}
 	}
@@ -184,43 +186,6 @@ func isMetadataEndpoint(hostname string) bool {
 			if ip4[0] == 169 && ip4[1] == 254 {
 				return true
 			}
-		}
-	}
-
-	return false
-}
-
-// isPrivateIP checks if an IP address is in a private/internal range
-func isPrivateIP(ip net.IP) bool {
-	if ip == nil {
-		return false
-	}
-
-	// Check for standard private ranges
-	if ip.IsPrivate() {
-		return true
-	}
-
-	// Check for loopback (handled separately for localhost allowance)
-	if ip.IsLoopback() {
-		return false // Allow loopback, handled by localhost check
-	}
-
-	// Check for link-local
-	if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-		return true
-	}
-
-	// Check for unspecified address
-	if ip.IsUnspecified() {
-		return true
-	}
-
-	// Additional check for IPv4 mapped IPv6 addresses
-	if ip4 := ip.To4(); ip4 != nil {
-		// 0.0.0.0/8 - Current network
-		if ip4[0] == 0 {
-			return true
 		}
 	}
 

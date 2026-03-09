@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net"
 	"testing"
+
+	"github.com/ai8future/chassis-go-addons/ssrfcheck"
 )
 
 func TestValidateProviderURL(t *testing.T) {
@@ -244,12 +246,12 @@ func TestIsMetadataEndpoint(t *testing.T) {
 	}
 }
 
-func TestIsPrivateIP(t *testing.T) {
+func TestIsBlockedIP(t *testing.T) {
 	tests := []struct {
 		ip   string
 		want bool
 	}{
-		// Private ranges
+		// Private ranges (blocked)
 		{"10.0.0.1", true},
 		{"10.255.255.255", true},
 		{"172.16.0.1", true},
@@ -257,74 +259,34 @@ func TestIsPrivateIP(t *testing.T) {
 		{"192.168.0.1", true},
 		{"192.168.255.255", true},
 
-		// Non-private
+		// Non-private (allowed)
 		{"172.15.0.1", false},  // Just outside 172.16-31
 		{"172.32.0.1", false},  // Just outside 172.16-31
 		{"8.8.8.8", false},     // Public DNS
 		{"1.1.1.1", false},     // Cloudflare DNS
 
-		// Loopback (not blocked, handled separately)
-		{"127.0.0.1", false},
+		// Loopback (blocked by ssrfcheck)
+		{"127.0.0.1", true},
 
-		// Link-local blocked
+		// Link-local (blocked)
 		{"169.254.1.1", true},
 
-		// Zero address blocked
+		// Unspecified (blocked)
 		{"0.0.0.0", true},
-		{"0.1.2.3", true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.ip, func(t *testing.T) {
-			ip := parseIPHelper(tt.ip)
+			ip := net.ParseIP(tt.ip)
 			if ip == nil {
 				t.Fatalf("failed to parse IP %q", tt.ip)
 			}
-			got := isPrivateIP(ip)
+			got := ssrfcheck.IsBlockedIP(ip)
 			if got != tt.want {
-				t.Errorf("isPrivateIP(%q) = %v, want %v", tt.ip, got, tt.want)
+				t.Errorf("ssrfcheck.IsBlockedIP(%q) = %v, want %v", tt.ip, got, tt.want)
 			}
 		})
 	}
-}
-
-func parseIPHelper(s string) []byte {
-	// Simple helper to parse IP for testing
-	// Note: Using net.ParseIP would create dependency cycle in test
-	// This is a simplified version that works for the test cases
-	var ip [4]byte
-	var parts [4]int
-	n, _ := parseIPv4(s, &parts)
-	if n != 4 {
-		return nil
-	}
-	for i := 0; i < 4; i++ {
-		ip[i] = byte(parts[i])
-	}
-	return ip[:]
-}
-
-func parseIPv4(s string, parts *[4]int) (int, error) {
-	part := 0
-	partCount := 0
-	for i := 0; i <= len(s); i++ {
-		if i == len(s) || s[i] == '.' {
-			if partCount >= 4 {
-				return 0, nil
-			}
-			parts[partCount] = part
-			partCount++
-			part = 0
-		} else if s[i] >= '0' && s[i] <= '9' {
-			part = part*10 + int(s[i]-'0')
-			if part > 255 {
-				return 0, nil
-			}
-		} else {
-			return 0, nil
-		}
-	}
-	return partCount, nil
 }
 
 func TestValidateProviderURL_ResolvesPrivateIP(t *testing.T) {

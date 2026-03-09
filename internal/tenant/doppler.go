@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ai8future/chassis-go/v8/call"
+	"github.com/ai8future/chassis-go/v9/call"
 )
 
 // dopplerClient fetches secrets from Doppler API.

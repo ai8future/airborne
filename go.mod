@@ -3,7 +3,10 @@ module github.com/ai8future/airborne
 go 1.25.5
 
 require (
-	github.com/ai8future/chassis-go/v8 v8.0.0
+	github.com/ai8future/chassis-go-addons/pgkit v0.0.0-00010101000000-000000000000
+	github.com/ai8future/chassis-go-addons/rediskit v0.0.0-00010101000000-000000000000
+	github.com/ai8future/chassis-go-addons/ssrfcheck v0.0.0-00010101000000-000000000000
+	github.com/ai8future/chassis-go/v9 v9.0.0
 	github.com/ai8future/markdown_svc/clients/go v0.0.0
 	github.com/ai8future/pricing_db v0.0.0-00010101000000-000000000000
 	github.com/alicebob/miniredis/v2 v2.35.0
@@ -21,12 +24,18 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-replace github.com/ai8future/chassis-go/v8 => ../../chassis_suite/chassis-go
+replace github.com/ai8future/chassis-go/v9 => ../../chassis_suite/chassis-go
 
 replace github.com/ai8future/markdown_svc/clients/go => ./markdown_svc/clients/go
 
 // Use shared pricing_db library
 replace github.com/ai8future/pricing_db => ../pricing_db
+
+replace github.com/ai8future/chassis-go-addons/rediskit => ../../chassis_suite/chassis-go-addons/rediskit
+
+replace github.com/ai8future/chassis-go-addons/pgkit => ../../chassis_suite/chassis-go-addons/pgkit
+
+replace github.com/ai8future/chassis-go-addons/ssrfcheck => ../../chassis_suite/chassis-go-addons/ssrfcheck
 
 require (
 	cloud.google.com/go v0.116.0 // indirect
