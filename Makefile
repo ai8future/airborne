@@ -16,8 +16,9 @@ GOFMT := gofmt
 # Directories
 BIN_DIR := bin
 CMD_DIR := cmd/airborne
+BINARY := $(BIN_DIR)/airborne
 
-.PHONY: all build clean test lint fmt proto deps help run
+.PHONY: all build build-linux build-darwin build-all clean test lint fmt proto deps help run
 
 # Default target
 all: proto build
@@ -26,8 +27,26 @@ all: proto build
 build:
 	@echo "Building airborne..."
 	@mkdir -p $(BIN_DIR)
-	$(GOBUILD) $(LDFLAGS) -o $(BIN_DIR)/airborne ./$(CMD_DIR)
-	@echo "Built $(BIN_DIR)/airborne"
+	@rm -f $(BINARY)
+	CGO_ENABLED=0 $(GOBUILD) $(LDFLAGS) -o $(BINARY) ./$(CMD_DIR)
+	@echo "Built $(BINARY)"
+
+# Build for linux/amd64
+build-linux:
+	@echo "Building airborne for linux/amd64..."
+	@mkdir -p $(BIN_DIR)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY)-linux-amd64 ./$(CMD_DIR)
+
+# Build for darwin/arm64
+build-darwin:
+	@echo "Building airborne for darwin/arm64..."
+	@mkdir -p $(BIN_DIR)
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(BINARY)-darwin-arm64 ./$(CMD_DIR)
+
+# Build all platforms and install launcher
+build-all: build-linux build-darwin
+	cp scripts/launcher.sh $(BINARY)
+	chmod +x $(BINARY)
 
 # Generate protobuf code
 proto:
@@ -108,6 +127,9 @@ help:
 	@echo ""
 	@echo "  all            - Generate protos and build binary (default)"
 	@echo "  build          - Build the binary"
+	@echo "  build-linux    - Build for linux/amd64"
+	@echo "  build-darwin   - Build for darwin/arm64"
+	@echo "  build-all      - Build all platforms with launcher"
 	@echo "  proto          - Generate protobuf code"
 	@echo "  run            - Build and run the server"
 	@echo "  test           - Run tests"

@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.9.0] - 2026-03-23
+
+### Added
+- **Cross-platform build support**: Added `build-linux`, `build-darwin`, and `build-all` Makefile targets for cross-compiling to linux/amd64 and darwin/arm64
+- **Launcher script**: Added `scripts/launcher.sh` that auto-detects OS/arch and runs the correct platform binary
+- **CGO_ENABLED=0**: Build target now explicitly disables CGO for static linking
+- **BINARY variable**: Added `BINARY` Makefile variable for consistent binary path references
+
+Agent: Claude Code (Claude:Opus 4.6 (1M context))
+
+## [1.8.14] - 2026-03-22
+
+### Added
+- **Event bus (kafkakit)**: Added KafkakitConfig and ToKafkakit() to config, kafkakit publisher wired into main, event publishing on inference completion (`ai8.ai.airborne.inference.completed`), WithKafkaConfig in lifecycle.Run for heartbeatkit + announcekit auto-activation
+- **XYOps monitoring bridge**: Added XyopsConfig and ToXyops() to config, xyops client creation with optional monitoring bridge, ops.Run wired into lifecycle.Run
+- **Deterministic ports**: Replaced hardcoded defaults (50051/50052) with chassis.Port("airborne", ...) for djb2-derived stable ports
+- **deploy.json**: Created deploy/airborne/deploy.json with chassis v10.0 spec, endpoints, and dependency topology
+- **EventPublisher interface**: Added to ChatService for optional event bus publishing without tight coupling
+
+### Changed
+- Config struct extended with Kafkakit and Xyops sections, env var overrides for KAFKAKIT_* and XYOPS_*
+- lifecycle.Run now receives WithKafkaConfig option and xyops.Run component
+- Config tests updated to use DefaultGRPCPort instead of hardcoded 50051
+
+Agent: Claude Code (Claude:Opus 4.6)
+
+## [1.8.13] - 2026-03-22
+
+### Changed
+- **chassis-go upgraded from v9 to v10**: Updated module path to `chassis-go/v10`, all import paths across 17 source/test files, and version gates to `RequireMajor(10)`
+- **CLI version gates**: Added missing `chassis.RequireMajor(10)` calls to `cmd/airborne-cli` and `cmd/airborne-freeze` entrypoints (required by v10 before any chassis module usage)
+- **VERSION.chassis** updated from `9.0.0` to `10.0.0`
+
+Agent: Claude Code:Opus 4.6
+
+## [1.8.12] - 2026-03-21
+
+### Added
+- **Refactoring audit report** (`_rcodegen/airborne-claude-refactor-2026-03-21T05-22-41.md`): Comprehensive code quality assessment scoring 72/100. Key findings include ~810 lines of boilerplate duplication across 13 compat provider wrappers, hardcoded tenant IDs in SQL UNION queries, false capability flags, and scattered magic numbers. Strong marks for architecture, security posture, and test coverage.
+
+Agent: Claude Code:Opus 4.6
+
 ## [1.8.11] - 2026-03-09
 
 ### Fixed
