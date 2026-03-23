@@ -10,12 +10,14 @@ import (
 	"os"
 	"time"
 
-	chassis "github.com/ai8future/chassis-go/v9"
-	"github.com/ai8future/chassis-go/v9/deploy"
-	"github.com/ai8future/chassis-go/v9/lifecycle"
-	"github.com/ai8future/chassis-go/v9/logz"
-	otelinit "github.com/ai8future/chassis-go/v9/otel"
-	"github.com/ai8future/chassis-go/v9/registry"
+	chassis "github.com/ai8future/chassis-go/v10"
+	"github.com/ai8future/chassis-go/v10/deploy"
+	"github.com/ai8future/chassis-go/v10/kafkakit"
+	"github.com/ai8future/chassis-go/v10/lifecycle"
+	"github.com/ai8future/chassis-go/v10/logz"
+	otelinit "github.com/ai8future/chassis-go/v10/otel"
+	"github.com/ai8future/chassis-go/v10/registry"
+	"github.com/ai8future/chassis-go/v10/xyops"
 
 	airbornev1 "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/admin"
@@ -35,7 +37,7 @@ var (
 )
 
 func main() {
-	chassis.RequireMajor(9)
+	chassis.RequireMajor(10)
 
 	// Parse command-line flags
 	healthCheck := flag.Bool("health-check", false, "Run gRPC health check and exit")
@@ -75,7 +77,7 @@ func main() {
 	otelShutdown := otelinit.Init(otelinit.Config{
 		ServiceName:    "airborne",
 		ServiceVersion: Version,
-		Insecure:       true, // v6 defaults to TLS; use plaintext for local/dev
+		Insecure:       true, // use plaintext for local/dev
 	})
 	defer otelShutdown(context.Background())
 
@@ -138,15 +140,39 @@ func main() {
 		})
 	}
 
+	// Create kafkakit publisher for event bus (optional — degrades if unconfigured)
+	kafkaCfg := cfg.Kafkakit.ToKafkakit()
+	if kafkaCfg.Enabled() {
+		pub, err := kafkakit.NewPublisher(kafkaCfg)
+		if err != nil {
+			slog.Warn("kafkakit publisher failed to create, events disabled", "error", err)
+		} else {
+			defer pub.Close()
+			components.ChatService.SetEventPublisher(pub)
+			slog.Info("kafkakit event bus enabled")
+		}
+	}
+
 	// Declare ports for registry visibility (before lifecycle.Run)
 	registry.Port(chassis.PortGRPC, cfg.Server.GRPCPort, "gRPC API")
 	if cfg.Admin.Enabled {
 		registry.Port(chassis.PortHTTP, cfg.Admin.Port, "Admin HTTP")
 	}
 
+	// Create xyops client for monitoring bridge (optional — degrades if unconfigured)
+	var ops *xyops.Client
+	xyopsCfg := cfg.Xyops.ToXyops()
+	if xyopsCfg.BaseURL != "" && xyopsCfg.APIKey != "" {
+		ops = xyops.New(xyopsCfg, xyops.WithMonitoring(xyopsCfg.MonitorInterval))
+		slog.Info("xyops monitoring enabled", "base_url", xyopsCfg.BaseURL)
+	}
+
 	// Use lifecycle.Run for coordinated startup and shutdown.
 	// Catches SIGTERM/SIGINT, cancels context, waits for all components.
-	components_ := []any{
+	lifecycleArgs := []any{
+		// Enable kafkakit event bus (heartbeatkit + announcekit auto-activate)
+		lifecycle.WithKafkaConfig(cfg.Kafkakit.ToKafkakit()),
+
 		// gRPC server component
 		lifecycle.Component(func(ctx context.Context) error {
 			slog.Info("gRPC server listening", "address", addr)
@@ -167,7 +193,7 @@ func main() {
 
 	// Admin HTTP server component (only if enabled)
 	if adminServer != nil {
-		components_ = append(components_, lifecycle.Component(func(ctx context.Context) error {
+		lifecycleArgs = append(lifecycleArgs, lifecycle.Component(func(ctx context.Context) error {
 			errCh := make(chan error, 1)
 			go func() { errCh <- adminServer.Start() }()
 			select {
@@ -184,7 +210,12 @@ func main() {
 		}))
 	}
 
-	if err := lifecycle.Run(context.Background(), components_...); err != nil {
+	// Wire xyops monitoring bridge into lifecycle (blocks until ctx cancellation)
+	if ops != nil {
+		lifecycleArgs = append(lifecycleArgs, ops.Run)
+	}
+
+	if err := lifecycle.Run(context.Background(), lifecycleArgs...); err != nil {
 		slog.Error("server exited with error", "error", err)
 		os.Exit(1)
 	}

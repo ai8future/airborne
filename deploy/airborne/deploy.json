@@ -1,0 +1,19 @@
+{
+  "chassis": "10.0",
+  "version": "1.8.14",
+  "environment": {
+    "env": "development",
+    "provider": "local",
+    "region": "local",
+    "cluster": "workstation"
+  },
+  "endpoints": {
+    "grpc": {"port": 0, "protocol": "h2c"},
+    "admin": {"port": 0, "protocol": "http", "path": "/"}
+  },
+  "dependencies": [
+    {"service": "redis", "port": 6379, "protocol": "tcp", "required": false},
+    {"service": "postgres", "port": 5432, "protocol": "tcp", "required": false},
+    {"service": "redpanda", "port": 9092, "protocol": "tcp", "required": false}
+  ]
+}

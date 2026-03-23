@@ -3,10 +3,10 @@ module github.com/ai8future/airborne
 go 1.25.5
 
 require (
-	github.com/ai8future/chassis-go-addons/pgkit v0.0.0-00010101000000-000000000000
-	github.com/ai8future/chassis-go-addons/rediskit v0.0.0-00010101000000-000000000000
-	github.com/ai8future/chassis-go-addons/ssrfcheck v0.0.0-00010101000000-000000000000
-	github.com/ai8future/chassis-go/v9 v9.0.0
+	github.com/ai8future/chassis-go-addons/pgkit v1.0.7
+	github.com/ai8future/chassis-go-addons/rediskit v1.0.7
+	github.com/ai8future/chassis-go-addons/ssrfcheck v1.0.7
+	github.com/ai8future/chassis-go/v10 v10.0.0
 	github.com/ai8future/markdown_svc/clients/go v0.0.0
 	github.com/ai8future/pricing_db v0.0.0-00010101000000-000000000000
 	github.com/alicebob/miniredis/v2 v2.35.0
@@ -24,7 +24,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-replace github.com/ai8future/chassis-go/v9 => ../../chassis_suite/chassis-go
+replace github.com/ai8future/chassis-go/v10 => ../../chassis_suite/chassis-go
 
 replace github.com/ai8future/markdown_svc/clients/go => ./markdown_svc/clients/go
 
@@ -56,13 +56,17 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/klauspost/compress v1.18.4 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/pierrec/lz4/v4 v4.1.25 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
+	github.com/twmb/franz-go v1.20.7 // indirect
+	github.com/twmb/franz-go/pkg/kmsg v1.12.0 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect

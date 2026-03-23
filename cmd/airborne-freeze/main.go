@@ -10,14 +10,15 @@ import (
 	"strings"
 	"time"
 
-	chassis "github.com/ai8future/chassis-go/v9"
-	"github.com/ai8future/chassis-go/v9/registry"
+	chassis "github.com/ai8future/chassis-go/v10"
+	"github.com/ai8future/chassis-go/v10/registry"
 
 	"github.com/ai8future/airborne/internal/config"
 	"github.com/ai8future/airborne/internal/tenant"
 )
 
 func main() {
+	chassis.RequireMajor(10)
 	if err := registry.InitCLI(chassis.Version); err != nil {
 		log.Fatalf("registry: %v", err)
 	}

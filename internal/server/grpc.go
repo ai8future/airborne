@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ai8future/chassis-go/v9/grpckit"
+	"github.com/ai8future/chassis-go/v10/grpckit"
 
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/auth"
@@ -42,6 +42,7 @@ type ServerComponents struct {
 	RedisClient  *redis.Client
 	DBClient     *db.Client
 	HealthChecks map[string]func(context.Context) error // Additional health checks (e.g., RAG dependencies)
+	ChatService  *service.ChatService                   // Exposed for event publisher wiring
 }
 
 // NewGRPCServer creates a new gRPC server with all services registered
@@ -269,6 +270,7 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, *Serv
 		RedisClient:  redisClient,
 		DBClient:     dbClient,
 		HealthChecks: extraHealthChecks,
+		ChatService:  chatService,
 	}
 
 	return server, components, nil

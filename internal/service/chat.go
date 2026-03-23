@@ -33,6 +33,12 @@ const (
 	ragSnippetMaxLen = 200
 )
 
+// EventPublisher is an optional interface for publishing events to the event bus.
+// When nil, event publishing is silently skipped.
+type EventPublisher interface {
+	Publish(ctx context.Context, subject string, data any) error
+}
+
 // ChatService implements the AirborneService gRPC service.
 type ChatService struct {
 	pb.UnimplementedAirborneServiceServer
@@ -45,6 +51,7 @@ type ChatService struct {
 	imageGen          *imagegen.Client
 	dbClient          *db.Client // Optional: message persistence
 	configBuilder     *config.Builder
+	eventPublisher    EventPublisher // Optional: event bus publisher
 }
 
 // NewChatService creates a new chat service.
@@ -61,6 +68,27 @@ func NewChatService(rateLimiter *auth.RateLimiter, ragService *rag.Service, imag
 		imageGen:          imageGen,
 		dbClient:          dbClient,
 		configBuilder:     config.NewBuilder(),
+	}
+}
+
+// SetEventPublisher sets an optional event publisher for inference completion events.
+func (s *ChatService) SetEventPublisher(pub EventPublisher) {
+	s.eventPublisher = pub
+}
+
+// publishInferenceCompleted publishes an inference.completed event to the event bus.
+// Errors are logged and tolerated — the event bus is additive, not critical.
+func (s *ChatService) publishInferenceCompleted(ctx context.Context, providerName, model string, processingMs int, tokenCount int64) {
+	if s.eventPublisher == nil {
+		return
+	}
+	if err := s.eventPublisher.Publish(ctx, "ai8.ai.airborne.inference.completed", map[string]any{
+		"provider":       providerName,
+		"model":          model,
+		"processing_ms":  processingMs,
+		"total_tokens":   tokenCount,
+	}); err != nil {
+		slog.Warn("failed to publish inference event", "error", err, "subject", "ai8.ai.airborne.inference.completed")
 	}
 }
 
@@ -337,6 +365,13 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 
 	// Calculate processing time
 	processingTimeMs := int(time.Since(startTime).Milliseconds())
+
+	// Publish inference.completed event (best-effort)
+	var tokenCount int64
+	if result.Usage != nil {
+		tokenCount = result.Usage.TotalTokens
+	}
+	s.publishInferenceCompleted(ctx, prepared.provider.Name(), prepared.providerCfg.Model, processingTimeMs, tokenCount)
 
 	// Persist conversation asynchronously (if database client is configured)
 	if s.dbClient != nil && result.Usage != nil {

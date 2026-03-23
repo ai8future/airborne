@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ai8future/chassis-go/v9/call"
+	"github.com/ai8future/chassis-go/v10/call"
 )
 
 // QdrantStore implements the Store interface using Qdrant's REST API.

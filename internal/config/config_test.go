@@ -17,8 +17,8 @@ func TestLoad_DefaultValues(t *testing.T) {
 	}
 
 	// Server defaults
-	if cfg.Server.GRPCPort != 50051 {
-		t.Errorf("expected default GRPCPort 50051, got %d", cfg.Server.GRPCPort)
+	if cfg.Server.GRPCPort != DefaultGRPCPort {
+		t.Errorf("expected default GRPCPort DefaultGRPCPort, got %d", cfg.Server.GRPCPort)
 	}
 	if cfg.Server.Host != "0.0.0.0" {
 		t.Errorf("expected default Host 0.0.0.0, got %s", cfg.Server.Host)
@@ -183,7 +183,7 @@ func TestLoad_MissingConfigFile_UsesDefaults(t *testing.T) {
 	}
 
 	// Verify defaults are used
-	if cfg.Server.GRPCPort != 50051 {
+	if cfg.Server.GRPCPort != DefaultGRPCPort {
 		t.Errorf("expected default port, got %d", cfg.Server.GRPCPort)
 	}
 }
@@ -495,7 +495,7 @@ func TestLoad_GRPCPortEnvOverride_InvalidValue(t *testing.T) {
 	}
 
 	// Should keep default when invalid
-	if cfg.Server.GRPCPort != 50051 {
-		t.Errorf("expected default port 50051 for invalid env, got %d", cfg.Server.GRPCPort)
+	if cfg.Server.GRPCPort != DefaultGRPCPort {
+		t.Errorf("expected default port DefaultGRPCPort for invalid env, got %d", cfg.Server.GRPCPort)
 	}
 }

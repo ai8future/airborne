@@ -260,4 +260,4 @@ pkg/client/           Public Go client library
 | Tracing/Metrics | OpenTelemetry (OTLP export) |
 | Secrets | Doppler |
 | Proto Tooling | buf |
-| Shared Library | chassis-go v9 |
+| Shared Library | chassis-go v10 |
