@@ -1,10 +1,10 @@
 # Airborne Makefile
 
 # Build variables
-VERSION ?= $(shell cat VERSION 2>/dev/null || echo "dev")
+VERSION := $(shell cat VERSION)
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-LDFLAGS := -ldflags "-X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.BuildTime=$(BUILD_TIME)"
+LDFLAGS := -ldflags="-w -s -X main.version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.BuildTime=$(BUILD_TIME)"
 
 # Go settings
 GOCMD := go
@@ -19,15 +19,15 @@ CMD_DIR := cmd/airborne
 BINARY := $(BIN_DIR)/airborne
 
 .PHONY: all build build-linux build-darwin build-all clean test lint fmt proto deps help run
+.DEFAULT_GOAL := build
 
 # Default target
 all: proto build
 
 # Build the binary
 build:
-	@echo "Building airborne..."
-	@mkdir -p $(BIN_DIR)
 	@rm -f $(BINARY)
+	@mkdir -p $(BIN_DIR)
 	CGO_ENABLED=0 $(GOBUILD) $(LDFLAGS) -o $(BINARY) ./$(CMD_DIR)
 	@echo "Built $(BINARY)"
 
@@ -94,7 +94,6 @@ deps:
 clean:
 	@echo "Cleaning..."
 	@rm -rf $(BIN_DIR)
-	@rm -rf gen/go
 	@rm -f coverage.out coverage.html
 
 # Install buf (protobuf tooling)

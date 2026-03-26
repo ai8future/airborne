@@ -31,7 +31,7 @@ import (
 
 // Build-time variables
 var (
-	Version   = "dev"
+	version   = "dev"
 	GitCommit = "unknown"
 	BuildTime = "unknown"
 )
@@ -76,14 +76,14 @@ func main() {
 	// Initialize OpenTelemetry tracing and metrics
 	otelShutdown := otelinit.Init(otelinit.Config{
 		ServiceName:    "airborne",
-		ServiceVersion: Version,
+		ServiceVersion: version,
 		Insecure:       true, // use plaintext for local/dev
 	})
 	defer otelShutdown(context.Background())
 
 	// Log startup info
 	slog.Info("starting Airborne",
-		"version", Version,
+		"version", version,
 		"commit", GitCommit,
 		"build_time", BuildTime,
 		"grpc_port", cfg.Server.GRPCPort,
@@ -98,7 +98,7 @@ func main() {
 
 	// Create gRPC server
 	grpcServer, components, err := server.NewGRPCServer(cfg, server.VersionInfo{
-		Version:   Version,
+		Version:   version,
 		GitCommit: GitCommit,
 		BuildTime: BuildTime,
 	})
@@ -133,7 +133,7 @@ func main() {
 			RedisClient:  components.RedisClient,
 			HealthChecks: components.HealthChecks,
 			Version: admin.VersionInfo{
-				Version:   Version,
+				Version:   version,
 				GitCommit: GitCommit,
 				BuildTime: BuildTime,
 			},
