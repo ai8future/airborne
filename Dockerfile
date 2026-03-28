@@ -52,7 +52,7 @@ RUN adduser -D -H -s /sbin/nologin airborne && \
 USER airborne
 
 # Expose gRPC port
-EXPOSE 50051
+EXPOSE 50612
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

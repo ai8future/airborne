@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.9.2] - 2026-03-27
+
+### Added
+- **CLI output tests** (`internal/cli/output_test.go`): Table-driven tests for FormatTokens, FormatCost, FormatDuration, FormatTimestamp, TruncateString, and FormatStatus formatting functions
+- **CLI client tests** (`internal/cli/client_test.go`): HTTP client tests using httptest for Health, Activity, Debug, Thread, and Test endpoints including error handling
+- **Provider SelectModel tests** (`internal/provider/model_test.go`): Tests for model selection priority chain (override > config > default) with whitespace trimming edge cases
+- **Retry EnsureTimeout tests** (appended to `internal/retry/retry_test.go`): Tests for context deadline preservation, new timeout application, and cancel function safety
+- **DB repository tests** (`internal/db/repository_test.go`): Tenant validation, table name generation for both legacy and tenant-prefixed modes, and ValidTenantIDs verification
+- **Admin server tests** (`internal/admin/server_test.go`): Tests for detectMIMEType (26 file types), buildCompressedHistory (empty, basic, whitespace, responseID, overflow), handleHealth, handleVersion, handleActivity, and handleDebug handlers
+- Processed and deleted 17 rcodegen test reports after critical review filtering out false positives
+
+Agent: Claude Code (Claude:Opus 4.6 (1M context))
+
 ## [1.9.1] - 2026-03-26
 - GO-BEST-PRACTICES conformance: Makefile with cross-platform build targets (build-linux, build-darwin, build-all), launcher script, binary naming, LDFLAGS with version injection, CGO_ENABLED=0 static builds
 - Agent: Claude:Opus 4.6

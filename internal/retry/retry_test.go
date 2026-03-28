@@ -109,6 +109,55 @@ func TestSleepWithBackoff_ExponentialDelay(t *testing.T) {
 	}
 }
 
+func TestEnsureTimeout_NoExistingDeadline(t *testing.T) {
+	ctx := context.Background()
+	timeout := 5 * time.Second
+
+	newCtx, cancel := EnsureTimeout(ctx, timeout)
+	defer cancel()
+
+	deadline, ok := newCtx.Deadline()
+	if !ok {
+		t.Fatal("expected context to have a deadline")
+	}
+
+	remaining := time.Until(deadline)
+	if remaining < 4*time.Second || remaining > 6*time.Second {
+		t.Errorf("expected ~5s remaining, got %v", remaining)
+	}
+}
+
+func TestEnsureTimeout_ExistingDeadline(t *testing.T) {
+	originalTimeout := 10 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), originalTimeout)
+	defer cancel()
+
+	originalDeadline, _ := ctx.Deadline()
+
+	// EnsureTimeout should NOT override existing deadline
+	newCtx, newCancel := EnsureTimeout(ctx, 1*time.Second)
+	defer newCancel()
+
+	newDeadline, ok := newCtx.Deadline()
+	if !ok {
+		t.Fatal("expected context to have a deadline")
+	}
+	if !newDeadline.Equal(originalDeadline) {
+		t.Errorf("deadline changed: original=%v, new=%v", originalDeadline, newDeadline)
+	}
+}
+
+func TestEnsureTimeout_CancelFuncSafe(t *testing.T) {
+	// Verify the noop cancel from existing-deadline path doesn't panic
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, noopCancel := EnsureTimeout(ctx, 1*time.Second)
+	// Should not panic when called
+	noopCancel()
+	noopCancel() // Safe to call twice
+}
+
 func TestDefaults(t *testing.T) {
 	// Verify default constants are sensible
 	if MaxAttempts != 3 {
