@@ -19,6 +19,7 @@ import (
 	"github.com/ai8future/chassis-go/v10/registry"
 	"github.com/ai8future/chassis-go/v10/xyops"
 
+	"github.com/ai8future/airborne"
 	airbornev1 "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/admin"
 	"github.com/ai8future/airborne/internal/config"
@@ -31,12 +32,13 @@ import (
 
 // Build-time variables
 var (
-	version   = "dev"
+	version   = airborne.AppVersion
 	GitCommit = "unknown"
 	BuildTime = "unknown"
 )
 
 func main() {
+	chassis.SetAppVersion(airborne.AppVersion)
 	chassis.RequireMajor(10)
 
 	// Parse command-line flags

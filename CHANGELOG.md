@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.3] - 2026-03-28
+- Add appversion.go with embedded VERSION for chassis SetAppVersion pattern
+- Update cmd/airborne/main.go: replace `version = "dev"` with `version = airborne.AppVersion`, add chassis.SetAppVersion
+- Update cmd/airborne-cli/main.go: add chassis.SetAppVersion(airborne.AppVersion) before RequireMajor
+- Update cmd/airborne-freeze/main.go: add chassis.SetAppVersion(airborne.AppVersion) before RequireMajor
+- Agent: Claude Code (Claude:Opus 4.6)
+
 ## [1.9.2] - 2026-03-27
 
 ### Added
