@@ -7,3 +7,7 @@
 - Stay out of the _studies, _proposals, _rcodegen, _bugs_open, _bugs_fixed directories. Do not go into them or read from them unless specifically told to do so.
 
 - When you fix a bug, write short details on that bug and store it in _bugs_fixed. Depending on the severity or complexity, decide if you think you should be very brief - or less brief. Give your bug file a good name but always prepend the date. For example: 2026-12-31-failed-to-check-values-bug.md is a perfect name. Always lowercase. Always include the date in the filename.
+
+- Before building or debugging, verify vendor/ is current: run go mod vendor if using local replace directives.
+
+- Before building or debugging, verify vendor/ is current: run go mod vendor if using local replace directives.
