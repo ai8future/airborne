@@ -6,7 +6,7 @@ require (
 	github.com/ai8future/chassis-go-addons/pgkit v1.0.7
 	github.com/ai8future/chassis-go-addons/rediskit v1.0.7
 	github.com/ai8future/chassis-go-addons/ssrfcheck v1.0.7
-	github.com/ai8future/chassis-go/v10 v10.0.0
+	github.com/ai8future/chassis-go/v11 v11.0.0
 	github.com/ai8future/markdown_svc/clients/go v0.0.0
 	github.com/ai8future/pricing_db v0.0.0-00010101000000-000000000000
 	github.com/alicebob/miniredis/v2 v2.35.0
@@ -19,12 +19,12 @@ require (
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto v0.48.0
 	google.golang.org/genai v1.40.0
-	google.golang.org/grpc v1.78.0
+	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-replace github.com/ai8future/chassis-go/v10 => ../../chassis_suite/chassis-go
+replace github.com/ai8future/chassis-go/v11 => ../../chassis_suite/chassis-go
 
 replace github.com/ai8future/markdown_svc/clients/go => ./markdown_svc/clients/go
 

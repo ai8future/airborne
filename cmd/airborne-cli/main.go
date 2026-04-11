@@ -4,8 +4,8 @@ import (
 	"log"
 	"os"
 
-	chassis "github.com/ai8future/chassis-go/v10"
-	"github.com/ai8future/chassis-go/v10/registry"
+	chassis "github.com/ai8future/chassis-go/v11"
+	"github.com/ai8future/chassis-go/v11/registry"
 
 	"github.com/ai8future/airborne"
 	"github.com/ai8future/airborne/internal/cli"
@@ -14,7 +14,7 @@ import (
 
 func main() {
 	chassis.SetAppVersion(airborne.AppVersion)
-	chassis.RequireMajor(10)
+	chassis.RequireMajor(11)
 	if err := registry.InitCLI(chassis.Version); err != nil {
 		log.Fatalf("registry: %v", err)
 	}

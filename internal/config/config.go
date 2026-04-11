@@ -12,11 +12,10 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	chassis "github.com/ai8future/chassis-go/v10"
+	chassis "github.com/ai8future/chassis-go/v11"
 	"github.com/ai8future/airborne/internal/config/envutil"
-	"github.com/ai8future/chassis-go/v10/call"
-	"github.com/ai8future/chassis-go/v10/kafkakit"
-	"github.com/ai8future/chassis-go/v10/xyops"
+	"github.com/ai8future/chassis-go/v11/call"
+	"github.com/ai8future/chassis-go/v11/kafkakit"
 )
 
 // Deterministic ports derived from service name via djb2 hashing.
@@ -44,8 +43,6 @@ type Config struct {
 	// Event bus (kafkakit) — enables heartbeatkit + announcekit automatically.
 	Kafkakit KafkakitConfig `yaml:"kafkakit"`
 
-	// XYOps monitoring bridge.
-	Xyops XyopsConfig `yaml:"xyops"`
 }
 
 // KafkakitConfig holds event bus configuration.
@@ -63,26 +60,6 @@ func (c *KafkakitConfig) ToKafkakit() kafkakit.Config {
 		SchemaRegistryURL: c.SchemaRegistryURL,
 		TenantID:          c.TenantID,
 		Source:            c.Source,
-	}
-}
-
-// XyopsConfig holds xyops monitoring bridge configuration.
-type XyopsConfig struct {
-	BaseURL         string `yaml:"base_url"`
-	APIKey          string `yaml:"api_key"`
-	ServiceName     string `yaml:"service_name"`
-	MonitorEnabled  bool   `yaml:"monitor_enabled"`
-	MonitorInterval int    `yaml:"monitor_interval"`
-}
-
-// ToXyops converts to the chassis xyops.Config.
-func (c *XyopsConfig) ToXyops() xyops.Config {
-	return xyops.Config{
-		BaseURL:         c.BaseURL,
-		APIKey:          c.APIKey,
-		ServiceName:     c.ServiceName,
-		MonitorEnabled:  c.MonitorEnabled,
-		MonitorInterval: c.MonitorInterval,
 	}
 }
 
@@ -304,10 +281,6 @@ func defaultConfig() *Config {
 		Kafkakit: KafkakitConfig{
 			Source: "airborne",
 		},
-		Xyops: XyopsConfig{
-			ServiceName:     "airborne",
-			MonitorInterval: 30,
-		},
 		RAG: RAGConfig{
 			Enabled:        false,
 			OllamaURL:      "http://localhost:11434",
@@ -407,12 +380,6 @@ func (c *Config) applyEnvOverrides() {
 	c.Kafkakit.TenantID = envutil.GetStringEnv("KAFKAKIT_TENANT_ID", c.Kafkakit.TenantID)
 	c.Kafkakit.Source = envutil.GetStringEnv("KAFKAKIT_SOURCE", c.Kafkakit.Source)
 
-	// XYOps configuration
-	c.Xyops.BaseURL = envutil.GetStringEnv("XYOPS_BASE_URL", c.Xyops.BaseURL)
-	c.Xyops.APIKey = envutil.GetStringEnv("XYOPS_API_KEY", c.Xyops.APIKey)
-	c.Xyops.ServiceName = envutil.GetStringEnv("XYOPS_SERVICE_NAME", c.Xyops.ServiceName)
-	c.Xyops.MonitorEnabled = envutil.GetBoolEnv("XYOPS_MONITOR_ENABLED", c.Xyops.MonitorEnabled)
-	c.Xyops.MonitorInterval = envutil.GetIntEnv("XYOPS_MONITOR_INTERVAL", c.Xyops.MonitorInterval)
 }
 
 // expandEnvVars expands ${VAR} patterns in string fields

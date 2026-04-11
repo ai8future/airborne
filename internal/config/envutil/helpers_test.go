@@ -3,7 +3,7 @@ package envutil
 import (
 	"testing"
 
-	"github.com/ai8future/chassis-go/v10/testkit"
+	"github.com/ai8future/chassis-go/v11/testkit"
 )
 
 func TestGetStringEnv(t *testing.T) {

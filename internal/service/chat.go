@@ -705,7 +705,6 @@ func (s *ChatService) selectProviderWithTenant(ctx context.Context, req *pb.Gene
 	}
 }
 
-
 // retrieveRAGContext retrieves relevant document chunks for non-OpenAI providers.
 // Returns nil if RAG is disabled, not configured, or provider is OpenAI.
 func (s *ChatService) retrieveRAGContext(ctx context.Context, storeID, query string) ([]rag.RetrieveResult, error) {

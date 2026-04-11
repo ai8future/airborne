@@ -10,14 +10,13 @@ import (
 	"os"
 	"time"
 
-	chassis "github.com/ai8future/chassis-go/v10"
-	"github.com/ai8future/chassis-go/v10/deploy"
-	"github.com/ai8future/chassis-go/v10/kafkakit"
-	"github.com/ai8future/chassis-go/v10/lifecycle"
-	"github.com/ai8future/chassis-go/v10/logz"
-	otelinit "github.com/ai8future/chassis-go/v10/otel"
-	"github.com/ai8future/chassis-go/v10/registry"
-	"github.com/ai8future/chassis-go/v10/xyops"
+	chassis "github.com/ai8future/chassis-go/v11"
+	"github.com/ai8future/chassis-go/v11/deploy"
+	"github.com/ai8future/chassis-go/v11/kafkakit"
+	"github.com/ai8future/chassis-go/v11/lifecycle"
+	"github.com/ai8future/chassis-go/v11/logz"
+	otelinit "github.com/ai8future/chassis-go/v11/otel"
+	"github.com/ai8future/chassis-go/v11/registry"
 
 	"github.com/ai8future/airborne"
 	airbornev1 "github.com/ai8future/airborne/gen/go/airborne/v1"
@@ -39,7 +38,7 @@ var (
 
 func main() {
 	chassis.SetAppVersion(airborne.AppVersion)
-	chassis.RequireMajor(10)
+	chassis.RequireMajor(11)
 
 	// Parse command-line flags
 	healthCheck := flag.Bool("health-check", false, "Run gRPC health check and exit")
@@ -161,14 +160,6 @@ func main() {
 		registry.Port(chassis.PortHTTP, cfg.Admin.Port, "Admin HTTP")
 	}
 
-	// Create xyops client for monitoring bridge (optional — degrades if unconfigured)
-	var ops *xyops.Client
-	xyopsCfg := cfg.Xyops.ToXyops()
-	if xyopsCfg.BaseURL != "" && xyopsCfg.APIKey != "" {
-		ops = xyops.New(xyopsCfg, xyops.WithMonitoring(xyopsCfg.MonitorInterval))
-		slog.Info("xyops monitoring enabled", "base_url", xyopsCfg.BaseURL)
-	}
-
 	// Use lifecycle.Run for coordinated startup and shutdown.
 	// Catches SIGTERM/SIGINT, cancels context, waits for all components.
 	lifecycleArgs := []any{
@@ -210,11 +201,6 @@ func main() {
 				return err
 			}
 		}))
-	}
-
-	// Wire xyops monitoring bridge into lifecycle (blocks until ctx cancellation)
-	if ops != nil {
-		lifecycleArgs = append(lifecycleArgs, ops.Run)
 	}
 
 	if err := lifecycle.Run(context.Background(), lifecycleArgs...); err != nil {

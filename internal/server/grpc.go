@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ai8future/chassis-go/v10/grpckit"
+	"github.com/ai8future/chassis-go/v11/grpckit"
 
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/auth"
