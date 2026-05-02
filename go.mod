@@ -3,9 +3,9 @@ module github.com/ai8future/airborne
 go 1.25.5
 
 require (
-	github.com/ai8future/chassis-go-addons/pgkit v1.0.7
-	github.com/ai8future/chassis-go-addons/rediskit v1.0.7
-	github.com/ai8future/chassis-go-addons/ssrfcheck v1.0.7
+	github.com/ai8future/chassis-go-addons/pgkit v1.2.3
+	github.com/ai8future/chassis-go-addons/rediskit v1.2.3
+	github.com/ai8future/chassis-go-addons/ssrfcheck v1.2.3
 	github.com/ai8future/chassis-go/v11 v11.1.8
 	github.com/ai8future/markdown_svc/clients/go v0.0.0
 	github.com/ai8future/pricing_db v0.0.0-00010101000000-000000000000
