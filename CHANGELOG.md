@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.9.4] - 2026-04-19
+- **rediskit compatibility**: Treat `rediskit.ErrNotFound` as a Redis nil result in `internal/redis.IsNil`, preserving missing-key handling after rediskit's not-found error normalization.
+- Agent: Codex:gpt-5.4-medium
+
 ## [1.9.3] - 2026-03-28
 - Add appversion.go with embedded VERSION for chassis SetAppVersion pattern
 - Update cmd/airborne/main.go: replace `version = "dev"` with `version = airborne.AppVersion`, add chassis.SetAppVersion

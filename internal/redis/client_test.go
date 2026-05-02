@@ -4,7 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/ai8future/chassis-go-addons/rediskit"
 	"github.com/alicebob/miniredis/v2"
+	goredis "github.com/redis/go-redis/v9"
 )
 
 func TestClient(t *testing.T) {
@@ -58,5 +60,15 @@ func TestClient(t *testing.T) {
 	_, err = client.Get(ctx, "key")
 	if !IsNil(err) {
 		t.Errorf("expected nil error after Del, got %v", err)
+	}
+}
+
+func TestIsNilRecognizesRedisNotFoundErrors(t *testing.T) {
+	if !IsNil(rediskit.ErrNotFound) {
+		t.Fatal("expected rediskit.ErrNotFound to be treated as redis nil")
+	}
+
+	if !IsNil(goredis.Nil) {
+		t.Fatal("expected go-redis Nil to be treated as redis nil")
 	}
 }
