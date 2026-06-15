@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.9.5] - 2026-06-15
+- Bump Go toolchain to 1.26 (Dockerfile `golang:1.26-alpine`, `go.mod` go 1.26.2, README prerequisites). Verified `go build ./...`.
+- Agent: Claude:Opus 4.8 (1M context)
+
 ## [1.9.4] - 2026-04-19
 - **rediskit compatibility**: Treat `rediskit.ErrNotFound` as a Redis nil result in `internal/redis.IsNil`, preserving missing-key handling after rediskit's not-found error normalization.
 - Agent: Codex:gpt-5.4-medium

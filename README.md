@@ -121,7 +121,7 @@ Two modes controlled by `AIRBORNE_AUTH_MODE`:
 
 ### Prerequisites
 
-- Go 1.25+
+- Go 1.26+
 - At least one provider API key (e.g. `OPENAI_API_KEY`)
 - [buf](https://buf.build) (for proto generation, optional)
 
@@ -252,7 +252,7 @@ pkg/client/           Public Go client library
 
 | Component | Technology |
 |-----------|-----------|
-| Language | Go 1.25 |
+| Language | Go 1.26 |
 | API | gRPC + Protocol Buffers |
 | Dashboard | Next.js 16 / React 19 / TypeScript |
 | Database | PostgreSQL (via pgx) |
