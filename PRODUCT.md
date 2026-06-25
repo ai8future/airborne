@@ -2,9 +2,17 @@
 
 ## What Airborne Is
 
-Airborne is a **multi-provider AI gateway** -- a centralized backend service that sits between consuming applications and 20+ LLM (Large Language Model) providers. It presents a single, unified gRPC API so that any application (email service, chat dashboard, internal tool, etc.) can send prompts and receive AI-generated responses without knowing or caring which LLM provider is fulfilling the request behind the scenes.
+Airborne is a **multi-provider AI gateway** -- a centralized backend service that sits between consuming applications and LLM (Large Language Model) providers. It presents a single, unified gRPC API so that any application (email service, chat dashboard, internal tool, etc.) can send prompts and receive AI-generated responses without knowing or caring which LLM provider is fulfilling the request behind the scenes.
+
+It is one service within the `ai_suite` family of internal backends, and it is the canonical inference entry point for those products: sibling services (notably the **Solstice** email-processing pipeline) do not call provider SDKs themselves -- they call Airborne, and in some cases share Airborne's PostgreSQL schema (see "Solstice Integration" below).
 
 The core value proposition: **one API to rule all LLMs, with enterprise-grade multi-tenancy, authentication, cost tracking, and failover built in.**
+
+### Live providers vs. scaffolded providers (read this before editing provider code)
+
+Airborne ships native, fully-wired integrations for **three core providers: OpenAI, Google Gemini, and Anthropic.** These are the only providers the running `ChatService` will route to -- its provider-resolution switch returns `unknown provider` for anything else, and tenant requests fail over only among these three (default chains: OpenAI->Gemini, Gemini->OpenAI, Anthropic->OpenAI).
+
+The repository **also contains 13 additional provider packages** under `internal/provider/` (DeepSeek, Grok/xAI, Mistral, Perplexity, Cohere, Together AI, Fireworks AI, OpenRouter, DeepInfra, Hyperbolic, Nebius, Cerebras, Upstage), most built on a shared OpenAI-compatible client layer (`internal/provider/compat`). These packages implement the `provider.Provider` interface and are covered by tests, but they are **not yet imported or instantiated by `ChatService`** -- they are scaffolding for a future expansion of the live routing set, plus additional providers defined only in the proto enum (Bedrock, Watsonx, Databricks, HuggingFace, MiniMax). Treat "20+ providers" as the proto/aspirational surface; treat "3 providers" as today's production routing reality. When adding a compat provider to the live path, the work is wiring it into `ChatService` (construction + the name switch in `getProviderForName`/`getFallbackProvider`), not writing the client from scratch.
 
 ---
 
@@ -12,7 +20,7 @@ The core value proposition: **one API to rule all LLMs, with enterprise-grade mu
 
 ### 1. Provider Abstraction and Vendor Independence
 
-The AI landscape is fragmented across OpenAI, Google Gemini, Anthropic, DeepSeek, Mistral, and many others. Each provider has its own SDK, authentication scheme, streaming protocol, and data format. Airborne eliminates this complexity for consuming applications. A chat application does not need to integrate with 20 different APIs -- it integrates with Airborne once, and Airborne handles the rest.
+The AI landscape is fragmented across OpenAI, Google Gemini, Anthropic, DeepSeek, Mistral, and many others. Each provider has its own SDK, authentication scheme, streaming protocol, and data format. Airborne eliminates this complexity for consuming applications. A chat application does not need to integrate with each vendor's API -- it integrates with Airborne once, and Airborne handles the rest. (Today the live routing set is the three core providers; the architecture and the additional provider packages exist so the set can grow without any consumer change.)
 
 This gives the business:
 - **Negotiating leverage** -- Easily switch providers or redistribute traffic without rewriting client applications.
@@ -198,3 +206,49 @@ Airborne is designed to serve as infrastructure for multiple products within an 
 - **Internal tools** that need AI capabilities (summarization, classification, entity extraction) without each building their own provider integrations.
 
 Each of these consuming applications talks to a single Airborne API and benefits from centralized authentication, cost tracking, provider management, and operational observability.
+
+The two real tenants in shipped config are **`ai8`** and **`email4ai`** (plus a `zztest` tenant used for tests/CI). Database isolation is implemented as **table-level** prefixing -- e.g. `ai8_airborne_threads`, `email4ai_airborne_threads` -- not row-level filtering, which is the stronger separation guarantee the multi-tenancy section describes.
+
+---
+
+## Solstice Integration -- Shared Schema, Not Shared Logic
+
+Airborne's PostgreSQL schema is extended (migrations `007`, `008`, `009`) to support **Solstice**, a sibling email-processing service in the suite. This is a deliberate, load-bearing design choice that is easy to misread, so it is documented here explicitly:
+
+- **Migration 007 (thread extensions)** adds Solstice-specific columns to the per-tenant `*_airborne_threads` tables: `solstice_thread_id`, `original_sender`, `seen_recipients`, `has_replied`, `done`, `revision` (optimistic-locking counter), `conversation_history` (cross-provider history JSONB), `process_hash`, `solstice_version`, and store/continuity IDs (`file_search_store_id`, `vector_store_id`, `response_id`). This lets Solstice reuse Airborne's thread storage as the single source of truth for a conversation rather than maintaining a parallel store.
+- **Migration 008 (jobs tables)** creates per-tenant `*_airborne_jobs` tables for crash-proof email intake: a job row is persisted (with an R2 object prefix and a per-job AES encryption key) before Postmark gets a 200 OK, so a crashed worker can resume. Deleting the row deletes the key, crypto-shredding the R2 payload.
+- **Migration 009 (archives tables)** creates per-tenant `*_airborne_archives` tables that store the **raw inbound email** (headers, envelope, bodies, attachment paths) for retry/reprocessing, with a short TTL, separate from the permanent AI-conversation record in threads/messages.
+
+**Why this matters for code changes:** the `jobs` and `archives` tables -- and most Solstice thread columns -- are **owned and written by Solstice, not by Airborne's Go code.** Airborne hosts the schema (the migrations live here) but its services do not read or write `*_airborne_jobs` / `*_airborne_archives`. If you are editing Airborne's repository layer and see these tables, do not assume Airborne populates them; changing their shape is a cross-service contract change with Solstice, not a local refactor.
+
+---
+
+## How to Think About Code Changes
+
+Hard constraints and "what belongs here vs. a sibling repo":
+
+- **Airborne owns inference, not application workflows.** Provider routing, prompt assembly, RAG retrieval, cost calculation, conversation/metric persistence, auth, and rate limiting belong here. Email parsing, webhook intake, job durability/recovery, and business-specific orchestration belong in **Solstice** (or the relevant consumer), even though some of their schema is hosted here. Resist pulling email/workflow logic into Airborne.
+- **Adding a provider to the live path is a wiring task, not a from-scratch task.** The client likely already exists under `internal/provider/<name>` (often via `compat`). The actual change is constructing it in `ChatService` and adding its name to the resolution switches and failover defaults. Do not add a provider to the README/PRODUCT "live" set until it is routed by `ChatService`.
+- **The `provider.Provider` interface is the contract.** Every provider must answer `Name`, `GenerateReply`, `GenerateReplyStream`, and the four capability predicates (`SupportsFileSearch`, `SupportsWebSearch`, `SupportsNativeContinuity`, `SupportsStreaming`). Routing and RAG behavior branch on these predicates -- e.g. RAG context is injected manually for providers without native file search, and full history is re-sent for providers without native continuity.
+- **Security invariants are not optional.** Custom provider `base_url` overrides require the `admin` permission and pass SSRF validation; `FILE=` secret references are restricted to the whitelist in `internal/tenant/secrets.go` (`/etc/airborne/secrets`, `/run/secrets`, `/var/run/secrets`) with symlink resolution; request payloads are bounded by `internal/validation/limits.go` (100KB user input, 50KB instructions, 100 history messages, 50 metadata entries, 1KB/10KB per metadata key/value); rate-limit checks must stay atomic (Redis Lua). Weakening any of these is a security regression, not a convenience tweak.
+- **Persistence and event publishing are best-effort and additive.** Conversation writes happen after the response path and the Kafka event bus (`ai8.ai.airborne.inference.completed`, via chassis-go `kafkakit`) is tolerated-on-failure. New side effects on the request path should preserve this property: never let an analytics/persistence failure break a successful inference response.
+- **Generated gRPC code is not hand-edited.** Change `api/proto/**`, then regenerate into `gen/go/**` with `make proto` (buf). Editing generated files directly will be overwritten.
+- **Shared infrastructure comes from chassis.** Lifecycle, Kafka, Redis, Postgres, SSRF checks, and version stamping come from `chassis-go/v11` and the `chassis-go-addons` kits; prefer those over re-implementing transport/lifecycle concerns locally.
+
+---
+
+## Deployment Model and Scale
+
+- **Process shape:** a single Go binary (`cmd/airborne`) hosting a gRPC server (default port **50612**) with an interceptor chain (recovery -> tracing -> metrics -> logging -> tenant resolution -> auth), plus an **optional** HTTP admin server (default port **8473**) for the dashboard/debug endpoints. Companion binaries: `cmd/airborne-cli` (admin/debug CLI) and `cmd/airborne-freeze` (resolve-secrets-to-static-snapshot tool).
+- **Dependencies are graduated, not all-required.** Provider keys are the only hard requirement. PostgreSQL (persistence), Redis (Redis-mode auth + rate limiting), Ollama + Qdrant (self-hosted RAG), Docbox (document extraction), markdown_svc (HTML rendering), Doppler (secrets), and Kafka (event bus) are each independently enableable and degrade gracefully when off. A development startup mode runs without the optional dependencies.
+- **Stateless service tier.** All durable state lives in PostgreSQL, Redis, and the vector stores, so the gRPC tier itself is horizontally scalable behind a load balancer; per-tenant rate limits are enforced centrally in Redis so limits hold across replicas.
+- **Packaging:** multi-platform builds (Linux/amd64, Darwin/arm64) via the Makefile (`build-linux` / `build-darwin`); a non-root Docker image (`Dockerfile`) and a root-level `docker-compose.yml` that brings up the service plus its dependencies. (The `deployments/` directory is currently effectively empty -- the README's mention of systemd templates there is aspirational.)
+
+---
+
+## Current State / Status
+
+- **Version:** `1.9.5` (see `VERSION` / `CHANGELOG.md`). Go toolchain 1.26; built on `chassis-go/v11`.
+- **Built and in use:** the three-provider live routing path (OpenAI, Gemini, Anthropic), unary + streaming generation, provider selection, failover, static and Redis-backed auth with scoped permissions and atomic rate limiting, per-request/per-thread/per-tenant cost tracking, conversation persistence with debug capture and optional HTML rendering, the activity feed, RAG across OpenAI/Gemini/Qdrant backends, image generation (Gemini, DALL-E), slash-command processing (`/image`, `/ignore`), structured-output metadata extraction, the OpenTelemetry observability stack, the Kafka `inference.completed` event, the Next.js admin dashboard, and the CLI.
+- **Scaffolded / not yet live:** the 13 OpenAI-compatible provider packages (present, interface-compliant, tested, but not wired into `ChatService`), and the proto-only providers (Bedrock, Watsonx, Databricks, HuggingFace, MiniMax) which have no client implementation yet. The Solstice `jobs`/`archives` schema is present and owned by Solstice; Airborne hosts but does not exercise it.
+- **Note for documentation editors:** the repository `README.md` references a `pkg/client/` public Go client library and `chassis-go v10`; as of this version there is **no `pkg/` directory** and the dependency is `chassis-go/v11`. Trust the code and `go.mod` over those README lines.
