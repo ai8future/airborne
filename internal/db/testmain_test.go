@@ -39,19 +39,33 @@ func TestMain(m *testing.M) {
 				WithOccurrence(2).WithStartupTimeout(60*time.Second)),
 	)
 	if err != nil {
-		// Docker unavailable: skip the package's DB tests (do not fail).
-		fmt.Fprintf(os.Stderr, "skipping db tests, docker unavailable: %v\n", err)
-		os.Exit(0)
+		// Run can return a partially-created container alongside the error.
+		if container != nil {
+			_ = container.Terminate(ctx)
+		}
+		// Disambiguate: only an unreachable Docker daemon warrants a skip. If
+		// the daemon IS reachable, the failure is ours (e.g. a broken statement
+		// in 001_baseline.sql aborting container init) — FAIL loudly.
+		if herr := dockerDaemonHealth(ctx); herr == nil {
+			fmt.Fprintf(os.Stderr, "db test setup failed (container start; docker daemon IS reachable, not skipping): %v\n", err)
+			os.Exit(1)
+		} else {
+			// Docker unavailable: skip the package's DB tests (do not fail).
+			fmt.Fprintf(os.Stderr, "skipping db tests, docker unavailable: %v (daemon health: %v)\n", err, herr)
+			os.Exit(0)
+		}
 	}
 	ownerDSN, err = container.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		// Docker present but setup broke: FAIL loudly, never mask with exit 0.
+		_ = container.Terminate(ctx)
 		fmt.Fprintf(os.Stderr, "db test setup failed (dsn): %v\n", err)
 		os.Exit(1)
 	}
 	// RLS only enforces against a non-superuser, non-owner role. Create it and
 	// grant DML; tests connect as airborne_app so FORCE RLS actually applies.
 	if err := createAppRole(ctx, ownerDSN); err != nil {
+		_ = container.Terminate(ctx)
 		fmt.Fprintf(os.Stderr, "db test setup failed (role): %v\n", err)
 		os.Exit(1)
 	}
@@ -60,6 +74,18 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	_ = container.Terminate(ctx)
 	os.Exit(code)
+}
+
+// dockerDaemonHealth reports whether the Docker daemon is reachable, so a
+// tcpostgres.Run failure can be classified as "environment missing" (skip)
+// vs "our container/migration is broken" (fail). Health closes the provider
+// internally.
+func dockerDaemonHealth(ctx context.Context) error {
+	provider, err := testcontainers.NewDockerProvider()
+	if err != nil {
+		return err
+	}
+	return provider.Health(ctx)
 }
 
 func createAppRole(ctx context.Context, ownerDSN string) error {
@@ -86,7 +112,14 @@ func newTestClient(t *testing.T) *Client {
 	if err != nil {
 		t.Fatalf("connect test db as airborne_app: %v", err)
 	}
-	t.Cleanup(func() { truncateAll(t) })
+	t.Cleanup(func() {
+		// truncateAll uses its own owner pool (airborne_app lacks TRUNCATE),
+		// so ordering vs Close is not load-bearing — but both must run, or
+		// repeated newTestClient calls leak pools toward Postgres's
+		// connection ceiling.
+		truncateAll(t)
+		c.Close()
+	})
 	return c
 }
 
