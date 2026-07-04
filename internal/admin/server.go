@@ -197,14 +197,20 @@ func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 	var entries []db.ActivityEntry
 	var err error
 
-	// Create a base repository for cross-tenant queries
+	// Cross-tenant admin read: a single WithCrossTenant query with tenant_id
+	// coming from each row (no per-tenant UNION). When a tenant_id filter is
+	// supplied we scope the feed to that tenant in-process — the dashboard's
+	// primary view is the unfiltered, all-tenants feed.
 	baseRepo := db.NewRepository(s.dbClient)
-
-	if tenantID != "" {
-		entries, err = baseRepo.GetActivityFeedByTenant(ctx, tenantID, limit)
-	} else {
-		// No tenant specified - get activity from ALL tenants
-		entries, err = baseRepo.GetActivityFeedAllTenants(ctx, limit)
+	entries, err = baseRepo.GetActivityFeedAllTenants(ctx, limit)
+	if err == nil && tenantID != "" {
+		filtered := make([]db.ActivityEntry, 0, len(entries))
+		for _, e := range entries {
+			if e.TenantID == tenantID {
+				filtered = append(filtered, e)
+			}
+		}
+		entries = filtered
 	}
 
 	if err != nil {
@@ -738,8 +744,9 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	if s.dbClient != nil && req.TenantID != "" {
 		repo, repoErr := s.dbClient.TenantRepository(req.TenantID)
 		if repoErr == nil {
-			// Get up to 50 previous messages for context
-			dbMessages, msgErr := repo.GetMessages(r.Context(), threadUUID, 50)
+			// Load the chat's active branch (root-first). Progressive
+			// compression below caps the history that is actually forwarded.
+			dbMessages, msgErr := repo.GetActiveBranch(r.Context(), threadUUID.String())
 			if msgErr == nil && len(dbMessages) > 0 {
 				originalMessageCount = len(dbMessages)
 				conversationHistory = buildCompressedHistory(dbMessages, &previousResponseID)
@@ -842,10 +849,38 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(chatResp)
 }
 
+// messageContentText extracts the plain-text body from a ChatMessage.Content
+// JSONB value. Content is stored as {"text":"..."} (see db.TextContent), so this
+// mirrors the SQL COALESCE(content->>'text', content::text, '') the admin
+// read-queries use: an object with a "text" key yields that string, a bare JSON
+// string yields its value, and anything else falls back to the raw bytes.
+func messageContentText(raw json.RawMessage) string {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return ""
+	}
+	if trimmed[0] == '{' {
+		var obj map[string]json.RawMessage
+		if err := json.Unmarshal(trimmed, &obj); err == nil {
+			if t, ok := obj["text"]; ok {
+				var s string
+				if err := json.Unmarshal(t, &s); err == nil {
+					return s
+				}
+			}
+		}
+	}
+	var s string
+	if err := json.Unmarshal(trimmed, &s); err == nil {
+		return s
+	}
+	return string(trimmed)
+}
+
 // buildCompressedHistory creates a compressed conversation history to prevent context window overflow.
 // It applies progressive compression: full AI responses for recent messages, truncated for older,
 // and drops AI responses entirely for very old conversations.
-func buildCompressedHistory(dbMessages []db.Message, previousResponseID *string) []*pb.Message {
+func buildCompressedHistory(dbMessages []db.ChatMessage, previousResponseID *string) []*pb.Message {
 	const (
 		maxHistoryChars      = 30000 // ~7,500 tokens, leaves room for response
 		maxAIResponseChars   = 500   // Truncate AI responses after fullAIResponsesLimit
@@ -872,7 +907,7 @@ func buildCompressedHistory(dbMessages []db.Message, previousResponseID *string)
 			currentAIResponse++
 		}
 
-		content := strings.TrimSpace(msg.Content)
+		content := strings.TrimSpace(messageContentText(msg.Content))
 		if content == "" {
 			continue
 		}
@@ -1151,12 +1186,12 @@ func (s *Server) handleChatWithFile(w http.ResponseWriter, r *http.Request, req 
 	if s.dbClient != nil && req.TenantID != "" {
 		repo, repoErr := s.dbClient.TenantRepository(req.TenantID)
 		if repoErr == nil {
-			dbMessages, msgErr := repo.GetMessages(r.Context(), threadUUID, 50)
+			dbMessages, msgErr := repo.GetActiveBranch(r.Context(), threadUUID.String())
 			if msgErr == nil && len(dbMessages) > 0 {
 				for _, msg := range dbMessages {
 					conversationHistory = append(conversationHistory, provider.Message{
 						Role:    msg.Role,
-						Content: msg.Content,
+						Content: messageContentText(msg.Content),
 					})
 				}
 			}
@@ -1238,73 +1273,77 @@ func (s *Server) handleChatWithFile(w http.ResponseWriter, r *http.Request, req 
 	// Generate message ID for the assistant response
 	messageID := uuid.New()
 
-	// Persist to database if available
+	// Persist the whole turn atomically (chat get-or-create by primary key,
+	// user message, assistant reply as its child, and the cold debug blob) in a
+	// single transaction — the new-model equivalent of the old get-or-create
+	// thread + two CreateMessage calls. The failure signal is carried by the
+	// message status rather than a content prefix; here the turn succeeded.
 	if s.dbClient != nil && req.TenantID != "" {
 		repo, repoErr := s.dbClient.TenantRepository(req.TenantID)
 		if repoErr == nil {
-			// Ensure thread exists
-			_, threadErr := repo.GetOrCreateThread(r.Context(), threadUUID, "dashboard-user")
-			if threadErr != nil {
-				slog.Warn("failed to get/create thread", "error", threadErr, "thread_id", req.ThreadID)
+			providerName := "gemini"
+			modelName := result.Model
+			totalTokens := inputTokens + outputTokens
+			groundingQueries := result.GroundingQueries
+
+			chatID := threadUUID.String()
+			userMsg := &db.ChatMessage{
+				ID:       uuid.New().String(),
+				TenantID: req.TenantID,
+				ChatID:   chatID,
+				UserID:   "dashboard-user",
+				Role:     db.RoleUser,
+				Content:  db.TextContent(req.Message),
+				Status:   db.ChatMessageStatusComplete,
+			}
+			assistantMsg := &db.ChatMessage{
+				ID:               messageID.String(),
+				TenantID:         req.TenantID,
+				ChatID:           chatID,
+				UserID:           "dashboard-user",
+				Role:             db.RoleAssistant,
+				Content:          db.TextContent(result.Text),
+				ModelID:          &modelName,
+				Provider:         &providerName,
+				ResponseID:       &result.ResponseID,
+				InputTokens:      &inputTokens,
+				OutputTokens:     &outputTokens,
+				TotalTokens:      &totalTokens,
+				CostUSD:          &costUSD,
+				GroundingQueries: &groundingQueries,
+				GroundingCostUSD: &groundingCostUSD,
+				Status:           db.ChatMessageStatusComplete,
+			}
+
+			var rawRequestJSON, rawResponseJSON json.RawMessage
+			if len(result.RequestJSON) > 0 {
+				rawRequestJSON = json.RawMessage(result.RequestJSON)
+			}
+			if len(result.ResponseJSON) > 0 {
+				rawResponseJSON = json.RawMessage(result.ResponseJSON)
+			}
+			turnDebug := &db.TurnDebug{
+				SystemPrompt:    systemPrompt,
+				RawRequestJSON:  rawRequestJSON,
+				RawResponseJSON: rawResponseJSON,
+			}
+
+			if err := repo.PersistTurn(r.Context(), &db.Chat{
+				ID:       chatID,
+				TenantID: req.TenantID,
+				UserID:   "dashboard-user",
+				Provider: providerName,
+				ModelID:  modelName,
+				Status:   db.ChatStatusActive,
+			}, userMsg, assistantMsg, turnDebug); err != nil {
+				slog.Warn("failed to persist chat with file", "error", err, "thread_id", req.ThreadID)
 			} else {
-				// Save user message
-				userMsg := &db.Message{
-					ID:        uuid.New(),
-					ThreadID:  threadUUID,
-					Role:      db.RoleUser,
-					Content:   req.Message,
-					CreatedAt: time.Now(),
-				}
-				if err := repo.CreateMessage(r.Context(), userMsg); err != nil {
-					slog.Warn("failed to save user message", "error", err)
-				}
-
-				// Prepare debug data
-				providerName := "gemini"
-				modelName := result.Model
-				totalTokens := inputTokens + outputTokens
-				groundingQueries := result.GroundingQueries
-
-				var rawRequestJSON, rawResponseJSON *string
-				if len(result.RequestJSON) > 0 {
-					str := string(result.RequestJSON)
-					rawRequestJSON = &str
-				}
-				if len(result.ResponseJSON) > 0 {
-					str := string(result.ResponseJSON)
-					rawResponseJSON = &str
-				}
-
-				// Save assistant message with debug data
-				assistantMsg := &db.Message{
-					ID:               messageID,
-					ThreadID:         threadUUID,
-					Role:             db.RoleAssistant,
-					Content:          result.Text,
-					Provider:         &providerName,
-					Model:            &modelName,
-					ResponseID:       &result.ResponseID,
-					InputTokens:      &inputTokens,
-					OutputTokens:     &outputTokens,
-					TotalTokens:      &totalTokens,
-					CostUSD:          &costUSD,
-					GroundingQueries: &groundingQueries,
-					GroundingCostUSD: &groundingCostUSD,
-					CreatedAt:        time.Now(),
-					SystemPrompt:     &systemPrompt,
-					RawRequestJSON:   rawRequestJSON,
-					RawResponseJSON:  rawResponseJSON,
-				}
-				if err := repo.CreateMessage(r.Context(), assistantMsg); err != nil {
-					slog.Warn("failed to save assistant message", "error", err)
-				} else {
-					slog.Info("persisted chat with file",
-						"thread_id", req.ThreadID,
-						"message_id", messageID,
-						"has_request_json", rawRequestJSON != nil,
-						"has_response_json", rawResponseJSON != nil,
-					)
-				}
+				slog.Info("persisted chat with file",
+					"thread_id", req.ThreadID,
+					"message_id", messageID,
+					"has_request_json", rawRequestJSON != nil,
+					"has_response_json", rawResponseJSON != nil,
+				)
 			}
 		}
 	}

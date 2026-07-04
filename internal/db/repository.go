@@ -570,11 +570,14 @@ func (r *Repository) GetActivityFeedAllTenants(ctx context.Context, limit int) (
 	return out, err
 }
 
-// GetDebugDataAllTenants returns the full request/response debug view for a
-// message across all tenants (admin inspector). It joins airborne_chat_messages
-// to the cold airborne_chat_message_debug blob under WithCrossTenant; tenant_id
-// comes from the row. user_input is the nearest preceding user message in the
-// same chat.
+// GetDebugDataAllTenants returns the full request/response debug view for an
+// assistant message across all tenants (admin inspector). It joins
+// airborne_chat_messages to the cold airborne_chat_message_debug blob under
+// WithCrossTenant; tenant_id comes from the row. user_input is the nearest
+// preceding user message in the same chat. The lookup is scoped to
+// role='assistant' (the debug inspector only surfaces assistant turns), so a
+// user/system/tool message id resolves as "message not found" — preserving the
+// pre-migration GetDebugData contract.
 func (r *Repository) GetDebugDataAllTenants(ctx context.Context, messageID uuid.UUID) (*DebugData, error) {
 	var (
 		data  DebugData
@@ -611,7 +614,7 @@ func (r *Repository) GetDebugDataAllTenants(ctx context.Context, messageID uuid.
 				 ORDER BY u.created_at DESC LIMIT 1) AS user_input
 			FROM airborne_chat_messages m
 			LEFT JOIN airborne_chat_message_debug d ON d.message_id = m.id
-			WHERE m.id = $1`, messageID)
+			WHERE m.id = $1 AND m.role = 'assistant'`, messageID)
 		var userInput *string
 		if err := row.Scan(
 			&data.MessageID, &data.ChatID, &data.TenantID, &data.UserID, &data.Timestamp,
