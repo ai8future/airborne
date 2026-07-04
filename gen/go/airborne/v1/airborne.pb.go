@@ -61,8 +61,15 @@ type GenerateReplyRequest struct {
 	// Enable structured output mode (Gemini-only)
 	// When true, response includes structured_metadata with intent, entities, topics
 	EnableStructuredOutput bool `protobuf:"varint,21,opt,name=enable_structured_output,json=enableStructuredOutput,proto3" json:"enable_structured_output,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	// Idempotency: duplicate GenerateReply calls carrying the same key replay the
+	// byte-identical prior response instead of regenerating. Also read from
+	// metadata["idempotency_key"] (first-class field wins when both are set).
+	IdempotencyKey string `protobuf:"bytes,22,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	// Opaque caller correlation id for the chat this turn persists onto (A9/A10).
+	// Also read from metadata["external_ref"] (first-class field wins).
+	ExternalRef   string `protobuf:"bytes,23,opt,name=external_ref,json=externalRef,proto3" json:"external_ref,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GenerateReplyRequest) Reset() {
@@ -240,6 +247,20 @@ func (x *GenerateReplyRequest) GetEnableStructuredOutput() bool {
 		return x.EnableStructuredOutput
 	}
 	return false
+}
+
+func (x *GenerateReplyRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *GenerateReplyRequest) GetExternalRef() string {
+	if x != nil {
+		return x.ExternalRef
+	}
+	return ""
 }
 
 // GenerateReplyResponse contains the generated reply
@@ -1301,8 +1322,7 @@ var File_airborne_v1_airborne_proto protoreflect.FileDescriptor
 
 const file_airborne_v1_airborne_proto_rawDesc = "" +
 	"\n" +
-	"\x1aairborne/v1/airborne.proto\x12\vairborne.v1\x1a\x18airborne/v1/common.proto\"\xd3\n" +
-	"\n" +
+	"\x1aairborne/v1/airborne.proto\x12\vairborne.v1\x1a\x18airborne/v1/common.proto\"\x9f\v\n" +
 	"\x14GenerateReplyRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x11 \x01(\tR\btenantId\x12\"\n" +
 	"\finstructions\x18\x01 \x01(\tR\finstructions\x12\x1d\n" +
@@ -1327,7 +1347,9 @@ const file_airborne_v1_airborne_proto_rawDesc = "" +
 	"\bmetadata\x18\x10 \x03(\v2/.airborne.v1.GenerateReplyRequest.MetadataEntryR\bmetadata\x12'\n" +
 	"\x05tools\x18\x13 \x03(\v2\x11.airborne.v1.ToolR\x05tools\x12:\n" +
 	"\ftool_results\x18\x14 \x03(\v2\x17.airborne.v1.ToolResultR\vtoolResults\x128\n" +
-	"\x18enable_structured_output\x18\x15 \x01(\bR\x16enableStructuredOutput\x1aC\n" +
+	"\x18enable_structured_output\x18\x15 \x01(\bR\x16enableStructuredOutput\x12'\n" +
+	"\x0fidempotency_key\x18\x16 \x01(\tR\x0eidempotencyKey\x12!\n" +
+	"\fexternal_ref\x18\x17 \x01(\tR\vexternalRef\x1aC\n" +
 	"\x15FileIdToFilenameEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a_\n" +

@@ -2,50 +2,39 @@ package db
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
 	"fmt"
-	"log/slog"
-	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
-// ValidTenantIDs contains the list of valid tenant IDs.
-var ValidTenantIDs = map[string]bool{
-	"ai8":      true,
-	"email4ai": true,
-	"zztest":   true,
-}
-
-// ErrInvalidTenant is returned when an invalid tenant ID is provided.
-var ErrInvalidTenant = errors.New("invalid tenant ID: must be 'ai8', 'email4ai', or 'zztest'")
-
-// Repository provides data access operations for threads and messages.
-// Each repository instance is scoped to a specific tenant's tables.
+// Repository provides tenant-scoped data access for the relational chat model
+// (airborne_chats / airborne_chat_messages / airborne_models). Every tenant
+// query runs inside a WithTenant transaction so RLS scopes it to tenantID;
+// the cross-tenant admin analytics run inside WithCrossTenant. The zero-value
+// tenantID (from NewRepository) is only valid for the *AllTenants methods,
+// which never depend on a tenant GUC.
 type Repository struct {
-	client      *Client
-	tablePrefix string // "ai8_airborne" or "email4ai_airborne"
-	tenantID    string // "ai8", "email4ai", "zztest"
+	client   *Client
+	tenantID string
 }
 
-// NewRepository creates a new repository backed by the given client.
-// Deprecated: Use NewTenantRepository for tenant-specific operations.
+// NewRepository creates a tenant-agnostic repository. It is only valid for the
+// cross-tenant admin analytics (GetActivityFeedAllTenants,
+// GetDebugDataAllTenants, GetThreadConversationAllTenants), which run under
+// WithCrossTenant and never read the tenant GUC. Use NewTenantRepository for
+// any tenant-scoped operation.
 func NewRepository(client *Client) *Repository {
-	return &Repository{client: client, tablePrefix: "", tenantID: ""}
+	return &Repository{client: client}
 }
 
-// NewTenantRepository creates a new repository scoped to a specific tenant's tables.
-// Returns an error if the tenantID is not valid.
+// NewTenantRepository creates a repository scoped to a specific tenant. Tenant
+// validity is enforced upstream (see Client.IsValidTenant / RLS), so this
+// constructor never returns an error — the signature is retained so the cached
+// TenantRepository and its call sites are untouched.
 func NewTenantRepository(client *Client, tenantID string) (*Repository, error) {
-	if !ValidTenantIDs[tenantID] {
-		return nil, fmt.Errorf("%w: got %q", ErrInvalidTenant, tenantID)
-	}
-	return &Repository{
-		client:      client,
-		tablePrefix: tenantID + "_airborne",
-		tenantID:    tenantID,
-	}, nil
+	return &Repository{client: client, tenantID: tenantID}, nil
 }
 
 // TenantID returns the tenant ID this repository is scoped to.
@@ -53,760 +42,711 @@ func (r *Repository) TenantID() string {
 	return r.tenantID
 }
 
-// threadsTable returns the tenant-specific threads table name.
-func (r *Repository) threadsTable() string {
-	if r.tablePrefix == "" {
-		return "airborne_threads" // Legacy table
-	}
-	return r.tablePrefix + "_threads"
-}
+// ---------------------------------------------------------------------------
+// Column lists + row scanners (shared so every read stays column-order safe).
+// ---------------------------------------------------------------------------
 
-// messagesTable returns the tenant-specific messages table name.
-func (r *Repository) messagesTable() string {
-	if r.tablePrefix == "" {
-		return "airborne_messages" // Legacy table
-	}
-	return r.tablePrefix + "_messages"
-}
+// chatColumns is the canonical SELECT list for a Chat row. external_ref and the
+// nullable text columns are COALESCE'd so an unset value scans back as "" (the
+// inverse of CreateChat writing SQL NULL for an empty ExternalRef).
+const chatColumns = `id, tenant_id, user_id, COALESCE(title,''), COALESCE(model_id,''),
+	COALESCE(provider,''), status, current_message_id, pinned, COALESCE(external_ref,''),
+	metadata, created_at, updated_at`
 
-// filesTable returns the tenant-specific files table name.
-func (r *Repository) filesTable() string {
-	if r.tablePrefix == "" {
-		return "airborne_files" // Legacy table
-	}
-	return r.tablePrefix + "_files"
-}
-
-// fileUploadsTable returns the tenant-specific file uploads table name.
-func (r *Repository) fileUploadsTable() string {
-	if r.tablePrefix == "" {
-		return "airborne_file_provider_uploads" // Legacy table
-	}
-	return r.tablePrefix + "_file_provider_uploads"
-}
-
-// vectorStoresTable returns the tenant-specific vector stores table name.
-func (r *Repository) vectorStoresTable() string {
-	if r.tablePrefix == "" {
-		return "airborne_thread_vector_stores" // Legacy table
-	}
-	return r.tablePrefix + "_thread_vector_stores"
-}
-
-// CreateThread inserts a new thread into the database.
-func (r *Repository) CreateThread(ctx context.Context, thread *Thread) error {
-	query := fmt.Sprintf(`
-		INSERT INTO %s (id, user_id, provider, model, status, message_count, created_at, updated_at, metadata)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-	`, r.threadsTable())
-	r.client.logQuery(query, thread.ID, thread.UserID)
-
-	_, err := r.client.pool.Exec(ctx, query,
-		thread.ID,
-		thread.UserID,
-		thread.Provider,
-		thread.Model,
-		thread.Status,
-		thread.MessageCount,
-		thread.CreatedAt,
-		thread.UpdatedAt,
-		thread.Metadata,
+func scanChat(row pgx.Row, c *Chat) error {
+	return row.Scan(
+		&c.ID, &c.TenantID, &c.UserID, &c.Title, &c.ModelID, &c.Provider,
+		&c.Status, &c.CurrentMessageID, &c.Pinned, &c.ExternalRef,
+		&c.Metadata, &c.CreatedAt, &c.UpdatedAt,
 	)
+}
+
+// chatMessageColumns is the canonical SELECT list for a ChatMessage row. The
+// DECIMAL cost columns are cast to float8 so they scan cleanly into *float64.
+const chatMessageColumns = `id, tenant_id, chat_id, parent_id, sibling_seq, user_id, role,
+	content, model_id, provider, response_id, status, status_history,
+	input_tokens, output_tokens, total_tokens, cost_usd::float8,
+	grounding_queries, grounding_cost_usd::float8, processing_time_ms,
+	usage, sources, embeds, created_at, updated_at`
+
+func scanChatMessage(rows pgx.Rows, m *ChatMessage) error {
+	return rows.Scan(
+		&m.ID, &m.TenantID, &m.ChatID, &m.ParentID, &m.SiblingSeq, &m.UserID, &m.Role,
+		&m.Content, &m.ModelID, &m.Provider, &m.ResponseID, &m.Status, &m.StatusHistory,
+		&m.InputTokens, &m.OutputTokens, &m.TotalTokens, &m.CostUSD,
+		&m.GroundingQueries, &m.GroundingCostUSD, &m.ProcessingTimeMs,
+		&m.Usage, &m.Sources, &m.Embeds, &m.CreatedAt, &m.UpdatedAt,
+	)
+}
+
+// modelColumns is the canonical SELECT list for a Model row.
+const modelColumns = `id, tenant_id, base_model_id, name, provider, params, meta,
+	is_active, created_at, updated_at`
+
+func scanModel(row pgx.Row, m *Model) error {
+	return row.Scan(
+		&m.ID, &m.TenantID, &m.BaseModelID, &m.Name, &m.Provider,
+		&m.Params, &m.Meta, &m.IsActive, &m.CreatedAt, &m.UpdatedAt,
+	)
+}
+
+// nullIfEmpty maps "" to a nil *string so an unset value is written as SQL
+// NULL. external_ref's unique index is partial (WHERE external_ref IS NOT
+// NULL), so an empty value must be NULL, never ”.
+func nullIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// ---------------------------------------------------------------------------
+// Chat CRUD (tenant-scoped).
+// ---------------------------------------------------------------------------
+
+// CreateChat inserts a new chat. An empty ExternalRef is persisted as SQL NULL
+// (never ”) so the partial unique index on external_ref is not tripped by
+// callers that do not set a correlation id. An empty Status defaults to
+// 'active' (the schema DEFAULT does not apply once a value is passed).
+func (r *Repository) CreateChat(ctx context.Context, chat *Chat) error {
+	status := chat.Status
+	if status == "" {
+		status = ChatStatusActive
+	}
+	return r.client.WithTenant(ctx, r.tenantID, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `
+			INSERT INTO airborne_chats
+			  (id, tenant_id, user_id, title, model_id, provider, status,
+			   current_message_id, pinned, external_ref, metadata)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+			chat.ID, r.tenantID, chat.UserID, nullIfEmpty(chat.Title),
+			nullIfEmpty(chat.ModelID), nullIfEmpty(chat.Provider), status,
+			chat.CurrentMessageID, chat.Pinned, nullIfEmpty(chat.ExternalRef), chat.Metadata)
+		if err != nil {
+			return fmt.Errorf("create chat: %w", err)
+		}
+		return nil
+	})
+}
+
+// GetChatByID looks up a chat by primary key. RLS scopes the lookup to this
+// repository's tenant, so an id owned by another tenant is invisible. Returns
+// (nil, false, nil) when no chat matches.
+func (r *Repository) GetChatByID(ctx context.Context, chatID string) (*Chat, bool, error) {
+	var (
+		chat  Chat
+		found bool
+	)
+	err := r.client.WithTenant(ctx, r.tenantID, func(tx pgx.Tx) error {
+		row := tx.QueryRow(ctx,
+			`SELECT `+chatColumns+` FROM airborne_chats WHERE id = $1`, chatID)
+		if err := scanChat(row, &chat); err != nil {
+			if err == pgx.ErrNoRows {
+				return nil
+			}
+			return fmt.Errorf("get chat by id: %w", err)
+		}
+		found = true
+		return nil
+	})
 	if err != nil {
-		return fmt.Errorf("failed to create thread: %w", err)
+		return nil, false, err
+	}
+	if !found {
+		return nil, false, nil
+	}
+	return &chat, true, nil
+}
+
+// GetChatByExternalRef looks up a chat by its opaque caller correlation id
+// (addendum A9). RLS scopes the lookup to this repository's tenant, so the same
+// external_ref used by another tenant is invisible. Returns (nil, false, nil)
+// when no chat matches.
+func (r *Repository) GetChatByExternalRef(ctx context.Context, externalRef string) (*Chat, bool, error) {
+	var (
+		chat  Chat
+		found bool
+	)
+	err := r.client.WithTenant(ctx, r.tenantID, func(tx pgx.Tx) error {
+		row := tx.QueryRow(ctx,
+			`SELECT `+chatColumns+` FROM airborne_chats WHERE external_ref = $1`, externalRef)
+		if err := scanChat(row, &chat); err != nil {
+			if err == pgx.ErrNoRows {
+				return nil
+			}
+			return fmt.Errorf("get chat by external_ref: %w", err)
+		}
+		found = true
+		return nil
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	if !found {
+		return nil, false, nil
+	}
+	return &chat, true, nil
+}
+
+// ListChats returns a user's chats, most-recently-updated first.
+func (r *Repository) ListChats(ctx context.Context, userID string, limit int) ([]Chat, error) {
+	var out []Chat
+	err := r.client.WithTenant(ctx, r.tenantID, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx,
+			`SELECT `+chatColumns+` FROM airborne_chats
+			 WHERE user_id = $1 ORDER BY updated_at DESC LIMIT $2`, userID, limit)
+		if err != nil {
+			return fmt.Errorf("list chats: %w", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var c Chat
+			if err := scanChat(rows, &c); err != nil {
+				return fmt.Errorf("scan chat: %w", err)
+			}
+			out = append(out, c)
+		}
+		return rows.Err()
+	})
+	return out, err
+}
+
+// ---------------------------------------------------------------------------
+// Message tree CRUD (tenant-scoped).
+// ---------------------------------------------------------------------------
+
+// AppendMessage inserts a message and advances the chat's current_message_id,
+// both in a single WithTenant transaction. When parentID is nil the message is
+// a linear append onto the chat's current head. sibling_seq is the next value
+// among the parent's children (COALESCE(MAX(sibling_seq)+1,0)); the read is
+// racy under READ COMMITTED, so reads tie-break by (sibling_seq, created_at,
+// id) rather than depending on it being unique. Returns the message id.
+func (r *Repository) AppendMessage(ctx context.Context, chatID string, parentID *string, m *ChatMessage) (string, error) {
+	err := r.client.WithTenant(ctx, r.tenantID, func(tx pgx.Tx) error {
+		return r.appendMessageInTx(ctx, tx, chatID, parentID, m)
+	})
+	return m.ID, err
+}
+
+// appendMessageInTx is the transaction-scoped body of AppendMessage, shared
+// with PersistTurn so both run the exact same head-read / sibling_seq /
+// INSERT / head-advance path. The caller owns the transaction (and its
+// tenant GUC).
+func (r *Repository) appendMessageInTx(ctx context.Context, tx pgx.Tx, chatID string, parentID *string, m *ChatMessage) error {
+	if parentID == nil { // linear append: parent = current head
+		var head *string
+		if err := tx.QueryRow(ctx,
+			`SELECT current_message_id FROM airborne_chats WHERE id=$1`, chatID).Scan(&head); err != nil {
+			return fmt.Errorf("read current head: %w", err)
+		}
+		parentID = head
+	}
+	// Deterministic sibling ordering: next seq among children of this parent.
+	var seq int
+	if err := tx.QueryRow(ctx,
+		`SELECT COALESCE(MAX(sibling_seq)+1, 0) FROM airborne_chat_messages
+		 WHERE chat_id=$1 AND parent_id IS NOT DISTINCT FROM $2`, chatID, parentID).Scan(&seq); err != nil {
+		return fmt.Errorf("compute sibling_seq: %w", err)
+	}
+	status := m.Status
+	if status == "" {
+		status = ChatMessageStatusComplete
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO airborne_chat_messages
+		  (id, tenant_id, chat_id, parent_id, sibling_seq, user_id, role, content, model_id, provider,
+		   response_id, status, status_history, input_tokens, output_tokens, total_tokens, cost_usd,
+		   grounding_queries, grounding_cost_usd, processing_time_ms, usage, sources, embeds)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+		m.ID, r.tenantID, chatID, parentID, seq, m.UserID, m.Role, NormalizeJSONB(m.Content), m.ModelID, m.Provider,
+		m.ResponseID, status, m.StatusHistory, m.InputTokens, m.OutputTokens, m.TotalTokens, m.CostUSD,
+		m.GroundingQueries, m.GroundingCostUSD, m.ProcessingTimeMs, m.Usage, m.Sources, m.Embeds); err != nil {
+		return fmt.Errorf("insert message: %w", err)
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE airborne_chats SET current_message_id=$1 WHERE id=$2`, m.ID, chatID); err != nil {
+		return fmt.Errorf("advance current_message_id: %w", err)
 	}
 	return nil
 }
 
-// GetThread retrieves a thread by ID.
-func (r *Repository) GetThread(ctx context.Context, id uuid.UUID) (*Thread, error) {
-	query := fmt.Sprintf(`
-		SELECT id, user_id, provider, model, status, message_count, created_at, updated_at, metadata
-		FROM %s
-		WHERE id = $1
-	`, r.threadsTable())
-	r.client.logQuery(query, id)
-
-	var thread Thread
-	err := r.client.pool.QueryRow(ctx, query, id).Scan(
-		&thread.ID,
-		&thread.UserID,
-		&thread.Provider,
-		&thread.Model,
-		&thread.Status,
-		&thread.MessageCount,
-		&thread.CreatedAt,
-		&thread.UpdatedAt,
-		&thread.Metadata,
-	)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, nil
+// GetActiveBranch returns the chat's active branch, root-first: a recursive-CTE
+// walk from current_message_id up through parent_id to the root. Ordering is
+// structural (walk depth, root first) rather than by created_at: messages
+// persisted in one transaction (PersistTurn) share an identical created_at
+// (now() is transaction-start time), so a timestamp sort would tie.
+func (r *Repository) GetActiveBranch(ctx context.Context, chatID string) ([]ChatMessage, error) {
+	var out []ChatMessage
+	err := r.client.WithTenant(ctx, r.tenantID, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			WITH RECURSIVE branch AS (
+			  SELECT m.*, 0 AS depth FROM airborne_chat_messages m
+			  JOIN airborne_chats c ON c.current_message_id = m.id
+			  WHERE c.id = $1
+			  UNION ALL
+			  SELECT p.*, b.depth + 1 FROM airborne_chat_messages p
+			  JOIN branch b ON p.id = b.parent_id
+			)
+			SELECT `+chatMessageColumns+` FROM branch ORDER BY depth DESC`, chatID)
+		if err != nil {
+			return fmt.Errorf("get active branch: %w", err)
 		}
-		return nil, fmt.Errorf("failed to get thread: %w", err)
-	}
-	return &thread, nil
+		defer rows.Close()
+		for rows.Next() {
+			var m ChatMessage
+			if err := scanChatMessage(rows, &m); err != nil {
+				return fmt.Errorf("scan message: %w", err)
+			}
+			out = append(out, m)
+		}
+		return rows.Err()
+	})
+	return out, err
 }
 
-// UpdateThreadProvider updates the last-used provider and model for a thread.
-func (r *Repository) UpdateThreadProvider(ctx context.Context, threadID uuid.UUID, provider, model string) error {
-	query := fmt.Sprintf(`
-		UPDATE %s
-		SET provider = $2, model = $3, updated_at = NOW()
-		WHERE id = $1
-	`, r.threadsTable())
-	r.client.logQuery(query, threadID, provider, model)
+// GetSiblings returns the children of parentID within a chat, ordered by
+// (sibling_seq, created_at, id). The trailing keys break ties deterministically
+// if two concurrent same-parent appends computed the same sibling_seq. A nil
+// parentID selects the chat's root messages.
+func (r *Repository) GetSiblings(ctx context.Context, chatID string, parentID *string) ([]ChatMessage, error) {
+	var out []ChatMessage
+	err := r.client.WithTenant(ctx, r.tenantID, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx,
+			`SELECT `+chatMessageColumns+` FROM airborne_chat_messages
+			 WHERE chat_id=$1 AND parent_id IS NOT DISTINCT FROM $2
+			 ORDER BY sibling_seq, created_at, id`, chatID, parentID)
+		if err != nil {
+			return fmt.Errorf("get siblings: %w", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var m ChatMessage
+			if err := scanChatMessage(rows, &m); err != nil {
+				return fmt.Errorf("scan message: %w", err)
+			}
+			out = append(out, m)
+		}
+		return rows.Err()
+	})
+	return out, err
+}
 
-	_, err := r.client.pool.Exec(ctx, query, threadID, provider, model)
+// SaveMessageDebug upserts the cold debug blob (system prompt + raw
+// request/response + rendered HTML) for a message into
+// airborne_chat_message_debug, tenant-scoped. Empty system_prompt/rendered_html
+// are stored as SQL NULL; nil raw JSON stays NULL.
+func (r *Repository) SaveMessageDebug(ctx context.Context, messageID string, systemPrompt string, rawRequestJSON, rawResponseJSON json.RawMessage, renderedHTML string) error {
+	return r.client.WithTenant(ctx, r.tenantID, func(tx pgx.Tx) error {
+		return r.saveMessageDebugInTx(ctx, tx, messageID, systemPrompt, rawRequestJSON, rawResponseJSON, renderedHTML)
+	})
+}
+
+// saveMessageDebugInTx is the transaction-scoped body of SaveMessageDebug,
+// shared with PersistTurn. The caller owns the transaction (and its tenant GUC).
+func (r *Repository) saveMessageDebugInTx(ctx context.Context, tx pgx.Tx, messageID string, systemPrompt string, rawRequestJSON, rawResponseJSON json.RawMessage, renderedHTML string) error {
+	_, err := tx.Exec(ctx, `
+		INSERT INTO airborne_chat_message_debug
+		  (message_id, tenant_id, system_prompt, raw_request_json, raw_response_json, rendered_html)
+		VALUES ($1,$2,$3,$4,$5,$6)
+		ON CONFLICT (message_id) DO UPDATE SET
+		  system_prompt = EXCLUDED.system_prompt,
+		  raw_request_json = EXCLUDED.raw_request_json,
+		  raw_response_json = EXCLUDED.raw_response_json,
+		  rendered_html = EXCLUDED.rendered_html`,
+		messageID, r.tenantID, nullIfEmpty(systemPrompt), rawRequestJSON, rawResponseJSON, nullIfEmpty(renderedHTML))
 	if err != nil {
-		return fmt.Errorf("failed to update thread provider: %w", err)
+		return fmt.Errorf("save message debug: %w", err)
 	}
 	return nil
 }
 
-// CreateMessage inserts a new message into the database.
-func (r *Repository) CreateMessage(ctx context.Context, msg *Message) error {
-	query := fmt.Sprintf(`
-		INSERT INTO %s (
-			id, thread_id, role, content, provider, model, response_id,
-			input_tokens, output_tokens, total_tokens, cost_usd,
-			processing_time_ms, citations, created_at, metadata,
-			system_prompt, raw_request_json, raw_response_json
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-	`, r.messagesTable())
-	r.client.logQuery(query, msg.ID, msg.ThreadID, msg.Role)
+// ---------------------------------------------------------------------------
+// Composed turn persistence (single transaction).
+// ---------------------------------------------------------------------------
 
-	_, err := r.client.pool.Exec(ctx, query,
-		msg.ID,
-		msg.ThreadID,
-		msg.Role,
-		msg.Content,
-		msg.Provider,
-		msg.Model,
-		msg.ResponseID,
-		msg.InputTokens,
-		msg.OutputTokens,
-		msg.TotalTokens,
-		msg.CostUSD,
-		msg.ProcessingTimeMs,
-		msg.Citations,
-		msg.CreatedAt,
-		msg.Metadata,
-		msg.SystemPrompt,
-		msg.RawRequestJSON,
-		msg.RawResponseJSON,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create message: %w", err)
-	}
-	return nil
-}
-
-// GetMessages retrieves messages for a thread, ordered chronologically.
-func (r *Repository) GetMessages(ctx context.Context, threadID uuid.UUID, limit int) ([]Message, error) {
-	query := fmt.Sprintf(`
-		SELECT id, thread_id, role, content, provider, model, response_id,
-		       input_tokens, output_tokens, total_tokens, cost_usd,
-		       processing_time_ms, citations, created_at, metadata
-		FROM %s
-		WHERE thread_id = $1
-		ORDER BY created_at ASC
-		LIMIT $2
-	`, r.messagesTable())
-	r.client.logQuery(query, threadID, limit)
-
-	rows, err := r.client.pool.Query(ctx, query, threadID, limit)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get messages: %w", err)
-	}
-	defer rows.Close()
-
-	var messages []Message
-	for rows.Next() {
-		var msg Message
-		err := rows.Scan(
-			&msg.ID,
-			&msg.ThreadID,
-			&msg.Role,
-			&msg.Content,
-			&msg.Provider,
-			&msg.Model,
-			&msg.ResponseID,
-			&msg.InputTokens,
-			&msg.OutputTokens,
-			&msg.TotalTokens,
-			&msg.CostUSD,
-			&msg.ProcessingTimeMs,
-			&msg.Citations,
-			&msg.CreatedAt,
-			&msg.Metadata,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan message: %w", err)
-		}
-		messages = append(messages, msg)
-	}
-	return messages, nil
-}
-
-// GetActivityFeed retrieves the latest assistant messages for the activity dashboard.
-// This queries the tenant-specific tables.
-func (r *Repository) GetActivityFeed(ctx context.Context, limit int) ([]ActivityEntry, error) {
-	query := fmt.Sprintf(`
-		SELECT
-			m.id,
-			m.thread_id,
-			t.user_id,
-			m.content,
-			COALESCE(m.provider, '') as provider,
-			COALESCE(m.model, '') as model,
-			COALESCE(m.input_tokens, 0) as input_tokens,
-			COALESCE(m.output_tokens, 0) as output_tokens,
-			COALESCE(m.total_tokens, 0) as total_tokens,
-			COALESCE(m.cost_usd, 0) as cost_usd,
-			COALESCE(m.grounding_queries, 0) as grounding_queries,
-			COALESCE(m.grounding_cost_usd, 0) as grounding_cost_usd,
-			COALESCE(m.processing_time_ms, 0) as processing_time_ms,
-			m.created_at,
-			(
-				SELECT COALESCE(SUM(cost_usd), 0)
-				FROM %s
-				WHERE thread_id = m.thread_id
-			) AS thread_cost_usd
-		FROM %s m
-		JOIN %s t ON m.thread_id = t.id
-		WHERE m.role = 'assistant'
-		ORDER BY m.created_at DESC
-		LIMIT $1
-	`, r.messagesTable(), r.messagesTable(), r.threadsTable())
-	r.client.logQuery(query, limit)
-
-	rows, err := r.client.pool.Query(ctx, query, limit)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get activity feed: %w", err)
-	}
-	defer rows.Close()
-
-	var entries []ActivityEntry
-	for rows.Next() {
-		var entry ActivityEntry
-		err := rows.Scan(
-			&entry.ID,
-			&entry.ThreadID,
-			&entry.UserID,
-			&entry.Content,
-			&entry.Provider,
-			&entry.Model,
-			&entry.InputTokens,
-			&entry.OutputTokens,
-			&entry.TotalTokens,
-			&entry.CostUSD,
-			&entry.GroundingQueries,
-			&entry.GroundingCostUSD,
-			&entry.ProcessingTimeMs,
-			&entry.Timestamp,
-			&entry.ThreadCostUSD,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan activity entry: %w", err)
-		}
-		// Set tenant ID from repository context
-		entry.TenantID = r.tenantID
-		// Detect failed requests by content prefix
-		if strings.HasPrefix(entry.Content, "[FAILED] ") {
-			entry.Status = "failed"
-			// Remove the prefix from content for display
-			entry.Content = strings.TrimPrefix(entry.Content, "[FAILED] ")
-			entry.FullContent = entry.Content
-		} else {
-			entry.Status = "success"
-			entry.FullContent = entry.Content
-		}
-		// Truncate content for preview
-		if len(entry.Content) > 100 {
-			entry.Content = entry.Content[:100] + "..."
-		}
-		entries = append(entries, entry)
-	}
-	return entries, nil
-}
-
-// GetActivityFeedAllTenants retrieves activity from all tenant tables combined.
-// This is used by the admin dashboard to show a unified activity feed.
-func (r *Repository) GetActivityFeedAllTenants(ctx context.Context, limit int) ([]ActivityEntry, error) {
-	query := `
-		SELECT
-			m.id,
-			m.thread_id,
-			'ai8' as tenant_id,
-			t.user_id,
-			m.content,
-			COALESCE(m.provider, '') as provider,
-			COALESCE(m.model, '') as model,
-			COALESCE(m.input_tokens, 0) as input_tokens,
-			COALESCE(m.output_tokens, 0) as output_tokens,
-			COALESCE(m.total_tokens, 0) as total_tokens,
-			COALESCE(m.cost_usd, 0) as cost_usd,
-			COALESCE(m.grounding_queries, 0) as grounding_queries,
-			COALESCE(m.grounding_cost_usd, 0) as grounding_cost_usd,
-			COALESCE(m.processing_time_ms, 0) as processing_time_ms,
-			m.created_at,
-			(
-				SELECT COALESCE(SUM(cost_usd), 0)
-				FROM ai8_airborne_messages
-				WHERE thread_id = m.thread_id
-			) AS thread_cost_usd
-		FROM ai8_airborne_messages m
-		JOIN ai8_airborne_threads t ON m.thread_id = t.id
-		WHERE m.role = 'assistant'
-
-		UNION ALL
-
-		SELECT
-			m.id,
-			m.thread_id,
-			'email4ai' as tenant_id,
-			t.user_id,
-			m.content,
-			COALESCE(m.provider, '') as provider,
-			COALESCE(m.model, '') as model,
-			COALESCE(m.input_tokens, 0) as input_tokens,
-			COALESCE(m.output_tokens, 0) as output_tokens,
-			COALESCE(m.total_tokens, 0) as total_tokens,
-			COALESCE(m.cost_usd, 0) as cost_usd,
-			COALESCE(m.grounding_queries, 0) as grounding_queries,
-			COALESCE(m.grounding_cost_usd, 0) as grounding_cost_usd,
-			COALESCE(m.processing_time_ms, 0) as processing_time_ms,
-			m.created_at,
-			(
-				SELECT COALESCE(SUM(cost_usd), 0)
-				FROM email4ai_airborne_messages
-				WHERE thread_id = m.thread_id
-			) AS thread_cost_usd
-		FROM email4ai_airborne_messages m
-		JOIN email4ai_airborne_threads t ON m.thread_id = t.id
-		WHERE m.role = 'assistant'
-
-		UNION ALL
-
-		SELECT
-			m.id,
-			m.thread_id,
-			'zztest' as tenant_id,
-			t.user_id,
-			m.content,
-			COALESCE(m.provider, '') as provider,
-			COALESCE(m.model, '') as model,
-			COALESCE(m.input_tokens, 0) as input_tokens,
-			COALESCE(m.output_tokens, 0) as output_tokens,
-			COALESCE(m.total_tokens, 0) as total_tokens,
-			COALESCE(m.cost_usd, 0) as cost_usd,
-			COALESCE(m.grounding_queries, 0) as grounding_queries,
-			COALESCE(m.grounding_cost_usd, 0) as grounding_cost_usd,
-			COALESCE(m.processing_time_ms, 0) as processing_time_ms,
-			m.created_at,
-			(
-				SELECT COALESCE(SUM(cost_usd), 0)
-				FROM zztest_airborne_messages
-				WHERE thread_id = m.thread_id
-			) AS thread_cost_usd
-		FROM zztest_airborne_messages m
-		JOIN zztest_airborne_threads t ON m.thread_id = t.id
-		WHERE m.role = 'assistant'
-
-		ORDER BY created_at DESC
-		LIMIT $1
-	`
-	r.client.logQuery(query, limit)
-
-	rows, err := r.client.pool.Query(ctx, query, limit)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get activity feed (all tenants): %w", err)
-	}
-	defer rows.Close()
-
-	var entries []ActivityEntry
-	for rows.Next() {
-		var entry ActivityEntry
-		err := rows.Scan(
-			&entry.ID,
-			&entry.ThreadID,
-			&entry.TenantID,
-			&entry.UserID,
-			&entry.Content,
-			&entry.Provider,
-			&entry.Model,
-			&entry.InputTokens,
-			&entry.OutputTokens,
-			&entry.TotalTokens,
-			&entry.CostUSD,
-			&entry.GroundingQueries,
-			&entry.GroundingCostUSD,
-			&entry.ProcessingTimeMs,
-			&entry.Timestamp,
-			&entry.ThreadCostUSD,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan activity entry: %w", err)
-		}
-		// Detect failed requests by content prefix
-		if strings.HasPrefix(entry.Content, "[FAILED] ") {
-			entry.Status = "failed"
-			entry.Content = strings.TrimPrefix(entry.Content, "[FAILED] ")
-			entry.FullContent = entry.Content
-		} else {
-			entry.Status = "success"
-			entry.FullContent = entry.Content
-		}
-		if len(entry.Content) > 100 {
-			entry.Content = entry.Content[:100] + "..."
-		}
-		entries = append(entries, entry)
-	}
-	return entries, nil
-}
-
-// GetActivityFeedByTenant retrieves activity for a specific tenant.
-// This creates a tenant-specific repository and queries that tenant's tables.
-func (r *Repository) GetActivityFeedByTenant(ctx context.Context, tenantID string, limit int) ([]ActivityEntry, error) {
-	// Validate tenant ID
-	if !ValidTenantIDs[tenantID] {
-		return nil, fmt.Errorf("%w: got %q", ErrInvalidTenant, tenantID)
-	}
-
-	// Create a tenant-specific repository
-	tenantRepo, err := NewTenantRepository(r.client, tenantID)
-	if err != nil {
-		return nil, err
-	}
-
-	return tenantRepo.GetActivityFeed(ctx, limit)
-}
-
-// DebugInfo contains debug data to store alongside messages.
-type DebugInfo struct {
+// TurnDebug carries the optional cold debug blob persisted alongside a turn's
+// assistant message (airborne_chat_message_debug). It is SaveMessageDebug's
+// parameter list struct-ified for PersistTurn.
+type TurnDebug struct {
 	SystemPrompt    string
-	RawRequestJSON  string
-	RawResponseJSON string
+	RawRequestJSON  json.RawMessage
+	RawResponseJSON json.RawMessage
 	RenderedHTML    string
 }
 
-// PersistConversationTurn saves both user and assistant messages in a transaction.
-// This is the main entry point for chat service persistence.
-// Note: tenantID parameter is no longer needed - the repository is already scoped to a tenant.
-func (r *Repository) PersistConversationTurn(ctx context.Context, threadID uuid.UUID, userID string, userContent, assistantContent, provider, model, responseID string, inputTokens, outputTokens, processingTimeMs int, costUSD float64) error {
-	return r.PersistConversationTurnWithDebug(ctx, threadID, userID, userContent, assistantContent, provider, model, responseID, inputTokens, outputTokens, processingTimeMs, costUSD, 0, 0, nil, nil)
+// PersistTurn persists one full conversation turn atomically in a single
+// WithTenant transaction:
+//
+//  1. get-or-create the chat by primary key (INSERT ... ON CONFLICT (id) DO
+//     NOTHING, so two concurrent first turns on the same new chat id both
+//     proceed — the loser's insert no-ops and its turn threads onto the
+//     winner's committed head instead of being dropped);
+//  2. append userMsg onto the chat's current head (linear);
+//  3. append assistantMsg as userMsg's child, advancing current_message_id;
+//  4. optionally upsert assistantMsg's debug blob.
+//
+// A failure at any step rolls the whole turn back — no orphaned user turn or
+// reply-less head can be committed. RLS WITH CHECK applies to the chat INSERT
+// as usual; if chat.ID already exists under another tenant the insert no-ops
+// and the subsequent head read fails (the row is invisible to this tenant),
+// aborting the turn. An empty chat.Status defaults to 'active'.
+func (r *Repository) PersistTurn(ctx context.Context, chat *Chat, userMsg, assistantMsg *ChatMessage, debug *TurnDebug) error {
+	status := chat.Status
+	if status == "" {
+		status = ChatStatusActive
+	}
+	return r.client.WithTenant(ctx, r.tenantID, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO airborne_chats
+			  (id, tenant_id, user_id, title, model_id, provider, status,
+			   current_message_id, pinned, external_ref, metadata)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+			ON CONFLICT (id) DO NOTHING`,
+			chat.ID, r.tenantID, chat.UserID, nullIfEmpty(chat.Title),
+			nullIfEmpty(chat.ModelID), nullIfEmpty(chat.Provider), status,
+			chat.CurrentMessageID, chat.Pinned, nullIfEmpty(chat.ExternalRef), chat.Metadata); err != nil {
+			return fmt.Errorf("get-or-create chat: %w", err)
+		}
+
+		// User turn: linear append onto the current head. The head read inside
+		// appendMessageInTx doubles as the existence/visibility SELECT for the
+		// get-or-create above.
+		if err := r.appendMessageInTx(ctx, tx, chat.ID, nil, userMsg); err != nil {
+			return fmt.Errorf("append user message: %w", err)
+		}
+
+		// Assistant turn: child of the user message; advances the head.
+		if err := r.appendMessageInTx(ctx, tx, chat.ID, &userMsg.ID, assistantMsg); err != nil {
+			return fmt.Errorf("append assistant message: %w", err)
+		}
+
+		// Track last-used provider/model on the chat header. The get-or-create
+		// above uses ON CONFLICT (id) DO NOTHING, so on a returning chat it never
+		// advances provider/model_id past their first-turn values — but the
+		// schema documents these as "last-used" (the old thread code updated them
+		// every turn via UpdateThreadProvider). Refresh them from the assistant
+		// message's resolved model/provider, leaving each column untouched
+		// (COALESCE) when the reply carries no value, so a model-less turn never
+		// wipes the header.
+		lastModel := ""
+		if assistantMsg.ModelID != nil {
+			lastModel = *assistantMsg.ModelID
+		}
+		lastProvider := ""
+		if assistantMsg.Provider != nil {
+			lastProvider = *assistantMsg.Provider
+		}
+		if lastModel != "" || lastProvider != "" {
+			if _, err := tx.Exec(ctx, `
+				UPDATE airborne_chats
+				SET model_id = COALESCE($1, model_id),
+				    provider = COALESCE($2, provider)
+				WHERE id = $3`,
+				nullIfEmpty(lastModel), nullIfEmpty(lastProvider), chat.ID); err != nil {
+				return fmt.Errorf("update chat last-used model/provider: %w", err)
+			}
+		}
+
+		if debug != nil {
+			if err := r.saveMessageDebugInTx(ctx, tx, assistantMsg.ID,
+				debug.SystemPrompt, debug.RawRequestJSON, debug.RawResponseJSON, debug.RenderedHTML); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
-// PersistConversationTurnWithDebug saves both user and assistant messages with optional debug data and citations.
-func (r *Repository) PersistConversationTurnWithDebug(ctx context.Context, threadID uuid.UUID, userID string, userContent, assistantContent, provider, model, responseID string, inputTokens, outputTokens, processingTimeMs int, costUSD float64, groundingQueries int, groundingCostUSD float64, debug *DebugInfo, citations []Citation) error {
-	tx, err := r.client.pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback(ctx)
+// ---------------------------------------------------------------------------
+// Model registry CRUD (tenant-scoped).
+// ---------------------------------------------------------------------------
 
-	// Check if thread exists, create if not
-	var threadExists bool
-	checkQuery := fmt.Sprintf("SELECT EXISTS(SELECT 1 FROM %s WHERE id = $1)", r.threadsTable())
-	err = tx.QueryRow(ctx, checkQuery, threadID).Scan(&threadExists)
-	if err != nil {
-		return fmt.Errorf("failed to check thread existence: %w", err)
-	}
-
-	if !threadExists {
-		// Create new thread (no tenant_id column needed - table is tenant-specific)
-		createQuery := fmt.Sprintf(`
-			INSERT INTO %s (id, user_id, provider, model, status, message_count, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, 'active', 0, NOW(), NOW())
-		`, r.threadsTable())
-		_, err = tx.Exec(ctx, createQuery, threadID, userID, provider, model)
+// UpsertModel inserts or updates a tenant model-registry row. params/meta are
+// routed through NormalizeJSONB so a nil json.RawMessage becomes '{}' rather
+// than SQL NULL (both columns are NOT NULL and the DEFAULT does not apply once
+// a value is passed).
+func (r *Repository) UpsertModel(ctx context.Context, m *Model) error {
+	return r.client.WithTenant(ctx, r.tenantID, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `
+			INSERT INTO airborne_models
+			  (id, tenant_id, base_model_id, name, provider, params, meta, is_active)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+			ON CONFLICT (tenant_id, id) DO UPDATE SET
+			  base_model_id = EXCLUDED.base_model_id,
+			  name = EXCLUDED.name,
+			  provider = EXCLUDED.provider,
+			  params = EXCLUDED.params,
+			  meta = EXCLUDED.meta,
+			  is_active = EXCLUDED.is_active`,
+			m.ID, r.tenantID, m.BaseModelID, m.Name, m.Provider,
+			NormalizeJSONB(m.Params), NormalizeJSONB(m.Meta), m.IsActive)
 		if err != nil {
-			return fmt.Errorf("failed to create thread: %w", err)
+			return fmt.Errorf("upsert model: %w", err)
 		}
-		slog.Debug("created new thread", "thread_id", threadID, "tenant", r.tenantID)
-	}
-
-	// Insert user message
-	userMsgID := uuid.New()
-	userInsertQuery := fmt.Sprintf(`
-		INSERT INTO %s (id, thread_id, role, content, created_at)
-		VALUES ($1, $2, 'user', $3, NOW())
-	`, r.messagesTable())
-	_, err = tx.Exec(ctx, userInsertQuery, userMsgID, threadID, userContent)
-	if err != nil {
-		return fmt.Errorf("failed to insert user message: %w", err)
-	}
-
-	// Insert assistant message with full metrics and optional debug data
-	assistantMsgID := uuid.New()
-	totalTokens := inputTokens + outputTokens
-
-	var systemPrompt, rawReqJSON, rawRespJSON, renderedHTML *string
-	if debug != nil {
-		if debug.SystemPrompt != "" {
-			systemPrompt = &debug.SystemPrompt
-		}
-		if debug.RawRequestJSON != "" {
-			rawReqJSON = &debug.RawRequestJSON
-		}
-		if debug.RawResponseJSON != "" {
-			rawRespJSON = &debug.RawResponseJSON
-		}
-		if debug.RenderedHTML != "" {
-			renderedHTML = &debug.RenderedHTML
-		}
-	}
-
-	// Serialize citations to JSON
-	citationsJSON, err := CitationsToJSON(citations)
-	if err != nil {
-		slog.Warn("failed to serialize citations", "error", err)
-		// Continue without citations rather than failing the entire persist
-	}
-
-	assistantInsertQuery := fmt.Sprintf(`
-		INSERT INTO %s (
-			id, thread_id, role, content, provider, model, response_id,
-			input_tokens, output_tokens, total_tokens, cost_usd, processing_time_ms, created_at,
-			system_prompt, raw_request_json, raw_response_json, rendered_html, citations,
-			grounding_queries, grounding_cost_usd
-		) VALUES ($1, $2, 'assistant', $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12, $13, $14, $15, $16, $17, $18)
-	`, r.messagesTable())
-	_, err = tx.Exec(ctx, assistantInsertQuery, assistantMsgID, threadID, assistantContent, provider, model, responseID,
-		inputTokens, outputTokens, totalTokens, costUSD, processingTimeMs,
-		systemPrompt, rawReqJSON, rawRespJSON, renderedHTML, citationsJSON,
-		groundingQueries, groundingCostUSD)
-	if err != nil {
-		return fmt.Errorf("failed to insert assistant message: %w", err)
-	}
-
-	// Update thread's last-used provider (trigger updates message_count and updated_at)
-	updateQuery := fmt.Sprintf(`
-		UPDATE %s
-		SET provider = $2, model = $3, updated_at = NOW()
-		WHERE id = $1
-	`, r.threadsTable())
-	_, err = tx.Exec(ctx, updateQuery, threadID, provider, model)
-	if err != nil {
-		return fmt.Errorf("failed to update thread provider: %w", err)
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	slog.Debug("persisted conversation turn",
-		"thread_id", threadID,
-		"tenant", r.tenantID,
-		"provider", provider,
-		"input_tokens", inputTokens,
-		"output_tokens", outputTokens,
-		"cost_usd", costUSD,
-	)
-	return nil
+		return nil
+	})
 }
 
-// GetDebugData retrieves the full request/response debug data for a message.
-func (r *Repository) GetDebugData(ctx context.Context, messageID uuid.UUID) (*DebugData, error) {
-	query := fmt.Sprintf(`
-		SELECT
-			m.id,
-			m.thread_id,
-			t.user_id,
-			m.created_at,
-			COALESCE(m.system_prompt, '') as system_prompt,
-			COALESCE(m.provider, '') as provider,
-			COALESCE(m.model, '') as model,
-			m.content as response_text,
-			COALESCE(m.input_tokens, 0) as tokens_in,
-			COALESCE(m.output_tokens, 0) as tokens_out,
-			COALESCE(m.cost_usd, 0) as cost_usd,
-			COALESCE(m.grounding_queries, 0) as grounding_queries,
-			COALESCE(m.grounding_cost_usd, 0) as grounding_cost_usd,
-			COALESCE(m.processing_time_ms, 0) as duration_ms,
-			COALESCE(m.response_id, '') as response_id,
-			COALESCE(m.citations::text, '') as citations,
-			COALESCE(m.raw_request_json::text, '') as raw_request_json,
-			COALESCE(m.raw_response_json::text, '') as raw_response_json,
-			COALESCE(m.rendered_html, '') as rendered_html,
-			(
-				SELECT COALESCE(content, '')
-				FROM %s
-				WHERE thread_id = m.thread_id
-					AND role = 'user'
-					AND created_at <= m.created_at
-				ORDER BY created_at DESC
-				LIMIT 1
-			) as user_input
-		FROM %s m
-		JOIN %s t ON m.thread_id = t.id
-		WHERE m.id = $1 AND m.role = 'assistant'
-	`, r.messagesTable(), r.messagesTable(), r.threadsTable())
-	r.client.logQuery(query, messageID)
-
-	var data DebugData
-	var userInput *string
-	err := r.client.pool.QueryRow(ctx, query, messageID).Scan(
-		&data.MessageID,
-		&data.ThreadID,
-		&data.UserID,
-		&data.Timestamp,
-		&data.SystemPrompt,
-		&data.RequestProvider,
-		&data.ResponseModel,
-		&data.ResponseText,
-		&data.TokensIn,
-		&data.TokensOut,
-		&data.CostUSD,
-		&data.GroundingQueries,
-		&data.GroundingCostUSD,
-		&data.DurationMs,
-		&data.ResponseID,
-		&data.Citations,
-		&data.RawRequestJSON,
-		&data.RawResponseJSON,
-		&data.RenderedHTML,
-		&userInput,
-	)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, fmt.Errorf("message not found")
+// ListModels returns all model-registry rows for the tenant, ordered by id.
+func (r *Repository) ListModels(ctx context.Context) ([]Model, error) {
+	var out []Model
+	err := r.client.WithTenant(ctx, r.tenantID, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx,
+			`SELECT `+modelColumns+` FROM airborne_models ORDER BY id`)
+		if err != nil {
+			return fmt.Errorf("list models: %w", err)
 		}
-		return nil, fmt.Errorf("failed to get debug data: %w", err)
+		defer rows.Close()
+		for rows.Next() {
+			var m Model
+			if err := scanModel(rows, &m); err != nil {
+				return fmt.Errorf("scan model: %w", err)
+			}
+			out = append(out, m)
+		}
+		return rows.Err()
+	})
+	return out, err
+}
+
+// ResolveModel returns the active registry row for id (with its base_model_id
+// and params), or nil if the id is not registered or is soft-disabled.
+func (r *Repository) ResolveModel(ctx context.Context, id string) (*Model, error) {
+	var (
+		model Model
+		found bool
+	)
+	err := r.client.WithTenant(ctx, r.tenantID, func(tx pgx.Tx) error {
+		row := tx.QueryRow(ctx,
+			`SELECT `+modelColumns+` FROM airborne_models WHERE id = $1 AND is_active = true`, id)
+		if err := scanModel(row, &model); err != nil {
+			if err == pgx.ErrNoRows {
+				return nil
+			}
+			return fmt.Errorf("resolve model: %w", err)
+		}
+		found = true
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-
-	// Set tenant ID from repository context
-	data.TenantID = r.tenantID
-
-	// Set derived fields
-	data.RequestModel = data.ResponseModel // Model requested = model used for now
-	data.RequestTimestamp = data.Timestamp.Format("2006-01-02T15:04:05Z07:00")
-	data.Status = "success"
-	if userInput != nil {
-		data.UserInput = *userInput
+	if !found {
+		return nil, nil
 	}
+	return &model, nil
+}
 
+// ---------------------------------------------------------------------------
+// Cross-tenant admin analytics (WithCrossTenant / no tenant GUC).
+// ---------------------------------------------------------------------------
+
+// GetActivityFeedAllTenants returns the latest assistant messages across
+// tenants for the admin dashboard, newest first. It reads
+// airborne_chat_messages directly under WithCrossTenant (a single query, no
+// per-tenant UNION); tenant_id comes from each row. A non-empty tenantFilter
+// scopes the feed to that tenant SQL-side — the predicate is applied before
+// LIMIT, so a sparse tenant still gets up to limit of its own rows even when
+// the global newest rows all belong to busier tenants. An empty tenantFilter
+// returns all tenants.
+func (r *Repository) GetActivityFeedAllTenants(ctx context.Context, tenantFilter string, limit int) ([]ActivityEntry, error) {
+	var out []ActivityEntry
+	err := r.client.WithCrossTenant(ctx, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			SELECT
+				m.id,
+				m.chat_id,
+				m.tenant_id,
+				m.user_id,
+				COALESCE(m.content->>'text', m.content::text, '') AS content,
+				COALESCE(m.provider, '') AS provider,
+				COALESCE(m.model_id, '') AS model_id,
+				COALESCE(m.input_tokens, 0) AS input_tokens,
+				COALESCE(m.output_tokens, 0) AS output_tokens,
+				COALESCE(m.total_tokens, 0) AS total_tokens,
+				COALESCE(m.cost_usd, 0)::float8 AS cost_usd,
+				COALESCE(m.grounding_queries, 0) AS grounding_queries,
+				COALESCE(m.grounding_cost_usd, 0)::float8 AS grounding_cost_usd,
+				COALESCE(m.processing_time_ms, 0) AS processing_time_ms,
+				CASE WHEN m.status = 'error' THEN 'failed' ELSE 'success' END AS status,
+				m.created_at,
+				(SELECT COALESCE(SUM(cost_usd), 0)::float8
+				 FROM airborne_chat_messages WHERE chat_id = m.chat_id) AS chat_cost_usd
+			FROM airborne_chat_messages m
+			WHERE m.role = 'assistant'
+			  AND ($1 = '' OR m.tenant_id = $1)
+			ORDER BY m.created_at DESC
+			LIMIT $2`, tenantFilter, limit)
+		if err != nil {
+			return fmt.Errorf("activity feed (all tenants): %w", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var e ActivityEntry
+			if err := rows.Scan(
+				&e.ID, &e.ChatID, &e.TenantID, &e.UserID, &e.Content,
+				&e.Provider, &e.ModelID, &e.InputTokens, &e.OutputTokens, &e.TotalTokens,
+				&e.CostUSD, &e.GroundingQueries, &e.GroundingCostUSD, &e.ProcessingTimeMs,
+				&e.Status, &e.Timestamp, &e.ThreadCostUSD,
+			); err != nil {
+				return fmt.Errorf("scan activity entry: %w", err)
+			}
+			e.FullContent = e.Content
+			if len(e.Content) > 100 {
+				e.Content = e.Content[:100] + "..."
+			}
+			out = append(out, e)
+		}
+		return rows.Err()
+	})
+	return out, err
+}
+
+// GetDebugDataAllTenants returns the full request/response debug view for an
+// assistant message across all tenants (admin inspector). It joins
+// airborne_chat_messages to the cold airborne_chat_message_debug blob under
+// WithCrossTenant; tenant_id comes from the row. user_input is the nearest
+// preceding user message in the same chat. The lookup is scoped to
+// role='assistant' (the debug inspector only surfaces assistant turns), so a
+// user/system/tool message id resolves as "message not found" — preserving the
+// pre-migration GetDebugData contract.
+func (r *Repository) GetDebugDataAllTenants(ctx context.Context, messageID uuid.UUID) (*DebugData, error) {
+	var (
+		data  DebugData
+		found bool
+	)
+	err := r.client.WithCrossTenant(ctx, func(tx pgx.Tx) error {
+		row := tx.QueryRow(ctx, `
+			SELECT
+				m.id,
+				m.chat_id,
+				m.tenant_id,
+				m.user_id,
+				m.created_at,
+				COALESCE(d.system_prompt, '') AS system_prompt,
+				COALESCE(m.provider, '') AS provider,
+				COALESCE(m.model_id, '') AS model_id,
+				COALESCE(m.content->>'text', m.content::text, '') AS response_text,
+				COALESCE(m.input_tokens, 0) AS tokens_in,
+				COALESCE(m.output_tokens, 0) AS tokens_out,
+				COALESCE(m.cost_usd, 0)::float8 AS cost_usd,
+				COALESCE(m.grounding_queries, 0) AS grounding_queries,
+				COALESCE(m.grounding_cost_usd, 0)::float8 AS grounding_cost_usd,
+				COALESCE(m.processing_time_ms, 0) AS duration_ms,
+				COALESCE(m.response_id, '') AS response_id,
+				COALESCE(m.sources::text, '') AS citations,
+				COALESCE(d.raw_request_json::text, '') AS raw_request_json,
+				COALESCE(d.raw_response_json::text, '') AS raw_response_json,
+				COALESCE(d.rendered_html, '') AS rendered_html,
+				CASE WHEN m.status = 'error' THEN 'failed' ELSE 'success' END AS status,
+				COALESCE(m.error::text, '') AS error,
+				(SELECT COALESCE(u.content->>'text', u.content::text, '')
+				 FROM airborne_chat_messages u
+				 WHERE u.chat_id = m.chat_id AND u.role = 'user' AND u.created_at <= m.created_at
+				 ORDER BY u.created_at DESC LIMIT 1) AS user_input
+			FROM airborne_chat_messages m
+			LEFT JOIN airborne_chat_message_debug d ON d.message_id = m.id
+			WHERE m.id = $1 AND m.role = 'assistant'`, messageID)
+		var userInput *string
+		if err := row.Scan(
+			&data.MessageID, &data.ChatID, &data.TenantID, &data.UserID, &data.Timestamp,
+			&data.SystemPrompt, &data.RequestProvider, &data.ResponseModel, &data.ResponseText,
+			&data.TokensIn, &data.TokensOut, &data.CostUSD, &data.GroundingQueries, &data.GroundingCostUSD,
+			&data.DurationMs, &data.ResponseID, &data.Citations, &data.RawRequestJSON, &data.RawResponseJSON,
+			&data.RenderedHTML, &data.Status, &data.Error, &userInput,
+		); err != nil {
+			if err == pgx.ErrNoRows {
+				return nil
+			}
+			return fmt.Errorf("get debug data (all tenants): %w", err)
+		}
+		found = true
+		data.RequestModel = data.ResponseModel
+		data.RequestTimestamp = data.Timestamp.Format("2006-01-02T15:04:05Z07:00")
+		if userInput != nil {
+			data.UserInput = *userInput
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, fmt.Errorf("message not found")
+	}
 	return &data, nil
 }
 
-// GetDebugDataAllTenants searches for debug data across all tenant tables.
-// Used by admin dashboard when the tenant is unknown.
-func (r *Repository) GetDebugDataAllTenants(ctx context.Context, messageID uuid.UUID) (*DebugData, error) {
-	// Try each tenant in order
-	for _, tenantID := range []string{"ai8", "email4ai", "zztest"} {
-		repo, err := NewTenantRepository(r.client, tenantID)
-		if err != nil {
-			continue
-		}
-		data, err := repo.GetDebugData(ctx, messageID)
-		if err == nil {
-			return data, nil
-		}
-	}
-	return nil, fmt.Errorf("message not found in any tenant")
-}
-
-// GetOrCreateThread ensures a thread exists for the given user.
-func (r *Repository) GetOrCreateThread(ctx context.Context, threadID uuid.UUID, userID string) (*Thread, error) {
-	// Try to get existing thread
-	thread, err := r.GetThread(ctx, threadID)
-	if err != nil {
-		return nil, err
-	}
-	if thread != nil {
-		return thread, nil
-	}
-
-	// Create new thread
-	thread = NewThread(userID)
-	thread.ID = threadID // Use the provided ID
-	if err := r.CreateThread(ctx, thread); err != nil {
-		return nil, err
-	}
-	return thread, nil
-}
-
-// GetThreadConversation retrieves complete thread data with all messages for conversation view.
-func (r *Repository) GetThreadConversation(ctx context.Context, threadID uuid.UUID) (*ThreadConversation, error) {
-	// First get thread info
-	threadQuery := fmt.Sprintf(`
-		SELECT id, user_id, COALESCE(provider, '') as provider, COALESCE(model, '') as model,
-		       message_count, created_at, updated_at
-		FROM %s
-		WHERE id = $1
-	`, r.threadsTable())
-	r.client.logQuery(threadQuery, threadID)
-
-	var conv ThreadConversation
-	err := r.client.pool.QueryRow(ctx, threadQuery, threadID).Scan(
-		&conv.ThreadID,
-		&conv.UserID,
-		&conv.Provider,
-		&conv.Model,
-		&conv.MessageCount,
-		&conv.CreatedAt,
-		&conv.UpdatedAt,
+// GetThreadConversationAllTenants reconstructs a chat's active-branch
+// conversation across all tenants (admin conversation view). It reads the chat
+// header, then walks from current_message_id via the recursive CTE, joining the
+// cold debug blob for rendered HTML — all under WithCrossTenant.
+func (r *Repository) GetThreadConversationAllTenants(ctx context.Context, chatID uuid.UUID) (*ThreadConversation, error) {
+	var (
+		conv  ThreadConversation
+		found bool
 	)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, fmt.Errorf("thread not found")
+	err := r.client.WithCrossTenant(ctx, func(tx pgx.Tx) error {
+		row := tx.QueryRow(ctx, `
+			SELECT id, tenant_id, user_id, COALESCE(provider,''), COALESCE(model_id,''),
+			       created_at, updated_at
+			FROM airborne_chats WHERE id = $1`, chatID)
+		if err := row.Scan(
+			&conv.ChatID, &conv.TenantID, &conv.UserID, &conv.Provider, &conv.ModelID,
+			&conv.CreatedAt, &conv.UpdatedAt,
+		); err != nil {
+			if err == pgx.ErrNoRows {
+				return nil
+			}
+			return fmt.Errorf("get chat header: %w", err)
 		}
-		return nil, fmt.Errorf("failed to get thread: %w", err)
-	}
+		found = true
 
-	// Set tenant ID from repository context
-	conv.TenantID = r.tenantID
-
-	// Get all messages in chronological order
-	messagesQuery := fmt.Sprintf(`
-		SELECT id, role, content, COALESCE(rendered_html, '') as rendered_html,
-		       COALESCE(model, '') as model, COALESCE(provider, '') as provider, created_at
-		FROM %s
-		WHERE thread_id = $1
-		ORDER BY created_at ASC
-	`, r.messagesTable())
-	r.client.logQuery(messagesQuery, threadID)
-
-	rows, err := r.client.pool.Query(ctx, messagesQuery, threadID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get messages: %w", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var msg ConversationMessage
-		err := rows.Scan(
-			&msg.ID,
-			&msg.Role,
-			&msg.Content,
-			&msg.RenderedHTML,
-			&msg.Model,
-			&msg.Provider,
-			&msg.Timestamp,
-		)
+		// Structural (depth) ordering, root first — same rationale as
+		// GetActiveBranch: one-transaction turns share a created_at.
+		rows, err := tx.Query(ctx, `
+			WITH RECURSIVE branch AS (
+			  SELECT m.*, 0 AS depth FROM airborne_chat_messages m
+			  JOIN airborne_chats c ON c.current_message_id = m.id
+			  WHERE c.id = $1
+			  UNION ALL
+			  SELECT p.*, b.depth + 1 FROM airborne_chat_messages p
+			  JOIN branch b ON p.id = b.parent_id
+			)
+			SELECT b.id, b.role,
+			       COALESCE(b.content->>'text', b.content::text, '') AS content,
+			       COALESCE(d.rendered_html, '') AS rendered_html,
+			       COALESCE(b.model_id, '') AS model_id,
+			       COALESCE(b.provider, '') AS provider,
+			       b.created_at
+			FROM branch b
+			LEFT JOIN airborne_chat_message_debug d ON d.message_id = b.id
+			ORDER BY b.depth DESC`, chatID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan message: %w", err)
+			return fmt.Errorf("walk conversation: %w", err)
 		}
-		conv.Messages = append(conv.Messages, msg)
+		defer rows.Close()
+		for rows.Next() {
+			var msg ConversationMessage
+			if err := rows.Scan(
+				&msg.ID, &msg.Role, &msg.Content, &msg.RenderedHTML,
+				&msg.Model, &msg.Provider, &msg.Timestamp,
+			); err != nil {
+				return fmt.Errorf("scan conversation message: %w", err)
+			}
+			conv.Messages = append(conv.Messages, msg)
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		conv.MessageCount = len(conv.Messages)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-
+	if !found {
+		return nil, fmt.Errorf("thread not found")
+	}
 	return &conv, nil
-}
-
-// GetThreadConversationAllTenants searches for a thread conversation across all tenant tables.
-// Used by admin dashboard when the tenant is unknown.
-func (r *Repository) GetThreadConversationAllTenants(ctx context.Context, threadID uuid.UUID) (*ThreadConversation, error) {
-	// Try each tenant in order
-	for _, tenantID := range []string{"ai8", "email4ai", "zztest"} {
-		repo, err := NewTenantRepository(r.client, tenantID)
-		if err != nil {
-			continue
-		}
-		conv, err := repo.GetThreadConversation(ctx, threadID)
-		if err == nil {
-			return conv, nil
-		}
-	}
-	return nil, fmt.Errorf("thread not found in any tenant")
 }

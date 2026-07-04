@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
+	"github.com/ai8future/airborne/internal/db"
 	"github.com/ai8future/airborne/internal/tenant"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -21,13 +22,18 @@ const (
 // TenantInterceptor validates tenant_id and injects tenant config into context.
 type TenantInterceptor struct {
 	manager     *tenant.Manager
+	dbClient    *db.Client // registry-backed tenant validation; nil = manager-only (legacy/tests)
 	skipMethods map[string]bool
 }
 
-// NewTenantInterceptor creates a new tenant interceptor.
-func NewTenantInterceptor(mgr *tenant.Manager) *TenantInterceptor {
+// NewTenantInterceptor creates a new tenant interceptor. When dbClient is
+// non-nil the registry (airborne_tenants) is the source of truth for which
+// tenants exist; when nil (single-tenant/legacy mode or tests) the interceptor
+// falls back to the tenant manager for existence checks.
+func NewTenantInterceptor(mgr *tenant.Manager, dbClient *db.Client) *TenantInterceptor {
 	return &TenantInterceptor{
-		manager: mgr,
+		manager:  mgr,
+		dbClient: dbClient,
 		skipMethods: map[string]bool{
 			"/airborne.v1.AdminService/Health":         true,
 			"/airborne.v1.AdminService/Ready":          true,
@@ -53,7 +59,7 @@ func (t *TenantInterceptor) UnaryInterceptor() grpc.UnaryServerInterceptor {
 		tenantID := extractTenantID(req)
 
 		// Resolve tenant
-		tenantCfg, err := t.resolveTenant(tenantID)
+		tenantCfg, err := t.resolveTenant(ctx, tenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -79,7 +85,7 @@ func (t *TenantInterceptor) StreamInterceptor() grpc.StreamServerInterceptor {
 		var tenantCfg *tenant.TenantConfig
 		if md, ok := metadata.FromIncomingContext(ss.Context()); ok {
 			if vals := md.Get("x-tenant-id"); len(vals) > 0 {
-				cfg, err := t.resolveTenant(vals[0])
+				cfg, err := t.resolveTenant(ss.Context(), vals[0])
 				if err != nil {
 					return err
 				}
@@ -89,7 +95,7 @@ func (t *TenantInterceptor) StreamInterceptor() grpc.StreamServerInterceptor {
 
 		// If not in metadata, fall back to single-tenant mode if available
 		if tenantCfg == nil {
-			cfg, err := t.resolveTenant("")
+			cfg, err := t.resolveTenant(ss.Context(), "")
 			if err != nil {
 				// For bidirectional/client streaming, wrap to extract from first message
 				wrapped := &tenantStream{
@@ -114,8 +120,13 @@ func (t *TenantInterceptor) StreamInterceptor() grpc.StreamServerInterceptor {
 	}
 }
 
-// resolveTenant resolves the tenant config from tenant_id.
-func (t *TenantInterceptor) resolveTenant(tenantID string) (*tenant.TenantConfig, error) {
+// resolveTenant resolves the tenant config from tenant_id. Existence is
+// validated against the registry (airborne_tenants) via dbClient when wired —
+// the registry is the source of truth for which tenants exist — and the
+// provider config is then loaded from the tenant manager. When dbClient is nil
+// (single-tenant/legacy mode or tests) existence falls back to the manager, so
+// behavior and gRPC codes are unchanged from the manager-only path.
+func (t *TenantInterceptor) resolveTenant(ctx context.Context, tenantID string) (*tenant.TenantConfig, error) {
 	// If tenant_id is empty, check for single-tenant mode
 	if tenantID == "" {
 		if t.manager.IsSingleTenant() {
@@ -128,7 +139,18 @@ func (t *TenantInterceptor) resolveTenant(tenantID string) (*tenant.TenantConfig
 	// Normalize tenant_id
 	tenantID = strings.ToLower(strings.TrimSpace(tenantID))
 
-	// Validate tenant exists
+	// Registry is the source of truth for which tenants exist.
+	if t.dbClient != nil {
+		valid, err := t.dbClient.IsValidTenant(ctx, tenantID)
+		if err != nil {
+			return nil, status.Error(codes.Internal, "tenant validation failed")
+		}
+		if !valid {
+			return nil, status.Error(codes.NotFound, "tenant not found")
+		}
+	}
+
+	// Load provider config from the tenant manager.
 	cfg, ok := t.manager.Tenant(tenantID)
 	if !ok {
 		return nil, status.Error(codes.NotFound, "tenant not found")
@@ -200,7 +222,7 @@ func (s *tenantStream) RecvMsg(m interface{}) error {
 	// Extract tenant from first message if not already set
 	if !alreadySet {
 		tenantID := extractTenantID(m)
-		cfg, err := s.interceptor.resolveTenant(tenantID)
+		cfg, err := s.interceptor.resolveTenant(s.ServerStream.Context(), tenantID)
 		if err != nil {
 			return err
 		}

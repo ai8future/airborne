@@ -92,9 +92,28 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, *Serv
 		slog.Info("using static token authentication (no Redis)")
 	}
 
+	// Initialize database if enabled (before the tenant interceptor so it can
+	// validate tenant IDs against the airborne_tenants registry).
+	var dbClient *db.Client
+	if cfg.Database.Enabled {
+		var dbErr error
+		dbClient, dbErr = db.NewClient(context.Background(), db.Config{
+			URL:            cfg.Database.URL,
+			MaxConnections: cfg.Database.MaxConnections,
+			LogQueries:     cfg.Database.LogQueries,
+			CACert:         cfg.Database.CACert,
+		})
+		if dbErr != nil {
+			slog.Error("failed to connect to database", "error", dbErr)
+			// Continue without database - it's optional
+		} else {
+			slog.Info("database connection established for message persistence")
+		}
+	}
+
 	// Create tenant interceptor if tenant manager is available
 	if tenantMgr != nil {
-		tenantInterceptor = auth.NewTenantInterceptor(tenantMgr)
+		tenantInterceptor = auth.NewTenantInterceptor(tenantMgr, dbClient)
 	}
 
 	// Build interceptor chains using chassis-go grpckit
@@ -200,26 +219,10 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, *Serv
 	// Create image generation client
 	imageGenClient := imagegen.NewClient()
 
-	// Initialize database if enabled
-	var dbClient *db.Client
-	if cfg.Database.Enabled {
-		var dbErr error
-		dbClient, dbErr = db.NewClient(context.Background(), db.Config{
-			URL:            cfg.Database.URL,
-			MaxConnections: cfg.Database.MaxConnections,
-			LogQueries:     cfg.Database.LogQueries,
-			CACert:         cfg.Database.CACert,
-		})
-		if dbErr != nil {
-			slog.Error("failed to connect to database", "error", dbErr)
-			// Continue without database - it's optional
-		} else {
-			slog.Info("database connection established for message persistence")
-		}
-	}
-
 	// Register services
-	chatService := service.NewChatService(rateLimiter, ragService, imageGenClient, dbClient)
+	// redisClient may be nil (auth_mode != "redis"): idempotent GenerateReply
+	// replay is then disabled and every request regenerates.
+	chatService := service.NewChatService(rateLimiter, ragService, imageGenClient, dbClient, redisClient)
 	pb.RegisterAirborneServiceServer(server, chatService)
 
 	adminService := service.NewAdminService(redisClient, service.AdminServiceConfig{

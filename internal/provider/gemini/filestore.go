@@ -10,9 +10,11 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ai8future/airborne/internal/validation"
+	"github.com/ai8future/chassis-go/v11/call"
 )
 
 const (
@@ -21,6 +23,14 @@ const (
 	fileSearchPollingInterval = 2 * time.Second
 	fileSearchPollingTimeout  = 5 * time.Minute
 )
+
+var fileStoreClient = sync.OnceValue(func() *call.Client {
+	return call.New(
+		call.WithTimeout(90*time.Second),
+		call.WithRetry(2, 1*time.Second),
+		call.WithCircuitBreaker("gemini-filestore", 3, 60*time.Second),
+	)
+})
 
 // officeFileMIMETypes contains MIME types that require the Files API workaround.
 // These types cannot be uploaded directly to FileSearchStore due to MIME type validation errors.
@@ -144,7 +154,7 @@ func uploadToFilesAPI(ctx context.Context, apiKey string, filename string, mimeT
 	initReq.Header.Set("X-Goog-Upload-Header-Content-Length", fmt.Sprintf("%d", len(content)))
 	initReq.Header.Set("X-Goog-Upload-Header-Content-Type", mimeType)
 
-	initResp, err := http.DefaultClient.Do(initReq)
+	initResp, err := fileStoreClient().Do(initReq)
 	if err != nil {
 		return "", fmt.Errorf("execute init request: %w", err)
 	}
@@ -170,7 +180,7 @@ func uploadToFilesAPI(ctx context.Context, apiKey string, filename string, mimeT
 	uploadReq.Header.Set("X-Goog-Upload-Command", "upload, finalize")
 	uploadReq.Header.Set("X-Goog-Upload-Offset", "0")
 
-	uploadResp, err := http.DefaultClient.Do(uploadReq)
+	uploadResp, err := fileStoreClient().Do(uploadReq)
 	if err != nil {
 		return "", fmt.Errorf("execute upload request: %w", err)
 	}
@@ -223,7 +233,7 @@ func importFileToFileSearchStore(ctx context.Context, cfg FileStoreConfig, store
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := fileStoreClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("execute request: %w", err)
 	}
@@ -286,7 +296,7 @@ func deleteFromFilesAPI(ctx context.Context, apiKey string, fileName string) err
 		return fmt.Errorf("create request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := fileStoreClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("execute request: %w", err)
 	}
@@ -334,7 +344,7 @@ func CreateFileSearchStore(ctx context.Context, cfg FileStoreConfig, name string
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := fileStoreClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("execute request: %w", err)
 	}
@@ -485,7 +495,7 @@ func uploadDirectToFileSearchStore(ctx context.Context, cfg FileStoreConfig, sto
 	}
 	req.Header.Set("X-Goog-Upload-Protocol", "raw")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := fileStoreClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("execute upload request: %w", err)
 	}
@@ -500,7 +510,7 @@ func uploadDirectToFileSearchStore(ctx context.Context, cfg FileStoreConfig, sto
 		}
 		req2.Header.Set("Content-Type", "application/json")
 
-		resp2, err := http.DefaultClient.Do(req2)
+		resp2, err := fileStoreClient().Do(req2)
 		if err != nil {
 			return nil, fmt.Errorf("execute metadata request: %w", err)
 		}
@@ -579,7 +589,7 @@ func waitForOperation(ctx context.Context, cfg FileStoreConfig, operationName st
 				return "unknown", fmt.Errorf("create request: %w", err)
 			}
 
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := fileStoreClient().Do(req)
 			if err != nil {
 				return "unknown", fmt.Errorf("execute request: %w", err)
 			}
@@ -628,7 +638,7 @@ func DeleteFileSearchStore(ctx context.Context, cfg FileStoreConfig, storeID str
 		return fmt.Errorf("create request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := fileStoreClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("execute request: %w", err)
 	}
@@ -665,7 +675,7 @@ func GetFileSearchStore(ctx context.Context, cfg FileStoreConfig, storeID string
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := fileStoreClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("execute request: %w", err)
 	}
@@ -723,7 +733,7 @@ func ListFileSearchStores(ctx context.Context, cfg FileStoreConfig, limit int) (
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := fileStoreClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("execute request: %w", err)
 	}

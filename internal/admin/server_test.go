@@ -64,10 +64,10 @@ func TestBuildCompressedHistory_Empty(t *testing.T) {
 }
 
 func TestBuildCompressedHistory_BasicMessages(t *testing.T) {
-	messages := []db.Message{
-		{Role: "user", Content: "Hello", CreatedAt: time.Now()},
-		{Role: "assistant", Content: "Hi there", CreatedAt: time.Now()},
-		{Role: "user", Content: "How are you?", CreatedAt: time.Now()},
+	messages := []db.ChatMessage{
+		{Role: "user", Content: db.TextContent("Hello"), CreatedAt: time.Now()},
+		{Role: "assistant", Content: db.TextContent("Hi there"), CreatedAt: time.Now()},
+		{Role: "user", Content: db.TextContent("How are you?"), CreatedAt: time.Now()},
 	}
 
 	var prev string
@@ -84,10 +84,10 @@ func TestBuildCompressedHistory_BasicMessages(t *testing.T) {
 }
 
 func TestBuildCompressedHistory_SkipsEmptyContent(t *testing.T) {
-	messages := []db.Message{
-		{Role: "user", Content: "Hello", CreatedAt: time.Now()},
-		{Role: "assistant", Content: "  ", CreatedAt: time.Now()}, // whitespace-only
-		{Role: "user", Content: "Follow up", CreatedAt: time.Now()},
+	messages := []db.ChatMessage{
+		{Role: "user", Content: db.TextContent("Hello"), CreatedAt: time.Now()},
+		{Role: "assistant", Content: db.TextContent("  "), CreatedAt: time.Now()}, // whitespace-only
+		{Role: "user", Content: db.TextContent("Follow up"), CreatedAt: time.Now()},
 	}
 
 	var prev string
@@ -99,9 +99,9 @@ func TestBuildCompressedHistory_SkipsEmptyContent(t *testing.T) {
 
 func TestBuildCompressedHistory_TracksResponseID(t *testing.T) {
 	respID := "resp-123"
-	messages := []db.Message{
-		{Role: "user", Content: "Hello", CreatedAt: time.Now()},
-		{Role: "assistant", Content: "Hi", ResponseID: &respID, CreatedAt: time.Now()},
+	messages := []db.ChatMessage{
+		{Role: "user", Content: db.TextContent("Hello"), CreatedAt: time.Now()},
+		{Role: "assistant", Content: db.TextContent("Hi"), ResponseID: &respID, CreatedAt: time.Now()},
 	}
 
 	var prev string
@@ -113,13 +113,13 @@ func TestBuildCompressedHistory_TracksResponseID(t *testing.T) {
 
 func TestBuildCompressedHistory_DropsAIResponsesWhenTooMany(t *testing.T) {
 	// Create > dropAIResponsesLimit (6) AI responses
-	var messages []db.Message
+	var messages []db.ChatMessage
 	for i := 0; i < 8; i++ {
-		messages = append(messages, db.Message{
-			Role: "user", Content: "Question " + string(rune('A'+i)), CreatedAt: time.Now(),
+		messages = append(messages, db.ChatMessage{
+			Role: "user", Content: db.TextContent("Question " + string(rune('A'+i))), CreatedAt: time.Now(),
 		})
-		messages = append(messages, db.Message{
-			Role: "assistant", Content: "Answer " + string(rune('A'+i)), CreatedAt: time.Now(),
+		messages = append(messages, db.ChatMessage{
+			Role: "assistant", Content: db.TextContent("Answer " + string(rune('A'+i))), CreatedAt: time.Now(),
 		})
 	}
 

@@ -105,7 +105,7 @@ Each tenant gets isolated configuration:
 - **Provider API keys and models** with per-provider temperature, system prompts, and failover order
 - **Rate limits** (requests/min, requests/day, tokens/min)
 - **Image generation** settings (provider, triggers, models)
-- **Database isolation** via tenant-prefixed tables (e.g. `ai8_airborne_threads`)
+- **Database isolation** via PostgreSQL Row-Level Security: shared tables (`airborne_chats`, `chat_message`, etc.) carry a `tenant_id` column, and every transaction sets the `airborne.tenant_id` GUC; RLS policies (`FORCE ROW LEVEL SECURITY`) scope all reads/writes to that tenant. Tenant existence/status is registry-backed (`airborne_tenants` table), not a hardcoded list.
 
 Tenant configs load from YAML/JSON files, Doppler API, or a frozen config snapshot.
 
@@ -121,7 +121,7 @@ Two modes controlled by `AIRBORNE_AUTH_MODE`:
 
 ### Prerequisites
 
-- Go 1.25+
+- Go 1.26+
 - At least one provider API key (e.g. `OPENAI_API_KEY`)
 - [buf](https://buf.build) (for proto generation, optional)
 
@@ -152,6 +152,39 @@ The gRPC server starts on port **50612** by default.
 make docker-build
 docker compose up
 ```
+
+### Database Setup — Required Non-Superuser App Role
+
+**This is the highest-severity operational risk in the deployment: if the app connects as a
+superuser (or as the table owner), Row-Level Security is silently bypassed.** PostgreSQL never
+enforces RLS for the table owner or for roles with `BYPASSRLS`/`SUPERUSER`, even when
+`FORCE ROW LEVEL SECURITY` is set — the policies simply do nothing and every tenant can read and
+write every other tenant's rows with no error.
+
+Migrations (`migrations/001_baseline.sql`) must run as the owner/admin role (e.g. the default
+`postgres` superuser or a dedicated migration role), but the **application's `DATABASE_URL` must
+authenticate as a separate, restricted role** that is neither a superuser nor the table owner:
+
+```sql
+CREATE ROLE airborne_app LOGIN PASSWORD '...' NOSUPERUSER NOBYPASSRLS;
+GRANT USAGE ON SCHEMA public TO airborne_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO airborne_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO airborne_app;
+```
+
+Run this once per database, then point the app's `DATABASE_URL` at `airborne_app` (the migration
+tooling/admin connection can keep using the owner/superuser role — only the app's runtime
+connection needs to be restricted).
+
+**Post-deploy verification (run this against the app's actual `DATABASE_URL`, not the admin
+connection):**
+
+```sql
+SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user;
+```
+
+Both `rolsuper` and `rolbypassrls` **must be `false`**. If either is `true`, tenant isolation is
+not being enforced and this must be fixed before serving traffic.
 
 ### Configuration
 
@@ -188,6 +221,27 @@ For production deployments that shouldn't fetch secrets at runtime:
 # Start with frozen config
 AIRBORNE_USE_FROZEN=true ./bin/airborne
 ```
+
+### Testing
+
+`make test` runs `go test -v -race ./...`, which includes the tenant-isolation (RLS) suite in
+`internal/db` — but that suite requires Docker (it spins up a real Postgres via testcontainers)
+and silently **skips** (not fails) when Docker is unavailable, which is exactly the case in CI
+today (see below). Until CI is repaired, run it locally with Docker before shipping any schema or
+RLS change and confirm it actually ran (not skipped):
+
+```bash
+go test -mod=mod -count=1 ./internal/db/
+```
+
+This is currently the **only** verification that tenant data is actually isolated by
+Row-Level Security — treat a failure here as a release blocker.
+
+**CI status:** GitHub Actions currently cannot build this repo — the `chassis-go` local `replace`
+directives in `go.mod` point at sibling paths outside the checkout, so `go mod download` fails and
+the `docker-build` workflow is red on every run. Two paths to a green build: vendor the
+dependency tree (`go mod vendor` + build with `-mod=vendor`), or check out chassis-go (and its
+addons) as sibling repos in the workflow using org-scoped tokens.
 
 ## CLI Tool
 
@@ -252,7 +306,7 @@ pkg/client/           Public Go client library
 
 | Component | Technology |
 |-----------|-----------|
-| Language | Go 1.25 |
+| Language | Go 1.26 |
 | API | gRPC + Protocol Buffers |
 | Dashboard | Next.js 16 / React 19 / TypeScript |
 | Database | PostgreSQL (via pgx) |

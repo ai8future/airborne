@@ -21,6 +21,7 @@ type Client struct {
 	logQueries  bool
 	tenantRepos map[string]*Repository
 	mu          sync.RWMutex
+	tenants     tenantCache // cached registry of active tenant IDs; see tenantcache.go
 }
 
 // Config holds database connection configuration.

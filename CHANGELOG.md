@@ -1,5 +1,41 @@
 # Changelog
 
+## [1.10.1] - 2026-07-04
+
+### Changed — Final review and verification
+- Aligned chassis pins and marker usage to chassis `11.3.0` and chassis-go-addons `1.2.10`.
+- Removed obsolete junk generated during the overhaul and refreshed vendored dependencies.
+- Added the DB `RequireMajor` compatibility gate and corrected admin `Timeout`/`Logging` middleware order.
+- Fixed Gemini filestore calls to resolve the lazy `call.Client`, preserving retry/circuit-breaker behavior for GETs and POSTs, with body-rewind regression coverage.
+- Added final bug-note metadata and ran full non-masking verification, including the Docker-backed DB test guard against skipped database tests.
+
+Agent: Codex:gpt-5.5
+
+## [1.10.0] - 2026-07-04
+
+### Changed — Complete schema overhaul (breaking)
+- **Relational baseline migration**: Replaced the entire prior migration history (`001_initial_schema.sql` … `009_solstice_*.sql`) with a single `migrations/001_baseline.sql` covering the tenant registry, a `chats`/`chat_messages` conversation tree (parent-linked branches, head-of-branch tracking), a debug side-table, files, and a models registry.
+- **Row-Level Security, enforced correctly**: All tenant-scoped tables use `FORCE ROW LEVEL SECURITY` keyed off a transaction-local GUC (`airborne.tenant_id`) set per-request via tenant-aware tx helpers — `FORCE` closes the table-owner/superuser bypass hole that plain `ENABLE ROW LEVEL SECURITY` leaves open. Requires the app to connect as a dedicated non-superuser, non-owner role (documented in README).
+- **Registry-backed tenant validation**: Hardcoded `ValidTenantIDs` removed; tenant existence/status is now looked up against the `airborne_tenants` table with a stale-tolerant cache.
+- **Atomic `PersistTurn`**: conversation turns are written keyed by the chat's primary key in a single transaction, replacing prior multi-step persistence.
+- **Admin dashboard** rebuilt over the new relational tables (cross-tenant reads, SQL-side tenant filter, capped history load) with the existing wire contract preserved for the dashboard frontend.
+- **Model-alias registry resolution** (`applyModelRegistry`) applied uniformly on both the primary and failover generation paths.
+- **A9**: `external_ref` correlation — requests can be tagged and later retrieved by an external reference id.
+- **A10**: Idempotent `GenerateReply` keyed by `idempotency_key` (proto fields 22/23), backed by tenant-namespaced Redis replay to dedupe retried requests.
+- **testcontainers RLS suite** (`internal/db`): real-Postgres tests for tenant isolation, cross-tenant read/write denial, suspended-tenant lock-out, and panic-safe transaction cleanup.
+- **Fix**: failover-success turns are now persisted through the same flow as the primary path (previously silently dropped — see `_bugs_fixed/2026-07-04-failover-turns-not-persisted.md`).
+- **Docs**: README now documents the required non-superuser app role (deploy-time prerequisite for RLS to actually apply) and the local Docker-based RLS test gate pending CI repair.
+
+Agent: Claude Code (Claude:Fable-5)
+
+## [1.9.5] - 2026-06-15
+- Bump Go toolchain to 1.26 (Dockerfile `golang:1.26-alpine`, `go.mod` go 1.26.2, README prerequisites). Verified `go build ./...`.
+- Agent: Claude:Opus 4.8 (1M context)
+
+## [1.9.4] - 2026-04-19
+- **rediskit compatibility**: Treat `rediskit.ErrNotFound` as a Redis nil result in `internal/redis.IsNil`, preserving missing-key handling after rediskit's not-found error normalization.
+- Agent: Codex:gpt-5.4-medium
+
 ## [1.9.3] - 2026-03-28
 - Add appversion.go with embedded VERSION for chassis SetAppVersion pattern
 - Update cmd/airborne/main.go: replace `version = "dev"` with `version = airborne.AppVersion`, add chassis.SetAppVersion

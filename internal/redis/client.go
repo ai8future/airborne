@@ -141,5 +141,5 @@ func (c *Client) Scan(ctx context.Context, pattern string) ([]string, error) {
 // IsNil checks if an error is redis.Nil (key not found).
 // Uses errors.Is to correctly detect redis.Nil even when wrapped by rediskit.
 func IsNil(err error) bool {
-	return errors.Is(err, goredis.Nil)
+	return rediskit.IsNotFound(err) || errors.Is(err, goredis.Nil)
 }
