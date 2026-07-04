@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"html"
 	"log/slog"
@@ -168,6 +169,11 @@ func (s *ChatService) prepareRequest(ctx context.Context, req *pb.GenerateReplyR
 
 	// Build provider config (from tenant + request overrides)
 	providerCfg := s.buildProviderConfig(ctx, req, selectedProvider.Name())
+
+	// Resolve model-registry aliases before calling the provider: a registered
+	// alias substitutes its base model and merges its default params (request/
+	// tenant values already on providerCfg win). Unregistered ids pass through.
+	providerCfg = s.applyModelRegistry(ctx, providerCfg)
 
 	// Retrieve RAG context for non-OpenAI providers
 	var ragChunks []rag.RetrieveResult
@@ -658,6 +664,94 @@ func (s *ChatService) buildProviderConfig(ctx context.Context, req *pb.GenerateR
 	return s.configBuilder.Build(providerName, tenantCfg, requestCfg)
 }
 
+// applyModelRegistry resolves a tenant model-registry alias for cfg.Model. If
+// cfg.Model is a registered active alias, its base_model_id is substituted as
+// the real upstream model and its params are merged as defaults — values
+// already set on cfg (from the request/tenant config) take precedence over the
+// registry defaults. Unregistered ids pass through unchanged. Best-effort: when
+// there is no DB, no tenant, or the lookup fails, cfg is returned untouched.
+func (s *ChatService) applyModelRegistry(ctx context.Context, cfg provider.ProviderConfig) provider.ProviderConfig {
+	if s.dbClient == nil || strings.TrimSpace(cfg.Model) == "" {
+		return cfg
+	}
+	tenantID := auth.TenantIDFromContext(ctx)
+	if tenantID == "" {
+		return cfg
+	}
+	repo, err := s.dbClient.TenantRepository(tenantID)
+	if err != nil {
+		return cfg
+	}
+	model, err := repo.ResolveModel(ctx, cfg.Model)
+	if err != nil {
+		slog.Warn("model registry lookup failed, using requested model", "error", err, "model", cfg.Model)
+		return cfg
+	}
+	if model == nil {
+		return cfg // unregistered id: pass through unchanged
+	}
+
+	// Substitute the alias's upstream base model (the resolved model id).
+	if model.BaseModelID != nil && *model.BaseModelID != "" {
+		cfg.Model = *model.BaseModelID
+	}
+
+	// Merge registry params as defaults (request/tenant values on cfg win).
+	if len(model.Params) > 0 {
+		var rp struct {
+			Temperature     *float64 `json:"temperature"`
+			TopP            *float64 `json:"top_p"`
+			MaxOutputTokens *int     `json:"max_output_tokens"`
+			MaxTokens       *int     `json:"max_tokens"`
+		}
+		if err := json.Unmarshal(model.Params, &rp); err == nil {
+			if cfg.Temperature == nil && rp.Temperature != nil {
+				cfg.Temperature = rp.Temperature
+			}
+			if cfg.TopP == nil && rp.TopP != nil {
+				cfg.TopP = rp.TopP
+			}
+			if cfg.MaxOutputTokens == nil {
+				if rp.MaxOutputTokens != nil {
+					cfg.MaxOutputTokens = rp.MaxOutputTokens
+				} else if rp.MaxTokens != nil {
+					cfg.MaxOutputTokens = rp.MaxTokens
+				}
+			}
+		}
+	}
+	return cfg
+}
+
+// getOrCreateChat resolves the chat for a caller thread id, creating it on
+// first use so multi-turn threading stays linear. The thread id is carried as
+// both the chat id and its external_ref — external_ref is the only
+// tenant-scoped lookup key available, so subsequent turns of the same thread
+// resolve onto the same chat.
+func (s *ChatService) getOrCreateChat(ctx context.Context, repo *db.Repository, threadID, tenantID, userID, providerName, model string) (string, error) {
+	if chat, found, err := repo.GetChatByExternalRef(ctx, threadID); err != nil {
+		return "", err
+	} else if found {
+		return chat.ID, nil
+	}
+	if err := repo.CreateChat(ctx, &db.Chat{
+		ID:          threadID,
+		TenantID:    tenantID,
+		UserID:      userID,
+		Provider:    providerName,
+		ModelID:     model,
+		Status:      db.ChatStatusActive,
+		ExternalRef: threadID,
+	}); err != nil {
+		return "", err
+	}
+	return threadID, nil
+}
+
+// ptrTo returns a pointer to v, for populating db.ChatMessage's nullable
+// pointer columns from plain values.
+func ptrTo[T any](v T) *T { return &v }
+
 // selectProviderWithTenant selects provider using tenant config for validation.
 func (s *ChatService) selectProviderWithTenant(ctx context.Context, req *pb.GenerateReplyRequest) (provider.Provider, error) {
 	tenantCfg := auth.TenantFromContext(ctx)
@@ -1060,8 +1154,14 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 		return
 	}
 
-	// Validate tenant ID is in our allowed list
-	if !db.ValidTenantIDs[tenantID] {
+	// Validate tenant ID against the registry (source of truth for which
+	// tenants exist). dbClient is guaranteed non-nil here (callers guard on it).
+	valid, err := s.dbClient.IsValidTenant(ctx, tenantID)
+	if err != nil {
+		slog.Warn("tenant validation failed, skipping persistence", "error", err, "tenant_id", tenantID)
+		return
+	}
+	if !valid {
 		slog.Warn("invalid tenant ID, skipping persistence", "tenant_id", tenantID)
 		return
 	}
@@ -1161,7 +1261,7 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 			return
 		}
 
-		// Convert provider citations to db citations
+		// Convert provider citations to db citations, then to the sources JSONB.
 		var dbCitations []db.Citation
 		for _, c := range result.Citations {
 			citationType := "unknown"
@@ -1180,37 +1280,85 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 				Snippet:  c.Snippet,
 			})
 		}
+		var sources json.RawMessage
+		if len(dbCitations) > 0 {
+			if data, mErr := json.Marshal(dbCitations); mErr == nil {
+				sources = data
+			}
+		}
 
-		err = repo.PersistConversationTurnWithDebug(
-			persistCtx,
-			threadID,
-			userID,
-			req.UserInput,
-			result.Text,
-			providerName,
-			model,
-			result.ResponseID,
-			inputTokens,
-			outputTokens,
-			processingTimeMs,
-			costUSD,
-			groundingQueries,
-			groundingCostUSD,
-			debugInfo,
-			dbCitations,
-		)
+		// Get-or-create the chat, then append the user turn (linear onto the
+		// current head) and the assistant reply as the user turn's child.
+		chatID, err := s.getOrCreateChat(persistCtx, repo, threadID.String(), tenantID, userID, providerName, model)
 		if err != nil {
-			slog.Error("failed to persist conversation",
-				"error", err,
-				"thread_id", threadID,
-				"tenant_id", tenantID,
-			)
+			slog.Error("failed to get-or-create chat", "error", err, "thread_id", threadID, "tenant_id", tenantID)
+			return
+		}
+
+		userMsgID, err := repo.AppendMessage(persistCtx, chatID, nil, &db.ChatMessage{
+			ID:       uuid.New().String(),
+			TenantID: tenantID,
+			ChatID:   chatID,
+			UserID:   userID,
+			Role:     db.RoleUser,
+			Content:  db.TextContent(req.UserInput),
+			Status:   db.ChatMessageStatusComplete,
+		})
+		if err != nil {
+			slog.Error("failed to persist user message", "error", err, "thread_id", threadID, "tenant_id", tenantID)
+			return
+		}
+
+		asstMsg := &db.ChatMessage{
+			ID:               uuid.New().String(),
+			TenantID:         tenantID,
+			ChatID:           chatID,
+			UserID:           userID,
+			Role:             db.RoleAssistant,
+			Content:          db.TextContent(result.Text),
+			ModelID:          ptrTo(model),
+			Provider:         ptrTo(providerName),
+			Status:           db.ChatMessageStatusComplete,
+			InputTokens:      ptrTo(inputTokens),
+			OutputTokens:     ptrTo(outputTokens),
+			TotalTokens:      ptrTo(inputTokens + outputTokens),
+			CostUSD:          ptrTo(costUSD),
+			GroundingQueries: ptrTo(groundingQueries),
+			GroundingCostUSD: ptrTo(groundingCostUSD),
+			ProcessingTimeMs: ptrTo(processingTimeMs),
+			Sources:          sources,
+		}
+		if result.ResponseID != "" {
+			asstMsg.ResponseID = ptrTo(result.ResponseID)
+		}
+		asstMsgID, err := repo.AppendMessage(persistCtx, chatID, &userMsgID, asstMsg)
+		if err != nil {
+			slog.Error("failed to persist assistant message", "error", err, "thread_id", threadID, "tenant_id", tenantID)
+			return
+		}
+
+		// Persist the cold debug blob alongside the assistant message.
+		if debugInfo != nil {
+			var reqJSON, respJSON json.RawMessage
+			if debugInfo.RawRequestJSON != "" {
+				reqJSON = json.RawMessage(debugInfo.RawRequestJSON)
+			}
+			if debugInfo.RawResponseJSON != "" {
+				respJSON = json.RawMessage(debugInfo.RawResponseJSON)
+			}
+			if err := repo.SaveMessageDebug(persistCtx, asstMsgID, debugInfo.SystemPrompt, reqJSON, respJSON, debugInfo.RenderedHTML); err != nil {
+				slog.Error("failed to persist message debug", "error", err, "message_id", asstMsgID, "tenant_id", tenantID)
+			}
 		}
 	}()
 }
 
 // persistFailedRequest stores a failed request in the database for activity tracking.
 func (s *ChatService) persistFailedRequest(ctx context.Context, req *pb.GenerateReplyRequest, providerName, model string, errorMsg string, processingTimeMs int) {
+	if s.dbClient == nil {
+		return
+	}
+
 	// Extract tenant and user info from context
 	tenantID := auth.TenantIDFromContext(ctx)
 	if tenantID == "" {
@@ -1218,13 +1366,14 @@ func (s *ChatService) persistFailedRequest(ctx context.Context, req *pb.Generate
 		return
 	}
 
-	// Validate tenant ID is in our allowed list
-	if !db.ValidTenantIDs[tenantID] {
-		slog.Warn("invalid tenant ID, skipping failed request persistence", "tenant_id", tenantID)
+	// Validate tenant ID against the registry (source of truth).
+	valid, err := s.dbClient.IsValidTenant(ctx, tenantID)
+	if err != nil {
+		slog.Warn("tenant validation failed, skipping failed request persistence", "error", err, "tenant_id", tenantID)
 		return
 	}
-
-	if s.dbClient == nil {
+	if !valid {
+		slog.Warn("invalid tenant ID, skipping failed request persistence", "tenant_id", tenantID)
 		return
 	}
 
@@ -1243,11 +1392,6 @@ func (s *ChatService) persistFailedRequest(ctx context.Context, req *pb.Generate
 	threadID, err := uuid.Parse(req.RequestId)
 	if err != nil {
 		threadID = uuid.New()
-	}
-
-	// Build debug info with error
-	debugInfo := &db.DebugInfo{
-		SystemPrompt: req.Instructions,
 	}
 
 	// Check if context is already cancelled to avoid unnecessary work
@@ -1270,37 +1414,55 @@ func (s *ChatService) persistFailedRequest(ctx context.Context, req *pb.Generate
 			return
 		}
 
-		// Store as a failed message with error content
-		err = repo.PersistConversationTurnWithDebug(
-			persistCtx,
-			threadID,
-			userID,
-			req.UserInput,
-			"[FAILED] "+errorMsg, // Mark content as failed
-			providerName,
-			model,
-			"",  // No response ID for failed requests
-			0,   // No input tokens
-			0,   // No output tokens
-			processingTimeMs,
-			0,   // No cost
-			0,   // No grounding queries
-			0,   // No grounding cost
-			debugInfo,
-			nil, // No citations
-		)
+		// Get-or-create the chat, then record the user turn and the failed
+		// assistant reply. The failure is signaled by the message status
+		// ("error"; the admin views map this to "failed") rather than the old
+		// "[FAILED] " content prefix.
+		chatID, err := s.getOrCreateChat(persistCtx, repo, threadID.String(), tenantID, userID, providerName, model)
 		if err != nil {
-			slog.Error("failed to persist failed request",
-				"error", err,
-				"thread_id", threadID,
-				"tenant_id", tenantID,
-			)
-		} else {
-			slog.Debug("persisted failed request",
-				"thread_id", threadID,
-				"tenant_id", tenantID,
-				"error", errorMsg,
-			)
+			slog.Error("failed to get-or-create chat for failed request", "error", err, "thread_id", threadID, "tenant_id", tenantID)
+			return
 		}
+
+		userMsgID, err := repo.AppendMessage(persistCtx, chatID, nil, &db.ChatMessage{
+			ID:       uuid.New().String(),
+			TenantID: tenantID,
+			ChatID:   chatID,
+			UserID:   userID,
+			Role:     db.RoleUser,
+			Content:  db.TextContent(req.UserInput),
+			Status:   db.ChatMessageStatusComplete,
+		})
+		if err != nil {
+			slog.Error("failed to persist user message for failed request", "error", err, "thread_id", threadID, "tenant_id", tenantID)
+			return
+		}
+
+		asstMsgID, err := repo.AppendMessage(persistCtx, chatID, &userMsgID, &db.ChatMessage{
+			ID:               uuid.New().String(),
+			TenantID:         tenantID,
+			ChatID:           chatID,
+			UserID:           userID,
+			Role:             db.RoleAssistant,
+			Content:          db.TextContent(errorMsg),
+			ModelID:          ptrTo(model),
+			Provider:         ptrTo(providerName),
+			Status:           db.ChatMessageStatusError,
+			ProcessingTimeMs: ptrTo(processingTimeMs),
+		})
+		if err != nil {
+			slog.Error("failed to persist failed request", "error", err, "thread_id", threadID, "tenant_id", tenantID)
+			return
+		}
+
+		// Mirror the old path: always record the (system-prompt-only) debug blob.
+		if err := repo.SaveMessageDebug(persistCtx, asstMsgID, req.Instructions, nil, nil, ""); err != nil {
+			slog.Error("failed to persist failed request debug", "error", err, "message_id", asstMsgID, "tenant_id", tenantID)
+		}
+		slog.Debug("persisted failed request",
+			"thread_id", threadID,
+			"tenant_id", tenantID,
+			"error", errorMsg,
+		)
 	}()
 }

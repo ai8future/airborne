@@ -71,7 +71,7 @@ func TestNewTenantInterceptor(t *testing.T) {
 		"test": {TenantID: "test"},
 	})
 
-	interceptor := NewTenantInterceptor(mgr)
+	interceptor := NewTenantInterceptor(mgr, nil)
 
 	if interceptor == nil {
 		t.Fatal("NewTenantInterceptor() returned nil")
@@ -150,7 +150,7 @@ func TestExtractTenantID(t *testing.T) {
 
 func TestUnaryInterceptor_SkipMethods(t *testing.T) {
 	mgr := newTestManager(map[string]tenant.TenantConfig{})
-	interceptor := NewTenantInterceptor(mgr)
+	interceptor := NewTenantInterceptor(mgr, nil)
 	unary := interceptor.UnaryInterceptor()
 
 	skipMethods := []string{
@@ -271,7 +271,7 @@ func TestUnaryInterceptor_TenantExtraction(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mgr := newTestManager(tt.tenants)
-			interceptor := NewTenantInterceptor(mgr)
+			interceptor := NewTenantInterceptor(mgr, nil)
 			unary := interceptor.UnaryInterceptor()
 
 			ctx := context.Background()
@@ -311,7 +311,7 @@ func TestUnaryInterceptor_TenantExtraction(t *testing.T) {
 
 func TestStreamInterceptor_SkipMethods(t *testing.T) {
 	mgr := newTestManager(map[string]tenant.TenantConfig{})
-	interceptor := NewTenantInterceptor(mgr)
+	interceptor := NewTenantInterceptor(mgr, nil)
 	stream := interceptor.StreamInterceptor()
 
 	skipMethods := []string{
@@ -397,7 +397,7 @@ func TestStreamInterceptor_TenantExtraction(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mgr := newTestManager(tt.tenants)
-			interceptor := NewTenantInterceptor(mgr)
+			interceptor := NewTenantInterceptor(mgr, nil)
 			streamInterceptor := interceptor.StreamInterceptor()
 
 			// Build context - with metadata if specified, otherwise plain background
@@ -590,9 +590,9 @@ func TestResolveTenant(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mgr := newTestManager(tt.tenants)
-			interceptor := NewTenantInterceptor(mgr)
+			interceptor := NewTenantInterceptor(mgr, nil)
 
-			cfg, err := interceptor.resolveTenant(tt.tenantID)
+			cfg, err := interceptor.resolveTenant(context.Background(), tt.tenantID)
 
 			if tt.wantErr {
 				if err == nil {
@@ -629,7 +629,7 @@ func TestUnaryInterceptor_NonSkippedMethodRequiresTenant(t *testing.T) {
 		"tenant-b": {TenantID: "tenant-b"},
 	}
 	mgr := newTestManager(tenants)
-	interceptor := NewTenantInterceptor(mgr)
+	interceptor := NewTenantInterceptor(mgr, nil)
 	unary := interceptor.UnaryInterceptor()
 
 	nonSkippedMethods := []string{
@@ -667,7 +667,7 @@ func TestTenantStream_RecvMsg_OnlyExtractsOnce(t *testing.T) {
 	mgr := newTestManager(map[string]tenant.TenantConfig{
 		"first-tenant": {TenantID: "first-tenant"},
 	})
-	interceptor := NewTenantInterceptor(mgr)
+	interceptor := NewTenantInterceptor(mgr, nil)
 
 	recvCount := 0
 	ss := &mockServerStream{
