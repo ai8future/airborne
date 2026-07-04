@@ -27,8 +27,17 @@ const (
 	idemTTL = 24 * time.Hour
 
 	// idemInFlightTTL bounds how long an abandoned in-flight marker can block
-	// retries (e.g. a crash between acquire and Put/Release).
-	idemInFlightTTL = 5 * time.Minute
+	// retries (e.g. a crash between acquire and Put/Release). It MUST exceed
+	// the worst-case generation time: if the marker expires mid-generation, a
+	// concurrent duplicate SetNX-acquires it and regenerates — reopening the
+	// double-generate window this feature closes. The codebase's per-attempt
+	// ceilings (imposed by retry.EnsureTimeout when the caller set no gRPC
+	// deadline) are retry.RequestTimeout = 3m (internal/retry/defaults.go) for
+	// all providers, except Anthropic extended-thinking attempts at
+	// thinkingTimeout = 15m (internal/provider/anthropic/client.go); failover
+	// adds one sequential fallback attempt (+3m), so worst case is ~18m.
+	// 20m sits comfortably above that ceiling.
+	idemInFlightTTL = 20 * time.Minute
 
 	// idemInFlightMarker distinguishes "processing" from a cached response.
 	// The leading 0x00 byte can never appear at the start of proto.Marshal

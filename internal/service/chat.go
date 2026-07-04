@@ -64,6 +64,12 @@ type ChatService struct {
 // The redisClient parameter is optional - pass nil to disable idempotent
 // GenerateReply replay (requests then always regenerate).
 func NewChatService(rateLimiter *auth.RateLimiter, ragService *rag.Service, imageGen *imagegen.Client, dbClient *db.Client, redisClient *redis.Client) *ChatService {
+	// Persisting conversations without an idempotency store is the exact gap
+	// addendum A10 closes for email_ai_svc — make the degrade loud, once, at
+	// startup, instead of silently regenerating duplicates.
+	if dbClient != nil && redisClient == nil {
+		slog.Warn("GenerateReply idempotency disabled: no Redis client (auth_mode != redis); duplicate requests will regenerate")
+	}
 	return &ChatService{
 		openaiProvider:    openai.NewClient(),
 		geminiProvider:    gemini.NewClient(),
