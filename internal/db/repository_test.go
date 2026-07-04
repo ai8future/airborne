@@ -262,9 +262,11 @@ func TestPersistTurn(t *testing.T) {
 	}
 
 	// Second turn on the SAME chat id: get-or-create must be idempotent (no
-	// error, no duplicate chat) and the turn must thread onto the head.
+	// error, no duplicate chat) and the turn must thread onto the head. This
+	// reply carries a DIFFERENT model/provider than the chat was created with,
+	// so it also exercises the "last-used" header refresh inside PersistTurn.
 	u2 := &ChatMessage{ID: newUUID(), TenantID: "ai8", ChatID: chatID, UserID: "u1", Role: RoleUser, Content: TextContent("more"), Status: "complete"}
-	a2 := &ChatMessage{ID: newUUID(), TenantID: "ai8", ChatID: chatID, UserID: "u1", Role: RoleAssistant, Content: TextContent("sure"), Status: "complete"}
+	a2 := &ChatMessage{ID: newUUID(), TenantID: "ai8", ChatID: chatID, UserID: "u1", Role: RoleAssistant, Content: TextContent("sure"), Status: "complete", ModelID: strp("gpt-4o-mini"), Provider: strp("anthropic")}
 	if err := repo.PersistTurn(ctx, chat, u2, a2, nil); err != nil {
 		t.Fatalf("PersistTurn on existing chat id: %v", err)
 	}
@@ -278,6 +280,21 @@ func TestPersistTurn(t *testing.T) {
 	}
 	if branch[2].ParentID == nil || *branch[2].ParentID != a1.ID {
 		t.Errorf("2nd user ParentID = %v, want %s (previous head)", branch[2].ParentID, a1.ID)
+	}
+
+	// The chat header must now reflect the SECOND turn's model/provider
+	// ("last-used"), not the first-turn values it was created with. The first
+	// turn's reply (a1) carried no model/provider, so it left the header alone;
+	// this second turn advances it.
+	got, found, err = repo.GetChatByID(ctx, chatID)
+	if err != nil || !found {
+		t.Fatalf("chat after 2nd PersistTurn: found=%v err=%v", found, err)
+	}
+	if got.ModelID != "gpt-4o-mini" {
+		t.Errorf("header ModelID = %q, want gpt-4o-mini (last-used, from 2nd turn)", got.ModelID)
+	}
+	if got.Provider != "anthropic" {
+		t.Errorf("header Provider = %q, want anthropic (last-used, from 2nd turn)", got.Provider)
 	}
 
 	chats, err := repo.ListChats(ctx, "u1", 10)

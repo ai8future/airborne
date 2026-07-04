@@ -89,6 +89,12 @@ func TestGenerateReply_Idempotent(t *testing.T) {
 		t.Fatalf("second GenerateReply failed: %v", err)
 	}
 
+	// The replay short-circuits in GenerateReply (idemHit) and never enters
+	// generateReply, so BOTH regeneration AND persistence — which lives inside
+	// generateReply/persistConversation — are skipped on the duplicate. The
+	// counter staying at 1 after both calls complete is the observable proof of
+	// that short-circuit: a second generation (or a second persisted turn) would
+	// have required a second provider call.
 	if got := len(mock.generateCalls); got != 1 {
 		t.Errorf("expected exactly 1 provider generation, got %d", got)
 	}

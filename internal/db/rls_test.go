@@ -94,6 +94,105 @@ func TestIsValidTenant_CachesAndRefreshes(t *testing.T) {
 	}
 }
 
+// TestSuspendedTenant_InvalidatesValidation proves a tenant flipped to
+// status='suspended' stops validating: TenantExists (direct, active-only query)
+// reports false immediately, and IsValidTenant on a fresh client (empty cache,
+// so it reads ListTenantIDs which is active-only) also reports false. The
+// tenants table is NOT truncated between tests, so zztest is restored to active
+// via t.Cleanup or later tests that assume it is active would break.
+func TestSuspendedTenant_InvalidatesValidation(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+
+	setStatus := func(status string) {
+		if err := c.WithAdmin(ctx, func(tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, "UPDATE airborne_tenants SET status = $1 WHERE id = 'zztest'", status)
+			return err
+		}); err != nil {
+			t.Fatalf("set zztest status=%s: %v", status, err)
+		}
+	}
+	setStatus("suspended")
+	t.Cleanup(func() { setStatus("active") })
+
+	exists, err := c.TenantExists(ctx, "zztest")
+	if err != nil {
+		t.Fatalf("TenantExists(zztest): %v", err)
+	}
+	if exists {
+		t.Error("TenantExists(zztest) = true after suspension, want false")
+	}
+
+	// A fresh client starts with an empty cache, so IsValidTenant reads the
+	// registry (active-only) rather than a stale pre-suspension snapshot.
+	fresh := newTestClient(t)
+	valid, err := fresh.IsValidTenant(ctx, "zztest")
+	if err != nil {
+		t.Fatalf("IsValidTenant(zztest) on fresh client: %v", err)
+	}
+	if valid {
+		t.Error("IsValidTenant(zztest) = true after suspension, want false (active-only registry)")
+	}
+}
+
+// TestWithGUCs_PanicReleasesConn proves withGUCs's unconditional deferred
+// rollback releases the pooled connection even when fn panics. The pool is
+// capped small (pgkit floors MinConns at 2, so 1 is rejected) and MORE panics
+// than the pool holds are run: had any panicking transaction leaked its conn,
+// the pool would be exhausted and the follow-up transaction below would block
+// until its context deadline instead of succeeding.
+func TestWithGUCs_PanicReleasesConn(t *testing.T) {
+	if appDSN == "" {
+		t.Skip("no Postgres test container (Docker unavailable)")
+	}
+	ctx := context.Background()
+
+	const poolMax = 2
+	c, err := NewClient(ctx, Config{URL: appDSN, MaxConnections: poolMax})
+	if err != nil {
+		t.Fatalf("connect capped pool: %v", err)
+	}
+	t.Cleanup(func() {
+		truncateAll(t)
+		c.Close()
+	})
+
+	// Run more panicking transactions than the pool can hold. Each fn panics
+	// inside the tx; recover so the test process survives. The panic must
+	// propagate out of WithTenant (withGUCs does not swallow it), and the
+	// deferred rollback must return the conn — otherwise iteration poolMax+1
+	// finds an exhausted pool.
+	for i := 0; i < poolMax+2; i++ {
+		func() {
+			callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			defer func() {
+				if r := recover(); r == nil {
+					t.Fatalf("iteration %d: expected WithTenant to propagate the panic from fn", i)
+				}
+			}()
+			_ = c.WithTenant(callCtx, "ai8", func(tx pgx.Tx) error {
+				panic("boom in tx")
+			})
+		}()
+	}
+
+	// The pool must still be usable. A short deadline turns a leaked connection
+	// into a fast, deterministic failure rather than a hang.
+	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	var got string
+	if err := c.WithTenant(waitCtx, "ai8", func(tx pgx.Tx) error {
+		return tx.QueryRow(waitCtx,
+			"SELECT current_setting('airborne.tenant_id', true)").Scan(&got)
+	}); err != nil {
+		t.Fatalf("WithTenant after panics failed (connection likely leaked): %v", err)
+	}
+	if got != "ai8" {
+		t.Fatalf("post-panic tenant GUC = %q, want ai8", got)
+	}
+}
+
 // TestRLS_TenantIsolation proves the per-tenant SELECT policy on
 // airborne_chats: a row inserted under the ai8 GUC is invisible to a
 // different tenant's ordinary (non-cross-tenant) SELECT.

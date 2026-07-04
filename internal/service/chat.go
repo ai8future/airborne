@@ -366,7 +366,14 @@ func (s *ChatService) generateReply(ctx context.Context, req *pb.GenerateReplyRe
 					"error", err,
 				)
 
-				prepared.params.Config = s.buildProviderConfig(ctx, req, fallbackProvider.Name())
+				// Rebuild the fallback provider's config with the SAME alias
+				// resolution the primary path applies (buildProviderConfig then
+				// applyModelRegistry): request/tenant values win, registry
+				// defaults fill the rest, and a registered alias resolves to its
+				// base model. Skipping applyModelRegistry here would send the raw
+				// alias id upstream on the failover path only.
+				fallbackCfg := s.applyModelRegistry(ctx, s.buildProviderConfig(ctx, req, fallbackProvider.Name()))
+				prepared.params.Config = fallbackCfg
 				fallbackResult, fallbackErr := fallbackProvider.GenerateReply(ctx, prepared.params)
 				if fallbackErr == nil {
 					// Render HTML for fallback result if markdown_svc is enabled
@@ -379,6 +386,18 @@ func (s *ChatService) generateReply(ctx context.Context, req *pb.GenerateReplyRe
 							slog.Warn("markdown_svc render failed for fallback", "error", renderErr)
 						}
 					}
+
+					// Persist the failed-over turn through the SAME flow as the
+					// primary path. Without this a failover success is never
+					// persisted, and an external_ref-correlated conversation
+					// silently loses the turn for later reload-by-ref (A10).
+					// tokens/cost/debug come from the fallback result; the
+					// correlation ref and async semantics match the main path.
+					if s.dbClient != nil && fallbackResult.Usage != nil {
+						processingTimeMs := int(time.Since(startTime).Milliseconds())
+						s.persistConversation(ctx, req, fallbackResult, fallbackProvider.Name(), fallbackCfg.Model, fallbackHTML, processingTimeMs, externalRefFromRequest(req))
+					}
+
 					return s.buildResponse(fallbackResult, fallbackProvider.Name(), true, prepared.provider.Name(), sanitize.SanitizeForClient(err), fallbackHTML), nil
 				}
 				// Return original error if fallback also fails

@@ -420,6 +420,33 @@ func (r *Repository) PersistTurn(ctx context.Context, chat *Chat, userMsg, assis
 			return fmt.Errorf("append assistant message: %w", err)
 		}
 
+		// Track last-used provider/model on the chat header. The get-or-create
+		// above uses ON CONFLICT (id) DO NOTHING, so on a returning chat it never
+		// advances provider/model_id past their first-turn values — but the
+		// schema documents these as "last-used" (the old thread code updated them
+		// every turn via UpdateThreadProvider). Refresh them from the assistant
+		// message's resolved model/provider, leaving each column untouched
+		// (COALESCE) when the reply carries no value, so a model-less turn never
+		// wipes the header.
+		lastModel := ""
+		if assistantMsg.ModelID != nil {
+			lastModel = *assistantMsg.ModelID
+		}
+		lastProvider := ""
+		if assistantMsg.Provider != nil {
+			lastProvider = *assistantMsg.Provider
+		}
+		if lastModel != "" || lastProvider != "" {
+			if _, err := tx.Exec(ctx, `
+				UPDATE airborne_chats
+				SET model_id = COALESCE($1, model_id),
+				    provider = COALESCE($2, provider)
+				WHERE id = $3`,
+				nullIfEmpty(lastModel), nullIfEmpty(lastProvider), chat.ID); err != nil {
+				return fmt.Errorf("update chat last-used model/provider: %w", err)
+			}
+		}
+
 		if debug != nil {
 			if err := r.saveMessageDebugInTx(ctx, tx, assistantMsg.ID,
 				debug.SystemPrompt, debug.RawRequestJSON, debug.RawResponseJSON, debug.RenderedHTML); err != nil {
