@@ -36,10 +36,13 @@ func (c *Client) withGUCs(ctx context.Context, gucs map[string]string, fn func(p
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)
 	}
+	// Unconditional rollback: after a successful Commit this is a safe no-op
+	// (pgx returns ErrTxClosed, which we discard). Keeping it unconditional
+	// means the tx is also rolled back — and the pooled connection released —
+	// when fn panics, which an err-conditional rollback would miss (err is
+	// still nil during panic unwinding).
 	defer func() {
-		if err != nil {
-			_ = tx.Rollback(ctx)
-		}
+		_ = tx.Rollback(ctx)
 	}()
 
 	for name, val := range gucs {
