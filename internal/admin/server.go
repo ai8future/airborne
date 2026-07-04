@@ -58,12 +58,12 @@ type VersionInfo struct {
 // Config holds admin server configuration.
 type Config struct {
 	Port         int
-	GRPCAddr     string                                    // Address of the gRPC server (e.g., "localhost:50051")
-	AuthToken    string                                    // Auth token for gRPC calls
-	TenantMgr    *tenant.Manager                           // Tenant manager for accessing API keys
-	RedisClient  *redis.Client                             // Redis client for idempotency
-	Version      VersionInfo                               // Version information
-	HealthChecks map[string]func(context.Context) error    // Additional health checks (e.g., RAG dependencies)
+	GRPCAddr     string                                 // Address of the gRPC server (e.g., "localhost:50051")
+	AuthToken    string                                 // Auth token for gRPC calls
+	TenantMgr    *tenant.Manager                        // Tenant manager for accessing API keys
+	RedisClient  *redis.Client                          // Redis client for idempotency
+	Version      VersionInfo                            // Version information
+	HealthChecks map[string]func(context.Context) error // Additional health checks (e.g., RAG dependencies)
 }
 
 // NewServer creates a new admin HTTP server.
@@ -128,7 +128,7 @@ func NewServer(dbClient *db.Client, cfg Config) *Server {
 			httpkit.Tracing()(
 				httpkit.RequestID(
 					httpkit.Logging(logger)(
-						guard.Timeout(30*time.Second)(mux),
+						guard.Timeout(30 * time.Second)(mux),
 					),
 				),
 			),
@@ -429,13 +429,13 @@ type TestRequest struct {
 
 // TestResponse is the response from the test endpoint.
 type TestResponse struct {
-	Reply         string `json:"reply"`
-	Provider      string `json:"provider"`
-	Model         string `json:"model"`
-	InputTokens   int    `json:"input_tokens"`
-	OutputTokens  int    `json:"output_tokens"`
-	ProcessingMs  int64  `json:"processing_ms"`
-	Error         string `json:"error,omitempty"`
+	Reply        string `json:"reply"`
+	Provider     string `json:"provider"`
+	Model        string `json:"model"`
+	InputTokens  int    `json:"input_tokens"`
+	OutputTokens int    `json:"output_tokens"`
+	ProcessingMs int64  `json:"processing_ms"`
+	Error        string `json:"error,omitempty"`
 }
 
 // getGRPCClient lazily initializes the gRPC client.
@@ -765,10 +765,10 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		UserInput:           req.Message,
 		TenantId:            req.TenantID,
 		ClientId:            "dashboard-chat",
-		RequestId:           threadUUID.String(),    // Use thread_id as request_id for thread continuity
-		ConversationHistory: conversationHistory,    // For Gemini/Anthropic (stateless)
-		PreviousResponseId:  previousResponseID,     // For OpenAI native continuity
-		EnableWebSearch:     true,                   // Enable Google Search grounding by default
+		RequestId:           threadUUID.String(), // Use thread_id as request_id for thread continuity
+		ConversationHistory: conversationHistory, // For Gemini/Anthropic (stateless)
+		PreviousResponseId:  previousResponseID,  // For OpenAI native continuity
+		EnableWebSearch:     true,                // Enable Google Search grounding by default
 	}
 
 	// Set provider if specified
@@ -854,7 +854,7 @@ func capHistory(branch []db.ChatMessage, n int) []db.ChatMessage {
 
 // messageContentText extracts the plain-text body from a ChatMessage.Content
 // JSONB value. Content is stored as {"text":"..."} (see db.TextContent), so this
-// mirrors the SQL COALESCE(content->>'text', content::text, '') the admin
+// mirrors the SQL COALESCE(content->>'text', content::text, ”) the admin
 // read-queries use: an object with a "text" key yields that string, a bare JSON
 // string yields its value, and anything else falls back to the raw bytes.
 func messageContentText(raw json.RawMessage) string {
