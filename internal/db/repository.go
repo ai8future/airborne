@@ -129,6 +129,35 @@ func (r *Repository) CreateChat(ctx context.Context, chat *Chat) error {
 	})
 }
 
+// GetChatByID looks up a chat by primary key. RLS scopes the lookup to this
+// repository's tenant, so an id owned by another tenant is invisible. Returns
+// (nil, false, nil) when no chat matches.
+func (r *Repository) GetChatByID(ctx context.Context, chatID string) (*Chat, bool, error) {
+	var (
+		chat  Chat
+		found bool
+	)
+	err := r.client.WithTenant(ctx, r.tenantID, func(tx pgx.Tx) error {
+		row := tx.QueryRow(ctx,
+			`SELECT `+chatColumns+` FROM airborne_chats WHERE id = $1`, chatID)
+		if err := scanChat(row, &chat); err != nil {
+			if err == pgx.ErrNoRows {
+				return nil
+			}
+			return fmt.Errorf("get chat by id: %w", err)
+		}
+		found = true
+		return nil
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	if !found {
+		return nil, false, nil
+	}
+	return &chat, true, nil
+}
+
 // GetChatByExternalRef looks up a chat by its opaque caller correlation id
 // (addendum A9). RLS scopes the lookup to this repository's tenant, so the same
 // external_ref used by another tenant is invisible. Returns (nil, false, nil)
@@ -194,61 +223,71 @@ func (r *Repository) ListChats(ctx context.Context, userID string, limit int) ([
 // id) rather than depending on it being unique. Returns the message id.
 func (r *Repository) AppendMessage(ctx context.Context, chatID string, parentID *string, m *ChatMessage) (string, error) {
 	err := r.client.WithTenant(ctx, r.tenantID, func(tx pgx.Tx) error {
-		if parentID == nil { // linear append: parent = current head
-			var head *string
-			if err := tx.QueryRow(ctx,
-				`SELECT current_message_id FROM airborne_chats WHERE id=$1`, chatID).Scan(&head); err != nil {
-				return fmt.Errorf("read current head: %w", err)
-			}
-			parentID = head
-		}
-		// Deterministic sibling ordering: next seq among children of this parent.
-		var seq int
-		if err := tx.QueryRow(ctx,
-			`SELECT COALESCE(MAX(sibling_seq)+1, 0) FROM airborne_chat_messages
-			 WHERE chat_id=$1 AND parent_id IS NOT DISTINCT FROM $2`, chatID, parentID).Scan(&seq); err != nil {
-			return fmt.Errorf("compute sibling_seq: %w", err)
-		}
-		status := m.Status
-		if status == "" {
-			status = ChatMessageStatusComplete
-		}
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO airborne_chat_messages
-			  (id, tenant_id, chat_id, parent_id, sibling_seq, user_id, role, content, model_id, provider,
-			   response_id, status, status_history, input_tokens, output_tokens, total_tokens, cost_usd,
-			   grounding_queries, grounding_cost_usd, processing_time_ms, usage, sources, embeds)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
-			m.ID, r.tenantID, chatID, parentID, seq, m.UserID, m.Role, NormalizeJSONB(m.Content), m.ModelID, m.Provider,
-			m.ResponseID, status, m.StatusHistory, m.InputTokens, m.OutputTokens, m.TotalTokens, m.CostUSD,
-			m.GroundingQueries, m.GroundingCostUSD, m.ProcessingTimeMs, m.Usage, m.Sources, m.Embeds); err != nil {
-			return fmt.Errorf("insert message: %w", err)
-		}
-		if _, err := tx.Exec(ctx,
-			`UPDATE airborne_chats SET current_message_id=$1 WHERE id=$2`, m.ID, chatID); err != nil {
-			return fmt.Errorf("advance current_message_id: %w", err)
-		}
-		return nil
+		return r.appendMessageInTx(ctx, tx, chatID, parentID, m)
 	})
 	return m.ID, err
 }
 
+// appendMessageInTx is the transaction-scoped body of AppendMessage, shared
+// with PersistTurn so both run the exact same head-read / sibling_seq /
+// INSERT / head-advance path. The caller owns the transaction (and its
+// tenant GUC).
+func (r *Repository) appendMessageInTx(ctx context.Context, tx pgx.Tx, chatID string, parentID *string, m *ChatMessage) error {
+	if parentID == nil { // linear append: parent = current head
+		var head *string
+		if err := tx.QueryRow(ctx,
+			`SELECT current_message_id FROM airborne_chats WHERE id=$1`, chatID).Scan(&head); err != nil {
+			return fmt.Errorf("read current head: %w", err)
+		}
+		parentID = head
+	}
+	// Deterministic sibling ordering: next seq among children of this parent.
+	var seq int
+	if err := tx.QueryRow(ctx,
+		`SELECT COALESCE(MAX(sibling_seq)+1, 0) FROM airborne_chat_messages
+		 WHERE chat_id=$1 AND parent_id IS NOT DISTINCT FROM $2`, chatID, parentID).Scan(&seq); err != nil {
+		return fmt.Errorf("compute sibling_seq: %w", err)
+	}
+	status := m.Status
+	if status == "" {
+		status = ChatMessageStatusComplete
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO airborne_chat_messages
+		  (id, tenant_id, chat_id, parent_id, sibling_seq, user_id, role, content, model_id, provider,
+		   response_id, status, status_history, input_tokens, output_tokens, total_tokens, cost_usd,
+		   grounding_queries, grounding_cost_usd, processing_time_ms, usage, sources, embeds)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+		m.ID, r.tenantID, chatID, parentID, seq, m.UserID, m.Role, NormalizeJSONB(m.Content), m.ModelID, m.Provider,
+		m.ResponseID, status, m.StatusHistory, m.InputTokens, m.OutputTokens, m.TotalTokens, m.CostUSD,
+		m.GroundingQueries, m.GroundingCostUSD, m.ProcessingTimeMs, m.Usage, m.Sources, m.Embeds); err != nil {
+		return fmt.Errorf("insert message: %w", err)
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE airborne_chats SET current_message_id=$1 WHERE id=$2`, m.ID, chatID); err != nil {
+		return fmt.Errorf("advance current_message_id: %w", err)
+	}
+	return nil
+}
+
 // GetActiveBranch returns the chat's active branch, root-first: a recursive-CTE
-// walk from current_message_id up through parent_id to the root, ordered by
-// created_at ascending.
+// walk from current_message_id up through parent_id to the root. Ordering is
+// structural (walk depth, root first) rather than by created_at: messages
+// persisted in one transaction (PersistTurn) share an identical created_at
+// (now() is transaction-start time), so a timestamp sort would tie.
 func (r *Repository) GetActiveBranch(ctx context.Context, chatID string) ([]ChatMessage, error) {
 	var out []ChatMessage
 	err := r.client.WithTenant(ctx, r.tenantID, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
 			WITH RECURSIVE branch AS (
-			  SELECT m.* FROM airborne_chat_messages m
+			  SELECT m.*, 0 AS depth FROM airborne_chat_messages m
 			  JOIN airborne_chats c ON c.current_message_id = m.id
 			  WHERE c.id = $1
 			  UNION ALL
-			  SELECT p.* FROM airborne_chat_messages p
+			  SELECT p.*, b.depth + 1 FROM airborne_chat_messages p
 			  JOIN branch b ON p.id = b.parent_id
 			)
-			SELECT `+chatMessageColumns+` FROM branch ORDER BY created_at ASC`, chatID)
+			SELECT `+chatMessageColumns+` FROM branch ORDER BY depth DESC`, chatID)
 		if err != nil {
 			return fmt.Errorf("get active branch: %w", err)
 		}
@@ -298,18 +337,94 @@ func (r *Repository) GetSiblings(ctx context.Context, chatID string, parentID *s
 // are stored as SQL NULL; nil raw JSON stays NULL.
 func (r *Repository) SaveMessageDebug(ctx context.Context, messageID string, systemPrompt string, rawRequestJSON, rawResponseJSON json.RawMessage, renderedHTML string) error {
 	return r.client.WithTenant(ctx, r.tenantID, func(tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, `
-			INSERT INTO airborne_chat_message_debug
-			  (message_id, tenant_id, system_prompt, raw_request_json, raw_response_json, rendered_html)
-			VALUES ($1,$2,$3,$4,$5,$6)
-			ON CONFLICT (message_id) DO UPDATE SET
-			  system_prompt = EXCLUDED.system_prompt,
-			  raw_request_json = EXCLUDED.raw_request_json,
-			  raw_response_json = EXCLUDED.raw_response_json,
-			  rendered_html = EXCLUDED.rendered_html`,
-			messageID, r.tenantID, nullIfEmpty(systemPrompt), rawRequestJSON, rawResponseJSON, nullIfEmpty(renderedHTML))
-		if err != nil {
-			return fmt.Errorf("save message debug: %w", err)
+		return r.saveMessageDebugInTx(ctx, tx, messageID, systemPrompt, rawRequestJSON, rawResponseJSON, renderedHTML)
+	})
+}
+
+// saveMessageDebugInTx is the transaction-scoped body of SaveMessageDebug,
+// shared with PersistTurn. The caller owns the transaction (and its tenant GUC).
+func (r *Repository) saveMessageDebugInTx(ctx context.Context, tx pgx.Tx, messageID string, systemPrompt string, rawRequestJSON, rawResponseJSON json.RawMessage, renderedHTML string) error {
+	_, err := tx.Exec(ctx, `
+		INSERT INTO airborne_chat_message_debug
+		  (message_id, tenant_id, system_prompt, raw_request_json, raw_response_json, rendered_html)
+		VALUES ($1,$2,$3,$4,$5,$6)
+		ON CONFLICT (message_id) DO UPDATE SET
+		  system_prompt = EXCLUDED.system_prompt,
+		  raw_request_json = EXCLUDED.raw_request_json,
+		  raw_response_json = EXCLUDED.raw_response_json,
+		  rendered_html = EXCLUDED.rendered_html`,
+		messageID, r.tenantID, nullIfEmpty(systemPrompt), rawRequestJSON, rawResponseJSON, nullIfEmpty(renderedHTML))
+	if err != nil {
+		return fmt.Errorf("save message debug: %w", err)
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Composed turn persistence (single transaction).
+// ---------------------------------------------------------------------------
+
+// TurnDebug carries the optional cold debug blob persisted alongside a turn's
+// assistant message (airborne_chat_message_debug). It is SaveMessageDebug's
+// parameter list struct-ified for PersistTurn.
+type TurnDebug struct {
+	SystemPrompt    string
+	RawRequestJSON  json.RawMessage
+	RawResponseJSON json.RawMessage
+	RenderedHTML    string
+}
+
+// PersistTurn persists one full conversation turn atomically in a single
+// WithTenant transaction:
+//
+//  1. get-or-create the chat by primary key (INSERT ... ON CONFLICT (id) DO
+//     NOTHING, so two concurrent first turns on the same new chat id both
+//     proceed — the loser's insert no-ops and its turn threads onto the
+//     winner's committed head instead of being dropped);
+//  2. append userMsg onto the chat's current head (linear);
+//  3. append assistantMsg as userMsg's child, advancing current_message_id;
+//  4. optionally upsert assistantMsg's debug blob.
+//
+// A failure at any step rolls the whole turn back — no orphaned user turn or
+// reply-less head can be committed. RLS WITH CHECK applies to the chat INSERT
+// as usual; if chat.ID already exists under another tenant the insert no-ops
+// and the subsequent head read fails (the row is invisible to this tenant),
+// aborting the turn. An empty chat.Status defaults to 'active'.
+func (r *Repository) PersistTurn(ctx context.Context, chat *Chat, userMsg, assistantMsg *ChatMessage, debug *TurnDebug) error {
+	status := chat.Status
+	if status == "" {
+		status = ChatStatusActive
+	}
+	return r.client.WithTenant(ctx, r.tenantID, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO airborne_chats
+			  (id, tenant_id, user_id, title, model_id, provider, status,
+			   current_message_id, pinned, external_ref, metadata)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+			ON CONFLICT (id) DO NOTHING`,
+			chat.ID, r.tenantID, chat.UserID, nullIfEmpty(chat.Title),
+			nullIfEmpty(chat.ModelID), nullIfEmpty(chat.Provider), status,
+			chat.CurrentMessageID, chat.Pinned, nullIfEmpty(chat.ExternalRef), chat.Metadata); err != nil {
+			return fmt.Errorf("get-or-create chat: %w", err)
+		}
+
+		// User turn: linear append onto the current head. The head read inside
+		// appendMessageInTx doubles as the existence/visibility SELECT for the
+		// get-or-create above.
+		if err := r.appendMessageInTx(ctx, tx, chat.ID, nil, userMsg); err != nil {
+			return fmt.Errorf("append user message: %w", err)
+		}
+
+		// Assistant turn: child of the user message; advances the head.
+		if err := r.appendMessageInTx(ctx, tx, chat.ID, &userMsg.ID, assistantMsg); err != nil {
+			return fmt.Errorf("append assistant message: %w", err)
+		}
+
+		if debug != nil {
+			if err := r.saveMessageDebugInTx(ctx, tx, assistantMsg.ID,
+				debug.SystemPrompt, debug.RawRequestJSON, debug.RawResponseJSON, debug.RenderedHTML); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -552,13 +667,15 @@ func (r *Repository) GetThreadConversationAllTenants(ctx context.Context, chatID
 		}
 		found = true
 
+		// Structural (depth) ordering, root first — same rationale as
+		// GetActiveBranch: one-transaction turns share a created_at.
 		rows, err := tx.Query(ctx, `
 			WITH RECURSIVE branch AS (
-			  SELECT m.* FROM airborne_chat_messages m
+			  SELECT m.*, 0 AS depth FROM airborne_chat_messages m
 			  JOIN airborne_chats c ON c.current_message_id = m.id
 			  WHERE c.id = $1
 			  UNION ALL
-			  SELECT p.* FROM airborne_chat_messages p
+			  SELECT p.*, b.depth + 1 FROM airborne_chat_messages p
 			  JOIN branch b ON p.id = b.parent_id
 			)
 			SELECT b.id, b.role,
@@ -569,7 +686,7 @@ func (r *Repository) GetThreadConversationAllTenants(ctx context.Context, chatID
 			       b.created_at
 			FROM branch b
 			LEFT JOIN airborne_chat_message_debug d ON d.message_id = b.id
-			ORDER BY b.created_at ASC`, chatID)
+			ORDER BY b.depth DESC`, chatID)
 		if err != nil {
 			return fmt.Errorf("walk conversation: %w", err)
 		}

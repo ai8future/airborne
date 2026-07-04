@@ -671,7 +671,7 @@ func TestTenantStream_RecvMsg_OnlyExtractsOnce(t *testing.T) {
 
 	recvCount := 0
 	ss := &mockServerStream{
-		ctx: context.Background(),
+		ctx:     context.Background(),
 		recvMsg: &pb.GenerateReplyRequest{TenantId: "first-tenant"},
 	}
 

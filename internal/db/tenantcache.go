@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -58,6 +59,12 @@ func (tc *tenantCache) snapshot() (map[string]struct{}, bool) {
 // already refreshed the cache while this call was waiting for the write
 // lock, the redundant query is skipped and the freshly cached set is
 // returned instead.
+//
+// Availability over freshness: if list fails but a previous fetch succeeded,
+// the stale snapshot is served instead of the error, so tenant validation
+// never fails closed on a registry blip. The error only propagates when there
+// has never been a successful fetch. fetchedAt is deliberately NOT extended on
+// a failed refresh — the next call past the TTL retries the registry.
 func (tc *tenantCache) refresh(ctx context.Context, list func(context.Context) ([]string, error)) (map[string]struct{}, error) {
 	tc.mu.Lock()
 	defer tc.mu.Unlock()
@@ -68,6 +75,11 @@ func (tc *tenantCache) refresh(ctx context.Context, list func(context.Context) (
 
 	ids, err := list(ctx)
 	if err != nil {
+		if tc.ids != nil {
+			slog.Warn("tenant registry refresh failed, serving stale snapshot",
+				"error", err, "age", time.Since(tc.fetchedAt))
+			return tc.ids, nil
+		}
 		return nil, err
 	}
 
