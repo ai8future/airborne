@@ -3,10 +3,12 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // newUUID returns a fresh canonical UUID string for use as a chat/message id.
@@ -290,6 +292,57 @@ func TestPersistTurn(t *testing.T) {
 	}
 	if n != 1 {
 		t.Errorf("chat id appears %d times in ListChats, want exactly 1", n)
+	}
+}
+
+// TestPersistTurn_ExternalRefUniqueViolationSurfaces proves the behavior the
+// service's external_ref lost-create-race retry (addendum A10) depends on:
+// persisting a turn onto a NEW chat id carrying an external_ref that another
+// chat already owns trips the partial unique index (tenant_id, external_ref),
+// and the violation surfaces through PersistTurn's error wrapping as a
+// *pgconn.PgError with code 23505 (detectable via errors.As).
+func TestPersistTurn_ExternalRefUniqueViolationSurfaces(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+	repo, _ := NewTenantRepository(c, "ai8")
+
+	winner := &Chat{ID: newUUID(), TenantID: "ai8", UserID: "u1", Status: "active", ExternalRef: "conv-uv"}
+	if err := repo.CreateChat(ctx, winner); err != nil {
+		t.Fatal(err)
+	}
+
+	loserID := newUUID()
+	loser := &Chat{ID: loserID, TenantID: "ai8", UserID: "u1", Status: "active", ExternalRef: "conv-uv"}
+	u := &ChatMessage{ID: newUUID(), TenantID: "ai8", ChatID: loserID, UserID: "u1", Role: RoleUser, Content: TextContent("hi"), Status: "complete"}
+	a := &ChatMessage{ID: newUUID(), TenantID: "ai8", ChatID: loserID, UserID: "u1", Role: RoleAssistant, Content: TextContent("hello"), Status: "complete"}
+
+	err := repo.PersistTurn(ctx, loser, u, a, nil)
+	if err == nil {
+		t.Fatal("PersistTurn with duplicate external_ref succeeded, want unique violation")
+	}
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
+		t.Fatalf("error = %v, want wrapped *pgconn.PgError code 23505", err)
+	}
+
+	// Recovery path (what the service retry does): re-resolve the ref and land
+	// the turn on the winner's chat — exactly one chat owns the ref.
+	got, found, err := repo.GetChatByExternalRef(ctx, "conv-uv")
+	if err != nil || !found {
+		t.Fatalf("GetChatByExternalRef after violation: found=%v err=%v", found, err)
+	}
+	if got.ID != winner.ID {
+		t.Errorf("ref owner = %s, want winner %s", got.ID, winner.ID)
+	}
+	if err := repo.PersistTurn(ctx, &Chat{ID: got.ID, TenantID: "ai8", UserID: "u1", Status: "active", ExternalRef: "conv-uv"}, u, a, nil); err != nil {
+		t.Fatalf("retry PersistTurn onto winner: %v", err)
+	}
+	branch, err := repo.GetActiveBranch(ctx, got.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(branch) != 2 || branch[0].ID != u.ID || branch[1].ID != a.ID {
+		t.Fatalf("winner branch = %d messages, want the retried [user, assistant] turn", len(branch))
 	}
 }
 

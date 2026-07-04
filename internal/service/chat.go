@@ -22,6 +22,7 @@ import (
 	"github.com/ai8future/airborne/internal/provider/gemini"
 	"github.com/ai8future/airborne/internal/provider/openai"
 	"github.com/ai8future/airborne/internal/rag"
+	"github.com/ai8future/airborne/internal/redis"
 	"github.com/ai8future/airborne/internal/service/config"
 	"github.com/ai8future/airborne/internal/validation"
 	"github.com/google/uuid"
@@ -52,14 +53,17 @@ type ChatService struct {
 	imageGen          *imagegen.Client
 	dbClient          *db.Client // Optional: message persistence
 	configBuilder     *config.Builder
-	eventPublisher    EventPublisher // Optional: event bus publisher
+	eventPublisher    EventPublisher    // Optional: event bus publisher
+	idem              *idempotencyStore // Optional: idempotent GenerateReply replay (A10)
 }
 
 // NewChatService creates a new chat service.
 // The ragService parameter is optional - pass nil to disable self-hosted RAG.
 // The imageGen parameter is optional - pass nil to disable image generation.
 // The dbClient parameter is optional - pass nil to disable message persistence.
-func NewChatService(rateLimiter *auth.RateLimiter, ragService *rag.Service, imageGen *imagegen.Client, dbClient *db.Client) *ChatService {
+// The redisClient parameter is optional - pass nil to disable idempotent
+// GenerateReply replay (requests then always regenerate).
+func NewChatService(rateLimiter *auth.RateLimiter, ragService *rag.Service, imageGen *imagegen.Client, dbClient *db.Client, redisClient *redis.Client) *ChatService {
 	return &ChatService{
 		openaiProvider:    openai.NewClient(),
 		geminiProvider:    gemini.NewClient(),
@@ -69,6 +73,7 @@ func NewChatService(rateLimiter *auth.RateLimiter, ragService *rag.Service, imag
 		imageGen:          imageGen,
 		dbClient:          dbClient,
 		configBuilder:     config.NewBuilder(),
+		idem:              newIdempotencyStore(redisClient),
 	}
 }
 
@@ -256,13 +261,55 @@ func validateCustomBaseURLs(req *pb.GenerateReplyRequest) error {
 	return nil
 }
 
-// GenerateReply generates a completion.
+// GenerateReply generates a completion. When the request carries an
+// idempotency key (first-class field or metadata["idempotency_key"]), a
+// duplicate call replays the byte-identical prior response instead of
+// regenerating (addendum A10). The check runs BEFORE provider dispatch; only
+// successful responses are cached (24h); provider errors release the in-flight
+// marker so retries regenerate; an unavailable Redis degrades to uncached.
 func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRequest) (*pb.GenerateReplyResponse, error) {
 	// Check permission
 	if err := auth.RequirePermission(ctx, auth.PermissionChat); err != nil {
 		return nil, err
 	}
 
+	key := idempotencyKeyFromRequest(req)
+	if key == "" || s.idem == nil {
+		return s.generateReply(ctx, req)
+	}
+
+	tenantID := auth.TenantIDFromContext(ctx)
+	cached, state := s.idem.Begin(ctx, tenantID, key)
+	switch state {
+	case idemHit:
+		slog.Info("replaying cached idempotent response",
+			"idempotency_key", key,
+			"tenant_id", tenantID,
+		)
+		return cached, nil
+	case idemInFlight:
+		// Mirror the admin path's 409 Conflict: a duplicate arriving while the
+		// first is still generating is rejected rather than double-generating.
+		return nil, status.Error(codes.Aborted, "request with this idempotency_key is already in progress")
+	case idemBypass:
+		return s.generateReply(ctx, req) // store unavailable: degrade to uncached
+	}
+
+	// idemAcquired: we own the in-flight marker — cache on success, release on
+	// any error (validation or provider failures are never cached).
+	resp, err := s.generateReply(ctx, req)
+	if err != nil {
+		s.idem.Release(ctx, tenantID, key)
+		return nil, err
+	}
+	s.idem.Put(ctx, tenantID, key, resp)
+	return resp, nil
+}
+
+// generateReply is the uncached generation path: validation, provider
+// dispatch, and persistence. Split from GenerateReply so the idempotency
+// wrapper above can replay or cache whole responses.
+func (s *ChatService) generateReply(ctx context.Context, req *pb.GenerateReplyRequest) (*pb.GenerateReplyResponse, error) {
 	// Prepare request (validation, provider selection, RAG retrieval, params building)
 	prepared, err := s.prepareRequest(ctx, req)
 	if err != nil {
@@ -379,9 +426,10 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 	}
 	s.publishInferenceCompleted(ctx, prepared.provider.Name(), prepared.providerCfg.Model, processingTimeMs, tokenCount)
 
-	// Persist conversation asynchronously (if database client is configured)
+	// Persist conversation asynchronously (if database client is configured).
+	// A caller-supplied external_ref lands the turn on its correlated chat (A10).
 	if s.dbClient != nil && result.Usage != nil {
-		s.persistConversation(ctx, req, result, prepared.provider.Name(), prepared.providerCfg.Model, htmlContent, processingTimeMs)
+		s.persistConversation(ctx, req, result, prepared.provider.Name(), prepared.providerCfg.Model, htmlContent, processingTimeMs, externalRefFromRequest(req))
 	}
 
 	return s.buildResponse(result, prepared.provider.Name(), false, "", "", htmlContent), nil
@@ -554,7 +602,9 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 					ResponseJSON:     chunk.ResponseJSON,
 				}
 				processingTimeMs := int(time.Since(startTime).Milliseconds())
-				s.persistConversation(ctx, req, streamResult, prepared.provider.Name(), chunk.Model, htmlContent, processingTimeMs)
+				// external_ref is intentionally not honored on the streaming
+				// path yet — addendum A10 scopes it to the unary handler.
+				s.persistConversation(ctx, req, streamResult, prepared.provider.Name(), chunk.Model, htmlContent, processingTimeMs, "")
 			}
 
 			complete := &pb.StreamComplete{
@@ -1129,8 +1179,11 @@ func convertStructuredMetadata(m *provider.StructuredMetadata) *pb.StructuredMet
 }
 
 // persistConversation saves the conversation turn to the database asynchronously.
-// This runs in a goroutine to avoid blocking the response.
-func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateReplyRequest, result provider.GenerateResult, providerName, model, renderedHTML string, processingTimeMs int) {
+// This runs in a goroutine to avoid blocking the response. A non-empty
+// externalRef (the caller's opaque correlation id, A9/A10) lands the turn on
+// the chat owning that ref — reused if it exists, created with the ref if not;
+// an empty externalRef keeps today's PK-keyed behavior.
+func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateReplyRequest, result provider.GenerateResult, providerName, model, renderedHTML string, processingTimeMs int, externalRef string) {
 	// Extract tenant and user info from context
 	tenantID := auth.TenantIDFromContext(ctx)
 	if tenantID == "" {
@@ -1278,9 +1331,9 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 		}
 
 		// Persist the whole turn atomically: get-or-create the chat (keyed by
-		// primary key; external_ref stays empty — it is reserved for caller
-		// correlation ids), the user message, the assistant reply as its child,
-		// and the optional debug blob, all in one transaction.
+		// primary key, or by the caller's external_ref when one was supplied),
+		// the user message, the assistant reply as its child, and the optional
+		// debug blob, all in one transaction.
 		chatID := threadID.String()
 		userMsg := &db.ChatMessage{
 			ID:       uuid.New().String(),
@@ -1314,7 +1367,7 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 			asstMsg.ResponseID = ptrTo(result.ResponseID)
 		}
 
-		err = repo.PersistTurn(persistCtx, &db.Chat{
+		err = persistTurnWithRef(persistCtx, repo, externalRef, &db.Chat{
 			ID:       chatID,
 			TenantID: tenantID,
 			UserID:   userID,
@@ -1327,6 +1380,7 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 				"error", err,
 				"thread_id", threadID,
 				"tenant_id", tenantID,
+				"external_ref", externalRef,
 			)
 		}
 	}()

@@ -69,6 +69,15 @@ message GenerateReplyRequest {
   // Enable structured output mode (Gemini-only)
   // When true, response includes structured_metadata with intent, entities, topics
   bool enable_structured_output = 21;
+
+  // Idempotency: duplicate GenerateReply calls carrying the same key replay the
+  // byte-identical prior response instead of regenerating. Also read from
+  // metadata["idempotency_key"] (first-class field wins when both are set).
+  string idempotency_key = 22;
+
+  // Opaque caller correlation id for the chat this turn persists onto (A9/A10).
+  // Also read from metadata["external_ref"] (first-class field wins).
+  string external_ref = 23;
 }
 
 // GenerateReplyResponse contains the generated reply

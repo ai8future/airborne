@@ -220,7 +220,9 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, *Serv
 	imageGenClient := imagegen.NewClient()
 
 	// Register services
-	chatService := service.NewChatService(rateLimiter, ragService, imageGenClient, dbClient)
+	// redisClient may be nil (auth_mode != "redis"): idempotent GenerateReply
+	// replay is then disabled and every request regenerates.
+	chatService := service.NewChatService(rateLimiter, ragService, imageGenClient, dbClient, redisClient)
 	pb.RegisterAirborneServiceServer(server, chatService)
 
 	adminService := service.NewAdminService(redisClient, service.AdminServiceConfig{
