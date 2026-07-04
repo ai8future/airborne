@@ -7,59 +7,13 @@ import (
 	"github.com/google/uuid"
 )
 
-// Thread represents a conversation container (tenant isolation is at table level).
-type Thread struct {
-	ID           uuid.UUID `json:"id"`
-	UserID       string    `json:"user_id"`
-	Provider     *string   `json:"provider,omitempty"`
-	Model        *string   `json:"model,omitempty"`
-	Status       string    `json:"status"`
-	MessageCount int       `json:"message_count"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	Metadata     *string   `json:"metadata,omitempty"` // JSONB stored as string
-}
-
-// ThreadStatus constants
-const (
-	ThreadStatusActive   = "active"
-	ThreadStatusArchived = "archived"
-	ThreadStatusDeleted  = "deleted"
-)
-
-// Message represents a conversation message (user, assistant, or system).
-type Message struct {
-	ID               uuid.UUID `json:"id"`
-	ThreadID         uuid.UUID `json:"thread_id"`
-	Role             string    `json:"role"` // user, assistant, system
-	Content          string    `json:"content"`
-	Provider         *string   `json:"provider,omitempty"`
-	Model            *string   `json:"model,omitempty"`
-	ResponseID       *string   `json:"response_id,omitempty"` // OpenAI previousResponseID
-	InputTokens      *int      `json:"input_tokens,omitempty"`
-	OutputTokens     *int      `json:"output_tokens,omitempty"`
-	TotalTokens      *int      `json:"total_tokens,omitempty"`
-	CostUSD          *float64  `json:"cost_usd,omitempty"`
-	GroundingQueries *int      `json:"grounding_queries,omitempty"` // Web search queries for grounding cost
-	GroundingCostUSD *float64  `json:"grounding_cost_usd,omitempty"`
-	ProcessingTimeMs *int      `json:"processing_time_ms,omitempty"`
-	Citations        *string   `json:"citations,omitempty"` // JSONB stored as string
-	CreatedAt        time.Time `json:"created_at"`
-	Metadata         *string   `json:"metadata,omitempty"` // JSONB stored as string
-
-	// Debug fields (for request/response inspection)
-	SystemPrompt    *string `json:"system_prompt,omitempty"`
-	RawRequestJSON  *string `json:"raw_request_json,omitempty"`
-	RawResponseJSON *string `json:"raw_response_json,omitempty"`
-	RenderedHTML    *string `json:"rendered_html,omitempty"` // HTML from markdown_svc (TOAST-compressed by PostgreSQL)
-}
-
-// MessageRole constants
+// MessageRole constants. These role strings are shared by the relational
+// ChatMessage.Role column (valid_role CHECK) and by admin/service callers.
 const (
 	RoleUser      = "user"
 	RoleAssistant = "assistant"
 	RoleSystem    = "system"
-	RoleTool      = "tool" // valid for the new ChatMessage.Role (valid_role CHECK); unused by the legacy Message struct
+	RoleTool      = "tool"
 )
 
 // ============================================================================
@@ -313,52 +267,14 @@ func CitationsToJSON(citations []Citation) (*string, error) {
 	return &s, nil
 }
 
-// NewThread creates a new thread with default values.
-// Tenant isolation is at the table level, not row level.
-func NewThread(userID string) *Thread {
-	now := time.Now()
-	return &Thread{
-		ID:           uuid.New(),
-		UserID:       userID,
-		Status:       ThreadStatusActive,
-		MessageCount: 0,
-		CreatedAt:    now,
-		UpdatedAt:    now,
-	}
-}
-
-// NewMessage creates a new message.
-func NewMessage(threadID uuid.UUID, role, content string) *Message {
-	return &Message{
-		ID:        uuid.New(),
-		ThreadID:  threadID,
-		Role:      role,
-		Content:   content,
-		CreatedAt: time.Now(),
-	}
-}
-
-// SetAssistantMetrics sets provider metrics on an assistant message.
-func (m *Message) SetAssistantMetrics(provider, model string, inputTokens, outputTokens, processingTimeMs int, costUSD float64, responseID string) {
-	m.Provider = &provider
-	m.Model = &model
-	m.InputTokens = &inputTokens
-	m.OutputTokens = &outputTokens
-	total := inputTokens + outputTokens
-	m.TotalTokens = &total
-	m.CostUSD = &costUSD
-	m.ProcessingTimeMs = &processingTimeMs
-	if responseID != "" {
-		m.ResponseID = &responseID
-	}
-}
-
-// TruncateContent returns truncated content for preview display.
-func (m *Message) TruncateContent(maxLen int) string {
-	if len(m.Content) <= maxLen {
-		return m.Content
-	}
-	return m.Content[:maxLen] + "..."
+// DebugInfo carries the cold request/response debug blob a caller wants stored
+// alongside a message (persisted via Repository.SaveMessageDebug into
+// airborne_chat_message_debug).
+type DebugInfo struct {
+	SystemPrompt    string
+	RawRequestJSON  string
+	RawResponseJSON string
+	RenderedHTML    string
 }
 
 // ConversationMessage represents a message in the conversation view.

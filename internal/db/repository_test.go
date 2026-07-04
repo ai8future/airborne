@@ -1,123 +1,169 @@
 package db
 
 import (
-	"errors"
-	"strings"
+	"context"
+	"encoding/json"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
-func TestNewTenantRepository_ValidTenants(t *testing.T) {
-	for _, tenantID := range []string{"ai8", "email4ai", "zztest"} {
-		t.Run(tenantID, func(t *testing.T) {
-			repo, err := NewTenantRepository(nil, tenantID)
-			if err != nil {
-				t.Fatalf("NewTenantRepository(%q) error = %v", tenantID, err)
-			}
-			if repo.TenantID() != tenantID {
-				t.Errorf("TenantID() = %q, want %q", repo.TenantID(), tenantID)
-			}
-		})
+// newUUID returns a fresh canonical UUID string for use as a chat/message id.
+func newUUID() string { return uuid.NewString() }
+
+func strp(s string) *string { return &s }
+
+func TestAppendMessage_LinearBranchRoundTrip(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+	repo, _ := NewTenantRepository(c, "ai8")
+	chat := &Chat{ID: newUUID(), TenantID: "ai8", UserID: "u1", Status: "active"}
+	if err := repo.CreateChat(ctx, chat); err != nil {
+		t.Fatal(err)
+	}
+
+	m1, err := repo.AppendMessage(ctx, chat.ID, nil,
+		&ChatMessage{ID: newUUID(), TenantID: "ai8", ChatID: chat.ID, UserID: "u1", Role: "user", Content: TextContent("hi"), Status: "complete"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.AppendMessage(ctx, chat.ID, &m1,
+		&ChatMessage{ID: newUUID(), TenantID: "ai8", ChatID: chat.ID, UserID: "u1", Role: "assistant", Content: TextContent("hello"), Status: "complete"}); err != nil {
+		t.Fatal(err)
+	}
+
+	branch, err := repo.GetActiveBranch(ctx, chat.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(branch) != 2 || branch[0].Role != "user" || branch[1].Role != "assistant" {
+		t.Fatalf("branch = %+v", branch)
 	}
 }
 
-func TestNewTenantRepository_InvalidTenants(t *testing.T) {
-	invalidTenants := []string{"", "unknown", "admin", "AI8", "root"}
-	for _, tenantID := range invalidTenants {
-		t.Run("invalid_"+tenantID, func(t *testing.T) {
-			_, err := NewTenantRepository(nil, tenantID)
-			if err == nil {
-				t.Fatalf("expected error for invalid tenant %q", tenantID)
-			}
-			if !errors.Is(err, ErrInvalidTenant) {
-				t.Errorf("expected ErrInvalidTenant, got: %v", err)
-			}
-		})
+// TestSiblings_SeqOrdering proves two same-parent appends get sibling_seq 0
+// then 1, and GetSiblings returns them in that order.
+func TestSiblings_SeqOrdering(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+	repo, _ := NewTenantRepository(c, "ai8")
+
+	chat := &Chat{ID: newUUID(), TenantID: "ai8", UserID: "u1", Status: "active"}
+	if err := repo.CreateChat(ctx, chat); err != nil {
+		t.Fatal(err)
 	}
-}
-
-func TestRepository_TableNames_Legacy(t *testing.T) {
-	repo := NewRepository(nil)
-
-	tests := []struct {
-		method string
-		got    string
-		want   string
-	}{
-		{"threadsTable", repo.threadsTable(), "airborne_threads"},
-		{"messagesTable", repo.messagesTable(), "airborne_messages"},
-		{"filesTable", repo.filesTable(), "airborne_files"},
-		{"fileUploadsTable", repo.fileUploadsTable(), "airborne_file_provider_uploads"},
-		{"vectorStoresTable", repo.vectorStoresTable(), "airborne_thread_vector_stores"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.method, func(t *testing.T) {
-			if tt.got != tt.want {
-				t.Errorf("%s() = %q, want %q", tt.method, tt.got, tt.want)
-			}
-		})
-	}
-}
-
-func TestRepository_TableNames_Tenant(t *testing.T) {
-	repo, err := NewTenantRepository(nil, "ai8")
+	root, err := repo.AppendMessage(ctx, chat.ID, nil,
+		&ChatMessage{ID: newUUID(), TenantID: "ai8", ChatID: chat.ID, UserID: "u1", Role: "user", Content: TextContent("root"), Status: "complete"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	tests := []struct {
-		method string
-		got    string
-		want   string
-	}{
-		{"threadsTable", repo.threadsTable(), "ai8_airborne_threads"},
-		{"messagesTable", repo.messagesTable(), "ai8_airborne_messages"},
-		{"filesTable", repo.filesTable(), "ai8_airborne_files"},
-		{"fileUploadsTable", repo.fileUploadsTable(), "ai8_airborne_file_provider_uploads"},
-		{"vectorStoresTable", repo.vectorStoresTable(), "ai8_airborne_thread_vector_stores"},
+	// Two children of the same parent (root): expect sibling_seq 0 then 1.
+	childA, err := repo.AppendMessage(ctx, chat.ID, &root,
+		&ChatMessage{ID: newUUID(), TenantID: "ai8", ChatID: chat.ID, UserID: "u1", Role: "assistant", Content: TextContent("A"), Status: "complete"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	childB, err := repo.AppendMessage(ctx, chat.ID, &root,
+		&ChatMessage{ID: newUUID(), TenantID: "ai8", ChatID: chat.ID, UserID: "u1", Role: "assistant", Content: TextContent("B"), Status: "complete"})
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.method, func(t *testing.T) {
-			if tt.got != tt.want {
-				t.Errorf("%s() = %q, want %q", tt.method, tt.got, tt.want)
-			}
-		})
+	sibs, err := repo.GetSiblings(ctx, chat.ID, &root)
+	if err != nil {
+		t.Fatal(err)
 	}
-}
-
-func TestRepository_TableNames_AllTenants(t *testing.T) {
-	for tenantID := range ValidTenantIDs {
-		t.Run(tenantID, func(t *testing.T) {
-			repo, err := NewTenantRepository(nil, tenantID)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			prefix := tenantID + "_airborne_"
-
-			if !strings.HasPrefix(repo.threadsTable(), prefix) {
-				t.Errorf("threadsTable() = %q, expected prefix %q", repo.threadsTable(), prefix)
-			}
-			if !strings.HasPrefix(repo.messagesTable(), prefix) {
-				t.Errorf("messagesTable() = %q, expected prefix %q", repo.messagesTable(), prefix)
-			}
-			if !strings.HasPrefix(repo.filesTable(), prefix) {
-				t.Errorf("filesTable() = %q, expected prefix %q", repo.filesTable(), prefix)
-			}
-		})
+	if len(sibs) != 2 {
+		t.Fatalf("GetSiblings returned %d children, want 2: %+v", len(sibs), sibs)
+	}
+	if sibs[0].ID != childA || sibs[0].SiblingSeq != 0 {
+		t.Errorf("first sibling = (id %s, seq %d), want (id %s, seq 0)", sibs[0].ID, sibs[0].SiblingSeq, childA)
+	}
+	if sibs[1].ID != childB || sibs[1].SiblingSeq != 1 {
+		t.Errorf("second sibling = (id %s, seq %d), want (id %s, seq 1)", sibs[1].ID, sibs[1].SiblingSeq, childB)
 	}
 }
 
-func TestValidTenantIDs(t *testing.T) {
-	expected := []string{"ai8", "email4ai", "zztest"}
-	for _, id := range expected {
-		if !ValidTenantIDs[id] {
-			t.Errorf("expected %q in ValidTenantIDs", id)
-		}
+// TestResolveModel proves ResolveModel returns a registered alias's
+// base_model_id/params and nil for an unregistered id.
+func TestResolveModel(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+	repo, _ := NewTenantRepository(c, "ai8")
+
+	if err := repo.UpsertModel(ctx, &Model{
+		ID:          "fast",
+		TenantID:    "ai8",
+		BaseModelID: strp("gpt-4o"),
+		Name:        strp("Fast"),
+		Provider:    strp("openai"),
+		Params:      json.RawMessage(`{"temperature":0.2}`),
+		IsActive:    true,
+	}); err != nil {
+		t.Fatal(err)
 	}
 
-	if len(ValidTenantIDs) != len(expected) {
-		t.Errorf("ValidTenantIDs has %d entries, want %d", len(ValidTenantIDs), len(expected))
+	got, err := repo.ResolveModel(ctx, "fast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil {
+		t.Fatal("ResolveModel(fast) = nil, want registered row")
+	}
+	if got.BaseModelID == nil || *got.BaseModelID != "gpt-4o" {
+		t.Errorf("BaseModelID = %v, want gpt-4o", got.BaseModelID)
+	}
+	var params struct {
+		Temperature float64 `json:"temperature"`
+	}
+	if err := json.Unmarshal(got.Params, &params); err != nil {
+		t.Fatalf("params not valid JSON: %v (raw=%s)", err, got.Params)
+	}
+	if params.Temperature != 0.2 {
+		t.Errorf("params.temperature = %v, want 0.2", params.Temperature)
+	}
+
+	missing, err := repo.ResolveModel(ctx, "not-registered")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if missing != nil {
+		t.Errorf("ResolveModel(not-registered) = %+v, want nil", missing)
+	}
+}
+
+// TestExternalRef proves addendum A9: a chat created under ai8 with an
+// external_ref is found by that tenant, and the same ref is invisible to
+// another tenant (RLS isolation).
+func TestExternalRef(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+
+	ai8, _ := NewTenantRepository(c, "ai8")
+	chat := &Chat{ID: newUUID(), TenantID: "ai8", UserID: "u1", Status: "active", ExternalRef: "conv-1"}
+	if err := ai8.CreateChat(ctx, chat); err != nil {
+		t.Fatal(err)
+	}
+
+	got, found, err := ai8.GetChatByExternalRef(ctx, "conv-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("GetChatByExternalRef(conv-1) as ai8 found=false, want true")
+	}
+	if got.ID != chat.ID || got.ExternalRef != "conv-1" {
+		t.Errorf("got chat (id %s, ref %q), want (id %s, ref conv-1)", got.ID, got.ExternalRef, chat.ID)
+	}
+
+	// RLS isolation: email4ai must not see ai8's external_ref.
+	other, _ := NewTenantRepository(c, "email4ai")
+	_, found, err = other.GetChatByExternalRef(ctx, "conv-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found {
+		t.Fatal("GetChatByExternalRef(conv-1) as email4ai found=true, want false (RLS isolation)")
 	}
 }
