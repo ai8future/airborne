@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.10.0] - 2026-07-04
+
+### Changed — Complete schema overhaul (breaking)
+- **Relational baseline migration**: Replaced the entire prior migration history (`001_initial_schema.sql` … `009_solstice_*.sql`) with a single `migrations/001_baseline.sql` covering the tenant registry, a `chats`/`chat_messages` conversation tree (parent-linked branches, head-of-branch tracking), a debug side-table, files, and a models registry.
+- **Row-Level Security, enforced correctly**: All tenant-scoped tables use `FORCE ROW LEVEL SECURITY` keyed off a transaction-local GUC (`airborne.tenant_id`) set per-request via tenant-aware tx helpers — `FORCE` closes the table-owner/superuser bypass hole that plain `ENABLE ROW LEVEL SECURITY` leaves open. Requires the app to connect as a dedicated non-superuser, non-owner role (documented in README).
+- **Registry-backed tenant validation**: Hardcoded `ValidTenantIDs` removed; tenant existence/status is now looked up against the `airborne_tenants` table with a stale-tolerant cache.
+- **Atomic `PersistTurn`**: conversation turns are written keyed by the chat's primary key in a single transaction, replacing prior multi-step persistence.
+- **Admin dashboard** rebuilt over the new relational tables (cross-tenant reads, SQL-side tenant filter, capped history load) with the existing wire contract preserved for the dashboard frontend.
+- **Model-alias registry resolution** (`applyModelRegistry`) applied uniformly on both the primary and failover generation paths.
+- **A9**: `external_ref` correlation — requests can be tagged and later retrieved by an external reference id.
+- **A10**: Idempotent `GenerateReply` keyed by `idempotency_key` (proto fields 22/23), backed by tenant-namespaced Redis replay to dedupe retried requests.
+- **testcontainers RLS suite** (`internal/db`): real-Postgres tests for tenant isolation, cross-tenant read/write denial, suspended-tenant lock-out, and panic-safe transaction cleanup.
+- **Fix**: failover-success turns are now persisted through the same flow as the primary path (previously silently dropped — see `_bugs_fixed/2026-07-04-failover-turns-not-persisted.md`).
+- **Docs**: README now documents the required non-superuser app role (deploy-time prerequisite for RLS to actually apply) and the local Docker-based RLS test gate pending CI repair.
+
+Agent: Claude Code (Claude:Fable-5)
+
 ## [1.9.5] - 2026-06-15
 - Bump Go toolchain to 1.26 (Dockerfile `golang:1.26-alpine`, `go.mod` go 1.26.2, README prerequisites). Verified `go build ./...`.
 - Agent: Claude:Opus 4.8 (1M context)
