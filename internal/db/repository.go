@@ -292,11 +292,11 @@ func (r *Repository) GetActivityFeed(ctx context.Context, limit int) ([]Activity
 		var entry ActivityEntry
 		err := rows.Scan(
 			&entry.ID,
-			&entry.ThreadID,
+			&entry.ChatID,
 			&entry.UserID,
 			&entry.Content,
 			&entry.Provider,
-			&entry.Model,
+			&entry.ModelID,
 			&entry.InputTokens,
 			&entry.OutputTokens,
 			&entry.TotalTokens,
@@ -430,12 +430,12 @@ func (r *Repository) GetActivityFeedAllTenants(ctx context.Context, limit int) (
 		var entry ActivityEntry
 		err := rows.Scan(
 			&entry.ID,
-			&entry.ThreadID,
+			&entry.ChatID,
 			&entry.TenantID,
 			&entry.UserID,
 			&entry.Content,
 			&entry.Provider,
-			&entry.Model,
+			&entry.ModelID,
 			&entry.InputTokens,
 			&entry.OutputTokens,
 			&entry.TotalTokens,
@@ -649,7 +649,7 @@ func (r *Repository) GetDebugData(ctx context.Context, messageID uuid.UUID) (*De
 	var userInput *string
 	err := r.client.pool.QueryRow(ctx, query, messageID).Scan(
 		&data.MessageID,
-		&data.ThreadID,
+		&data.ChatID,
 		&data.UserID,
 		&data.Timestamp,
 		&data.SystemPrompt,
@@ -740,10 +740,10 @@ func (r *Repository) GetThreadConversation(ctx context.Context, threadID uuid.UU
 
 	var conv ThreadConversation
 	err := r.client.pool.QueryRow(ctx, threadQuery, threadID).Scan(
-		&conv.ThreadID,
+		&conv.ChatID,
 		&conv.UserID,
 		&conv.Provider,
-		&conv.Model,
+		&conv.ModelID,
 		&conv.MessageCount,
 		&conv.CreatedAt,
 		&conv.UpdatedAt,

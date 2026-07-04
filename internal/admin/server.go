@@ -223,13 +223,13 @@ func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 	for i, e := range entries {
 		activity[i] = map[string]interface{}{
 			"id":                 e.ID.String(),
-			"thread_id":          e.ThreadID.String(),
+			"thread_id":          e.ChatID.String(),
 			"tenant":             e.TenantID,
 			"user_id":            e.UserID,
 			"content":            e.Content,
 			"full_content":       e.FullContent,
 			"provider":           e.Provider,
-			"model":              e.Model,
+			"model":              e.ModelID,
 			"input_tokens":       e.InputTokens,
 			"output_tokens":      e.OutputTokens,
 			"tokens_used":        e.TotalTokens,
