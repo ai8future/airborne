@@ -514,11 +514,15 @@ func (r *Repository) ResolveModel(ctx context.Context, id string) (*Model, error
 // Cross-tenant admin analytics (WithCrossTenant / no tenant GUC).
 // ---------------------------------------------------------------------------
 
-// GetActivityFeedAllTenants returns the latest assistant messages across all
+// GetActivityFeedAllTenants returns the latest assistant messages across
 // tenants for the admin dashboard, newest first. It reads
 // airborne_chat_messages directly under WithCrossTenant (a single query, no
-// per-tenant UNION); tenant_id comes from each row.
-func (r *Repository) GetActivityFeedAllTenants(ctx context.Context, limit int) ([]ActivityEntry, error) {
+// per-tenant UNION); tenant_id comes from each row. A non-empty tenantFilter
+// scopes the feed to that tenant SQL-side — the predicate is applied before
+// LIMIT, so a sparse tenant still gets up to limit of its own rows even when
+// the global newest rows all belong to busier tenants. An empty tenantFilter
+// returns all tenants.
+func (r *Repository) GetActivityFeedAllTenants(ctx context.Context, tenantFilter string, limit int) ([]ActivityEntry, error) {
 	var out []ActivityEntry
 	err := r.client.WithCrossTenant(ctx, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
@@ -543,8 +547,9 @@ func (r *Repository) GetActivityFeedAllTenants(ctx context.Context, limit int) (
 				 FROM airborne_chat_messages WHERE chat_id = m.chat_id) AS chat_cost_usd
 			FROM airborne_chat_messages m
 			WHERE m.role = 'assistant'
+			  AND ($1 = '' OR m.tenant_id = $1)
 			ORDER BY m.created_at DESC
-			LIMIT $1`, limit)
+			LIMIT $2`, tenantFilter, limit)
 		if err != nil {
 			return fmt.Errorf("activity feed (all tenants): %w", err)
 		}

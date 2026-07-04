@@ -194,25 +194,12 @@ func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	var entries []db.ActivityEntry
-	var err error
-
 	// Cross-tenant admin read: a single WithCrossTenant query with tenant_id
-	// coming from each row (no per-tenant UNION). When a tenant_id filter is
-	// supplied we scope the feed to that tenant in-process — the dashboard's
-	// primary view is the unfiltered, all-tenants feed.
+	// coming from each row (no per-tenant UNION). An optional tenant_id query
+	// param is pushed down as a SQL-side predicate applied before LIMIT, so a
+	// sparse tenant still gets up to limit of its own rows ("" = all tenants).
 	baseRepo := db.NewRepository(s.dbClient)
-	entries, err = baseRepo.GetActivityFeedAllTenants(ctx, limit)
-	if err == nil && tenantID != "" {
-		filtered := make([]db.ActivityEntry, 0, len(entries))
-		for _, e := range entries {
-			if e.TenantID == tenantID {
-				filtered = append(filtered, e)
-			}
-		}
-		entries = filtered
-	}
-
+	entries, err := baseRepo.GetActivityFeedAllTenants(ctx, tenantID, limit)
 	if err != nil {
 		slog.Error("failed to fetch activity", "error", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -744,10 +731,12 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	if s.dbClient != nil && req.TenantID != "" {
 		repo, repoErr := s.dbClient.TenantRepository(req.TenantID)
 		if repoErr == nil {
-			// Load the chat's active branch (root-first). Progressive
-			// compression below caps the history that is actually forwarded.
+			// Load the chat's active branch (root-first), capped to the most
+			// recent messages (the old GetMessages bound). Progressive
+			// compression below further caps what is actually forwarded.
 			dbMessages, msgErr := repo.GetActiveBranch(r.Context(), threadUUID.String())
 			if msgErr == nil && len(dbMessages) > 0 {
+				dbMessages = capHistory(dbMessages, maxAdminHistoryMessages)
 				originalMessageCount = len(dbMessages)
 				conversationHistory = buildCompressedHistory(dbMessages, &previousResponseID)
 				slog.Info("loaded conversation history",
@@ -847,6 +836,20 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(chatResp)
+}
+
+// maxAdminHistoryMessages caps how much of a chat's active branch the admin
+// chat endpoints load as model context, matching the old GetMessages(..., 50)
+// bound that predates the relational migration.
+const maxAdminHistoryMessages = 50
+
+// capHistory returns the last n messages of a root-first active branch,
+// preserving order — i.e. the n most recent turns.
+func capHistory(branch []db.ChatMessage, n int) []db.ChatMessage {
+	if len(branch) > n {
+		return branch[len(branch)-n:]
+	}
+	return branch
 }
 
 // messageContentText extracts the plain-text body from a ChatMessage.Content
@@ -1181,13 +1184,15 @@ func (s *Server) handleChatWithFile(w http.ResponseWriter, r *http.Request, req 
 		return
 	}
 
-	// Load conversation history
+	// Load conversation history (active branch root-first, capped to the most
+	// recent messages — the old GetMessages bound).
 	var conversationHistory []provider.Message
 	if s.dbClient != nil && req.TenantID != "" {
 		repo, repoErr := s.dbClient.TenantRepository(req.TenantID)
 		if repoErr == nil {
 			dbMessages, msgErr := repo.GetActiveBranch(r.Context(), threadUUID.String())
 			if msgErr == nil && len(dbMessages) > 0 {
+				dbMessages = capHistory(dbMessages, maxAdminHistoryMessages)
 				for _, msg := range dbMessages {
 					conversationHistory = append(conversationHistory, provider.Message{
 						Role:    msg.Role,

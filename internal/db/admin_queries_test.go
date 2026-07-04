@@ -58,7 +58,7 @@ func TestGetActivityFeedAllTenants_CrossTenant(t *testing.T) {
 	_, _, ai8Asst := seedTurn(t, c, "ai8", "hi from ai8", "reply ai8", ChatMessageStatusComplete)
 	_, _, e4aAsst := seedTurn(t, c, "email4ai", "hi from e4a", "reply e4a", ChatMessageStatusError)
 
-	entries, err := NewRepository(c).GetActivityFeedAllTenants(ctx, 50)
+	entries, err := NewRepository(c).GetActivityFeedAllTenants(ctx, "", 50)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,6 +99,55 @@ func TestGetActivityFeedAllTenants_CrossTenant(t *testing.T) {
 	}
 	if bad.Status != "failed" {
 		t.Errorf("email4ai (error) status = %q, want failed", bad.Status)
+	}
+}
+
+// TestGetActivityFeedAllTenants_TenantFilterBeforeLimit proves the tenant
+// filter is applied SQL-side BEFORE the limit: with a busy tenant owning all of
+// the global newest rows, a limit-sized unfiltered feed contains none of the
+// sparse tenant's rows, yet the tenant-filtered call still returns them (the
+// regression: filtering the limit most-recent rows in-process returned zero).
+func TestGetActivityFeedAllTenants_TenantFilterBeforeLimit(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+
+	// Sparse tenant first (oldest row), then a busy tenant with enough newer
+	// turns to fully occupy the global top-limit window. Each PersistTurn is
+	// its own transaction, so created_at strictly increases across seeds.
+	_, _, sparseAsst := seedTurn(t, c, "email4ai", "old question", "old reply", ChatMessageStatusComplete)
+	const limit = 3
+	for i := 0; i < limit; i++ {
+		seedTurn(t, c, "ai8", "busy question", "busy reply", ChatMessageStatusComplete)
+	}
+
+	// Precondition for the regression scenario: the unfiltered top-limit rows
+	// are all the busy tenant's.
+	global, err := NewRepository(c).GetActivityFeedAllTenants(ctx, "", limit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(global) != limit {
+		t.Fatalf("unfiltered feed returned %d rows, want %d", len(global), limit)
+	}
+	for _, e := range global {
+		if e.TenantID != "ai8" {
+			t.Fatalf("precondition broken: global top-%d contains tenant %q, want only ai8", limit, e.TenantID)
+		}
+	}
+
+	// The sparse tenant's rows must still be reachable through the filter.
+	filtered, err := NewRepository(c).GetActivityFeedAllTenants(ctx, "email4ai", limit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 1 {
+		t.Fatalf("email4ai-filtered feed returned %d rows, want 1", len(filtered))
+	}
+	if filtered[0].ID.String() != sparseAsst {
+		t.Errorf("filtered row id = %s, want %s (sparse tenant's assistant message)", filtered[0].ID, sparseAsst)
+	}
+	if filtered[0].TenantID != "email4ai" {
+		t.Errorf("filtered row tenant = %q, want email4ai", filtered[0].TenantID)
 	}
 }
 
