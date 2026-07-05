@@ -1,20 +1,17 @@
 # Airborne
 
-A multi-provider AI gateway that exposes a unified gRPC API for routing LLM requests across 20+ providers. Handles multi-tenancy, authentication, rate limiting, RAG, image generation, conversation persistence, and automatic failover — so consumers talk to one API regardless of the underlying model or vendor.
+A multi-provider AI gateway that exposes a unified gRPC API for chat generation, provider selection, admin health checks, and RAG file-store operations. The runtime chat path currently routes generation requests to OpenAI, Gemini, and Anthropic; the repo also contains OpenAI-compatible provider client packages and proto enum values for planned expansion. Airborne handles multi-tenancy, authentication, rate limiting, RAG, image generation, conversation persistence, and automatic failover for the providers wired into the runtime path.
 
-## Supported Providers
+## Provider Status
 
-| Tier | Providers |
-|------|-----------|
-| **Core** | OpenAI, Gemini, Anthropic |
-| **Tier 1** | DeepSeek, Grok/xAI, Mistral, Perplexity |
-| **Tier 2** | Cohere, Bedrock*, Watsonx*, Databricks* |
-| **Tier 3** | Together AI, Fireworks AI, OpenRouter, DeepInfra, Hyperbolic |
-| **Tier 4** | Nebius, Cerebras, Upstage, HuggingFace*, MiniMax* |
+| Status | Providers | Current behavior |
+|--------|-----------|------------------|
+| **Runtime chat providers** | OpenAI, Gemini, Anthropic | Wired into `AirborneService.GenerateReply`, streaming, tenant config, and failover. |
+| **Runtime file-store providers** | Internal/Qdrant, OpenAI Vector Stores, Gemini FileSearchStore | Exposed by `FileService` only when `RAG_ENABLED=true`. |
+| **Implemented client packages, not chat-routed yet** | DeepSeek, Grok/xAI, Mistral, Perplexity, Cohere, Together AI, Fireworks AI, OpenRouter, DeepInfra, Hyperbolic, Nebius, Cerebras, Upstage | Implement `provider.Provider` through the shared OpenAI-compatible client layer, but are not selected by `ChatService` today. |
+| **Proto placeholders without runtime clients** | Bedrock, Watsonx, Databricks, Baseten, HuggingFace, Predibase, Parasail, MiniMax | Reserved enum values; selecting them for `GenerateReply` is unsupported until a runtime client is wired in. |
 
-*Providers marked with \* are defined in the proto schema but not yet implemented.*
-
-Core providers use native SDKs. Most others use a shared OpenAI-compatible client layer, making it trivial to add new providers that expose an OpenAI-style API.
+Selecting anything other than OpenAI, Gemini, or Anthropic for `GenerateReply` currently returns an unknown-provider error.
 
 ## Architecture
 
@@ -25,32 +22,34 @@ Core providers use native SDKs. Most others use a shared OpenAI-compatible clien
   Clients ──gRPC──►  │  Recovery → Tracing → Metrics →      │
                      │  Logging → TenantInterceptor → Auth  │
                      │                                      │
-                     │  ┌─────────────┐ ┌───────────────┐   │
-                     │  │AirborneService│ │ AdminService  │   │
-                     │  │  GenerateReply│ │ Health/Ready  │   │
-                     │  │  Stream      │ │ Version       │   │
-                     │  │  SelectProvider│└───────────────┘   │
-                     │  └──────┬──────┘ ┌───────────────┐   │
-                     │         │        │ FileService    │   │
-                     │         ▼        │ (RAG stores)   │   │
-                     │  ┌─────────────┐ └───────────────┘   │
-                     │  │Provider Router│                    │
-                     │  └──────┬──────┘                     │
-                     └─────────┼────────────────────────────┘
-                               │
-          ┌────────────────────┼────────────────────┐
-          ▼                    ▼                     ▼
-   ┌────────────┐    ┌──────────────┐     ┌──────────────┐
-   │  OpenAI    │    │   Gemini     │     │  Anthropic   │
-   │  (native)  │    │  (native)    │     │  (native)    │
-   └────────────┘    └──────────────┘     └──────────────┘
-          ▼
-   ┌────────────────────────────────────────────────────┐
-   │      OpenAI-Compatible Layer (compat.Client)       │
-   │  DeepSeek, Grok, Mistral, Perplexity, Together,   │
-   │  Fireworks, OpenRouter, DeepInfra, Cohere,         │
-   │  Hyperbolic, Nebius, Cerebras, Upstage             │
-   └────────────────────────────────────────────────────┘
+                     │  ┌───────────────┐ ┌───────────────┐ │
+                     │  │AirborneService│ │ AdminService  │ │
+                     │  │Generate/Stream│ │ Health/Ready  │ │
+                     │  │SelectProvider │ │ Version       │ │
+                     │  └───────┬───────┘ └───────────────┘ │
+                     │          │       ┌─────────────────┐ │
+                     │          │       │ FileService     │ │
+                     │          │       │ RAG stores only │ │
+                     │          │       │ when RAG is on  │ │
+                     │          ▼       └─────────────────┘ │
+                     │  ┌───────────────────────────────┐   │
+                     │  │ChatService provider selection │   │
+                     │  └──────────────┬────────────────┘   │
+                     └─────────────────┼────────────────────┘
+                                       │
+          ┌────────────────────────────┼────────────────────────────┐
+          ▼                            ▼                            ▼
+   ┌────────────┐              ┌──────────────┐             ┌──────────────┐
+   │  OpenAI    │              │   Gemini     │             │  Anthropic   │
+   │  (native)  │              │  (native)    │             │  (native)    │
+   └────────────┘              └──────────────┘             └──────────────┘
+
+   ┌────────────────────────────────────────────────────────────────────┐
+   │ Provider client packages for future routing: compat.Client-based   │
+   │ DeepSeek, Grok, Mistral, Perplexity, Together, Fireworks,          │
+   │ OpenRouter, DeepInfra, Cohere, Hyperbolic, Nebius, Cerebras,       │
+   │ and Upstage clients.                                               │
+   └────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Supporting Services
@@ -75,17 +74,17 @@ Core providers use native SDKs. Most others use a shared OpenAI-compatible clien
 | `GenerateReplyStream` | Server-stream | Send a prompt, receive response tokens as they arrive |
 | `SelectProvider` | Unary | Determine which provider will handle a request based on content triggers, continuity, and user tier |
 
-Requests support: provider/model override, system prompts, conversation history, file search (RAG), web search, code execution, tool calling, structured output (JSON schema), inline images, temperature/top-p/max-tokens tuning.
+Requests support: provider/model override for the runtime chat providers, system prompts, conversation history, file search (RAG), web search, code execution, tool calling, structured output (JSON schema), inline images, and temperature/top-p/max-tokens tuning. Advanced feature support is provider-dependent; OpenAI and Gemini carry most of the feature-specific paths.
 
 ### AdminService
 
 | RPC | Description |
 |-----|-------------|
 | `Health` | Liveness check (no auth required) |
-| `Ready` | Dependency readiness (Redis, Qdrant, Ollama) |
+| `Ready` | Admin-gated dependency readiness; currently reports Redis when configured. Standard gRPC health and HTTP `/admin/healthz` cover database/RAG checks. |
 | `Version` | Build version, git commit, build time, Go version |
 
-### FileService (requires RAG)
+### FileService (registered only when RAG is enabled)
 
 | RPC | Description |
 |-----|-------------|
@@ -105,7 +104,7 @@ Each tenant gets isolated configuration:
 - **Provider API keys and models** with per-provider temperature, system prompts, and failover order
 - **Rate limits** (requests/min, requests/day, tokens/min)
 - **Image generation** settings (provider, triggers, models)
-- **Database isolation** via PostgreSQL Row-Level Security: shared tables (`airborne_chats`, `chat_message`, etc.) carry a `tenant_id` column, and every transaction sets the `airborne.tenant_id` GUC; RLS policies (`FORCE ROW LEVEL SECURITY`) scope all reads/writes to that tenant. Tenant existence/status is registry-backed (`airborne_tenants` table), not a hardcoded list.
+- **Database isolation** via PostgreSQL Row-Level Security: shared tables (`airborne_chats`, `airborne_chat_messages`, `airborne_files`, etc.) carry a `tenant_id` column, and every transaction sets the `airborne.tenant_id` GUC; RLS policies (`FORCE ROW LEVEL SECURITY`) scope all reads/writes to that tenant. Tenant existence/status is registry-backed (`airborne_tenants` table), not a hardcoded list.
 
 Tenant configs load from YAML/JSON files, Doppler API, or a frozen config snapshot.
 
@@ -216,7 +215,9 @@ For production deployments that shouldn't fetch secrets at runtime:
 
 ```bash
 # Resolve all secrets and write a static config snapshot
-./airborne-freeze
+./airborne-freeze              # tracked convenience binary
+# or, from source:
+go run ./cmd/airborne-freeze
 
 # Start with frozen config
 AIRBORNE_USE_FROZEN=true ./bin/airborne
@@ -237,22 +238,26 @@ go test -mod=mod -count=1 ./internal/db/
 This is currently the **only** verification that tenant data is actually isolated by
 Row-Level Security — treat a failure here as a release blocker.
 
-**CI status:** GitHub Actions currently cannot build this repo — the `chassis-go` local `replace`
-directives in `go.mod` point at sibling paths outside the checkout, so `go mod download` fails and
-the `docker-build` workflow is red on every run. Two paths to a green build: vendor the
-dependency tree (`go mod vendor` + build with `-mod=vendor`), or check out chassis-go (and its
-addons) as sibling repos in the workflow using org-scoped tokens.
+**CI/build caveat:** the checked-in Docker workflow must provide every local `replace` target from
+`go.mod`. It currently checks out `pricing_db`, while `chassis-go` and the chassis-go addons still
+resolve to sibling paths outside the checkout. To make CI builds self-contained, either vendor the
+dependency tree (`go mod vendor` + build with `-mod=vendor`) or check out chassis-go and its addons
+as sibling repos in the workflow using org-scoped tokens.
 
 ## CLI Tool
 
-`airborne-cli` provides admin and debugging commands:
+`airborne-cli` provides admin and debugging commands. `make build` only builds the server binary,
+so build or run the CLI explicitly. The CLI default URL is `http://localhost:50054`; with the
+checked-in server config, pass `--url http://localhost:8473` or set `AIRBORNE_ADMIN_URL`.
 
 ```bash
-airborne-cli health          # check server health
-airborne-cli activity        # recent activity feed
-airborne-cli test            # send a test generation request
-airborne-cli debug <msg-id>  # inspect full request/response for a message
-airborne-cli watch           # live activity monitoring
+go build -o bin/airborne-cli ./cmd/airborne-cli
+
+bin/airborne-cli --url http://localhost:8473 health          # check server health
+bin/airborne-cli --url http://localhost:8473 activity        # recent activity feed
+bin/airborne-cli --url http://localhost:8473 test            # send a test generation request
+bin/airborne-cli --url http://localhost:8473 debug <msg-id>  # inspect full request/response
+bin/airborne-cli --url http://localhost:8473 watch           # live activity monitoring
 ```
 
 ## Observability
@@ -283,8 +288,8 @@ api/proto/            Protobuf definitions
 gen/go/               Generated gRPC/proto code
 internal/
   server/             gRPC server construction
-  service/            Service implementations (chat, admin, files)
-  provider/           Provider interface + 16 implementations
+  service/            Service implementations (chat, admin, files, idempotency)
+  provider/           Provider interface, runtime clients, and compat-based client packages
   auth/               Authentication, API keys, rate limiting
   tenant/             Multi-tenant config loading
   config/             Global configuration
@@ -298,8 +303,9 @@ internal/
 configs/              YAML config and frozen snapshots
 migrations/           PostgreSQL schema migrations
 dashboard/            Next.js admin dashboard
-deployments/          Docker and systemd templates
-pkg/client/           Public Go client library
+Dockerfile            Production container build
+docker-compose.yml    Local compose wiring for Airborne and dependencies
+deploy/               Chassis deploy metadata
 ```
 
 ## Tech Stack
@@ -314,4 +320,4 @@ pkg/client/           Public Go client library
 | Tracing/Metrics | OpenTelemetry (OTLP export) |
 | Secrets | Doppler |
 | Proto Tooling | buf |
-| Shared Library | chassis-go v10 |
+| Shared Library | chassis-go/v11 v11.3.0 + chassis-go-addons v1.2.10 |
