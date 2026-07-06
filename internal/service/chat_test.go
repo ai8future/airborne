@@ -17,22 +17,22 @@ import (
 
 // mockProvider implements provider.Provider for testing.
 type mockProvider struct {
-	name             string
-	generateResult   provider.GenerateResult
-	generateErr      error
-	supportsFile     bool
-	supportsWeb      bool
-	supportsNative   bool
-	supportsStream   bool
-	generateCalls    []provider.GenerateParams
-	streamCalls      []provider.GenerateParams
+	name           string
+	generateResult provider.GenerateResult
+	generateErr    error
+	supportsFile   bool
+	supportsWeb    bool
+	supportsNative bool
+	supportsStream bool
+	generateCalls  []provider.GenerateParams
+	streamCalls    []provider.GenerateParams
 }
 
 func newMockProvider(name string) *mockProvider {
 	return &mockProvider{
-		name:          name,
-		supportsFile:  true,
-		supportsWeb:   true,
+		name:           name,
+		supportsFile:   true,
+		supportsWeb:    true,
 		supportsStream: true,
 		generateResult: provider.GenerateResult{
 			Text:       "Mock response",
@@ -176,8 +176,8 @@ func TestHasCustomBaseURL_MultipleConfigs(t *testing.T) {
 	req := &pb.GenerateReplyRequest{
 		UserInput: "test",
 		ProviderConfigs: map[string]*pb.ProviderConfig{
-			"openai":  {Model: "gpt-4"},
-			"gemini":  {BaseUrl: "https://custom.gemini.com"},
+			"openai":    {Model: "gpt-4"},
+			"gemini":    {BaseUrl: "https://custom.gemini.com"},
 			"anthropic": {Model: "claude-3"},
 		},
 	}
@@ -402,6 +402,27 @@ func TestPrepareRequest_HistoryTooLong(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "history") {
 		t.Errorf("expected error about history, got: %v", err)
+	}
+}
+
+func TestPrepareRequest_HistoryMessageTooLarge(t *testing.T) {
+	svc := createChatServiceWithMocks(newMockProvider("openai"), newMockProvider("gemini"), newMockProvider("anthropic"), nil)
+	tenantCfg := createTestTenantConfig("openai")
+	ctx := ctxWithChatPermissionAndTenant("test-client", tenantCfg)
+
+	req := &pb.GenerateReplyRequest{
+		UserInput: "Hello",
+		ConversationHistory: []*pb.Message{
+			{Role: "user", Content: strings.Repeat("x", validation.MaxHistoryMessageBytes+1)},
+		},
+	}
+
+	_, err := svc.prepareRequest(ctx, req)
+	if err == nil {
+		t.Fatal("expected error for oversized history message")
+	}
+	if !strings.Contains(err.Error(), "conversation_history message") {
+		t.Errorf("expected error about history message size, got: %v", err)
 	}
 }
 

@@ -18,6 +18,12 @@ const (
 	// MaxHistoryCount is the maximum number of conversation history messages
 	MaxHistoryCount = 100
 
+	// MaxHistoryMessageBytes is the maximum size of a single conversation history message.
+	MaxHistoryMessageBytes = 100 * 1024
+
+	// MaxHistoryTotalBytes is the maximum combined size of all conversation history content.
+	MaxHistoryTotalBytes = 512 * 1024
+
 	// MaxMetadataEntries is the maximum number of metadata key-value pairs
 	MaxMetadataEntries = 50
 
@@ -32,13 +38,15 @@ const (
 )
 
 var (
-	ErrUserInputTooLarge     = errors.New("user_input exceeds maximum size")
-	ErrInstructionsTooLarge  = errors.New("instructions exceed maximum size")
-	ErrHistoryTooLong        = errors.New("conversation_history exceeds maximum length")
-	ErrMetadataTooLarge      = errors.New("metadata exceeds maximum entries")
-	ErrMetadataKeyTooLarge   = errors.New("metadata key exceeds maximum size")
-	ErrMetadataValueTooLarge = errors.New("metadata value exceeds maximum size")
-	ErrInvalidRequestID      = errors.New("invalid request_id format")
+	ErrUserInputTooLarge      = errors.New("user_input exceeds maximum size")
+	ErrInstructionsTooLarge   = errors.New("instructions exceed maximum size")
+	ErrHistoryTooLong         = errors.New("conversation_history exceeds maximum length")
+	ErrHistoryMessageTooLarge = errors.New("conversation_history message exceeds maximum size")
+	ErrHistoryContentTooLarge = errors.New("conversation_history total content exceeds maximum size")
+	ErrMetadataTooLarge       = errors.New("metadata exceeds maximum entries")
+	ErrMetadataKeyTooLarge    = errors.New("metadata key exceeds maximum size")
+	ErrMetadataValueTooLarge  = errors.New("metadata value exceeds maximum size")
+	ErrInvalidRequestID       = errors.New("invalid request_id format")
 )
 
 // ValidateGenerateRequest validates size limits for a generate request
@@ -55,6 +63,25 @@ func ValidateGenerateRequest(userInput, instructions string, historyCount int) e
 		return fmt.Errorf("%w: %d messages (max %d)", ErrHistoryTooLong, historyCount, MaxHistoryCount)
 	}
 
+	return nil
+}
+
+// ValidateHistoryContents validates per-message and aggregate size limits for
+// conversation history content. ValidateGenerateRequest enforces the message
+// count; this closes the bypass where a small number of very large history
+// entries could exceed the intended prompt/body limits.
+func ValidateHistoryContents(contents []string) error {
+	var total int
+	for i, content := range contents {
+		size := len(content)
+		if size > MaxHistoryMessageBytes {
+			return fmt.Errorf("%w: message %d is %d bytes (max %d)", ErrHistoryMessageTooLarge, i, size, MaxHistoryMessageBytes)
+		}
+		total += size
+		if total > MaxHistoryTotalBytes {
+			return fmt.Errorf("%w: %d bytes (max %d)", ErrHistoryContentTooLarge, total, MaxHistoryTotalBytes)
+		}
+	}
 	return nil
 }
 

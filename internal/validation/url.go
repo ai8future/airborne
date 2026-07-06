@@ -28,6 +28,9 @@ var (
 
 	// ErrMetadataEndpoint is returned when the URL targets a cloud metadata endpoint
 	ErrMetadataEndpoint = errors.New("cloud metadata endpoints are not allowed")
+
+	// ErrUserInfoNotAllowed is returned when a URL embeds credentials.
+	ErrUserInfoNotAllowed = errors.New("URL userinfo credentials are not allowed")
 )
 
 // dangerousProtocols contains protocols that should never be allowed
@@ -92,6 +95,13 @@ func ValidateProviderURL(rawURL string) error {
 
 	// Normalize the scheme to lowercase
 	scheme := strings.ToLower(parsedURL.Scheme)
+
+	// Credentials in URLs are easy to leak through logs, SDK errors, redirects,
+	// and debug payloads. Provider base URLs must keep credentials in headers or
+	// explicit API-key fields instead.
+	if parsedURL.User != nil {
+		return fmt.Errorf("%w", ErrUserInfoNotAllowed)
+	}
 
 	// Check for dangerous protocols
 	if dangerousProtocols[scheme] {

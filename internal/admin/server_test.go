@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/ai8future/chassis-go/v11/guard"
 
 	"github.com/ai8future/airborne/internal/db"
 )
@@ -167,6 +170,109 @@ func TestHandleHealth_NoDB(t *testing.T) {
 	}
 }
 
+func TestAdminHTTPAuthMiddleware_PublicHealthNoToken(t *testing.T) {
+	s := &Server{authToken: "secret-token"}
+	handler := s.requireHTTPAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/health", nil)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+}
+
+func TestAdminHTTPAuthMiddleware_RejectsProtectedWithoutToken(t *testing.T) {
+	s := &Server{authToken: "secret-token"}
+	handler := s.requireHTTPAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/activity", nil)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body=%s", w.Code, http.StatusUnauthorized, w.Body.String())
+	}
+}
+
+func TestAdminHTTPAuthMiddleware_RejectsProtectedWithWrongToken(t *testing.T) {
+	s := &Server{authToken: "secret-token"}
+	handler := s.requireHTTPAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/activity", nil)
+	req.Header.Set("Authorization", "Bearer wrong-token")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body=%s", w.Code, http.StatusUnauthorized, w.Body.String())
+	}
+}
+
+func TestAdminHTTPAuthMiddleware_AllowsProtectedWithBearerToken(t *testing.T) {
+	s := &Server{authToken: "secret-token"}
+	handler := s.requireHTTPAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "reached"})
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/activity", nil)
+	req.Header.Set("Authorization", "Bearer secret-token")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if resp["status"] != "reached" {
+		t.Fatalf("expected authenticated request to reach handler, got body=%v", resp)
+	}
+}
+
+func TestAdminHTTP_CORSUsesConfiguredOrigins(t *testing.T) {
+	handler := guard.CORS(guard.CORSConfig{
+		AllowOrigins: adminAllowedOrigins([]string{"https://dashboard.example.com"}),
+		AllowMethods: []string{"GET", "POST", "OPTIONS"},
+		AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization", "X-API-Key"},
+		MaxAge:       10 * time.Minute,
+	})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodOptions, "/admin/activity", nil)
+	req.Header.Set("Origin", "https://evil.example.com")
+	req.Header.Set("Access-Control-Request-Method", "GET")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("unconfigured origin got CORS allow header %q", got)
+	}
+
+	req = httptest.NewRequest(http.MethodOptions, "/admin/activity", nil)
+	req.Header.Set("Origin", "https://dashboard.example.com")
+	req.Header.Set("Access-Control-Request-Method", "GET")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "https://dashboard.example.com" {
+		t.Fatalf("configured origin CORS allow header = %q, want %q", got, "https://dashboard.example.com")
+	}
+}
+
 func TestHandleVersion(t *testing.T) {
 	s := &Server{
 		version: VersionInfo{
@@ -217,6 +323,30 @@ func TestHandleActivity_NoDB(t *testing.T) {
 
 	if resp["error"] != "database not configured" {
 		t.Errorf("error = %q, want %q", resp["error"], "database not configured")
+	}
+}
+
+func TestHandleChat_InvalidRequestID(t *testing.T) {
+	s := &Server{}
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/chat", strings.NewReader(`{
+		"thread_id": "550e8400-e29b-41d4-a716-446655440000",
+		"message": "hello",
+		"request_id": "bad<script>"
+	}`))
+	w := httptest.NewRecorder()
+
+	s.handleChat(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body=%s", w.Code, http.StatusBadRequest, w.Body.String())
+	}
+	var resp ChatResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if resp.Error != "invalid request_id format" {
+		t.Fatalf("error = %q, want invalid request_id format", resp.Error)
 	}
 }
 

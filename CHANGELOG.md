@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.10.2] - 2026-07-06
+
+### Security — Admin/dashboard hardening audit
+- Closed the unauthenticated HTTP admin and dashboard proxy surfaces: protected admin routes now require bearer/API-key credentials, dashboard API routes fail closed without a configured token, cookie auth gets same-origin CSRF checks, and admin CORS is explicit-origin only.
+- Removed raw stored HTML injection from the dashboard conversation view and restricted dashboard citation links to safe `http`/`https` URLs.
+- Hardened provider/file/RAG boundaries with admin-only custom FileService base URLs, stricter provider URL validation, escaped Gemini/Qdrant resource paths, escaped Doppler/Gemini query construction, and capped provider/Docbox error-body reads.
+- Added DoS controls for admin uploads, request history, HTTP capture buffers, multipart memory, CLI/admin path/query construction, and int32 narrowing.
+- Updated README operator guidance for admin/dashboard/CLI auth and moved the dashboard to a patched Next.js canary with clean npm audit results.
+
+Agent: Codex:gpt-5.5-high
+
 ## [1.10.1] - 2026-07-04
 
 ### Changed — Final review and verification

@@ -20,12 +20,20 @@ func TestNewQdrantStore_Defaults(t *testing.T) {
 
 func TestNewQdrantStore_CustomConfig(t *testing.T) {
 	store := NewQdrantStore(QdrantConfig{
-		BaseURL: "http://custom:1234",
+		BaseURL: "http://localhost:1234",
 		Timeout: 60 * time.Second,
 	})
 
-	if store.baseURL != "http://custom:1234" {
+	if store.baseURL != "http://localhost:1234" {
 		t.Errorf("expected custom baseURL, got %s", store.baseURL)
+	}
+}
+
+func TestNewQdrantStore_InvalidBaseURLFallsBack(t *testing.T) {
+	store := NewQdrantStore(QdrantConfig{BaseURL: "file:///etc/passwd"})
+
+	if store.baseURL != "http://localhost:6333" {
+		t.Errorf("expected fallback baseURL, got %s", store.baseURL)
 	}
 }
 
@@ -62,6 +70,25 @@ func TestQdrantStore_CreateCollection_Success(t *testing.T) {
 
 	if err != nil {
 		t.Fatalf("CreateCollection failed: %v", err)
+	}
+}
+
+func TestQdrantStore_EscapesCollectionPathSegment(t *testing.T) {
+	var gotPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.EscapedPath()
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{"result": map[string]any{}})
+	}))
+	defer server.Close()
+
+	store := NewQdrantStore(QdrantConfig{BaseURL: server.URL})
+	err := store.CreateCollection(context.Background(), "safe/../points/delete", 768)
+	if err != nil {
+		t.Fatalf("CreateCollection failed: %v", err)
+	}
+	if gotPath != "/collections/safe%2F..%2Fpoints%2Fdelete" {
+		t.Fatalf("path = %q, want escaped collection segment", gotPath)
 	}
 }
 

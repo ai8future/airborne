@@ -137,6 +137,9 @@ func (s *ChatService) prepareRequest(ctx context.Context, req *pb.GenerateReplyR
 	); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+	if err := validation.ValidateHistoryContents(conversationHistoryContents(req.ConversationHistory)); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 
 	// Validate metadata
 	if err := validation.ValidateMetadata(req.Metadata); err != nil {
@@ -265,6 +268,18 @@ func validateCustomBaseURLs(req *pb.GenerateReplyRequest) error {
 		}
 	}
 	return nil
+}
+
+func conversationHistoryContents(msgs []*pb.Message) []string {
+	contents := make([]string, 0, len(msgs))
+	for _, msg := range msgs {
+		if msg == nil {
+			contents = append(contents, "")
+			continue
+		}
+		contents = append(contents, msg.Content)
+	}
+	return contents
 }
 
 // GenerateReply generates a completion. When the request carries an
@@ -550,7 +565,7 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 				Chunk: &pb.GenerateReplyChunk_TextDelta{
 					TextDelta: &pb.TextDelta{
 						Text:  chunk.Text,
-						Index: int32(chunk.Index),
+						Index: nonNegativeIntToInt32Clamped(chunk.Index),
 					},
 				},
 			}
@@ -952,7 +967,7 @@ func (s *ChatService) buildResponse(result provider.GenerateResult, providerName
 
 	// Add grounding cost tracking
 	if result.GroundingQueries > 0 {
-		resp.GroundingQueries = int32(result.GroundingQueries)
+		resp.GroundingQueries = nonNegativeIntToInt32Clamped(result.GroundingQueries)
 
 		// For Gemini with structured usage data, use CalculateGeminiCost for accurate grounding cost
 		if providerName == "gemini" && result.Usage != nil {
@@ -1091,8 +1106,8 @@ func convertCitation(c provider.Citation) *pb.Citation {
 		FileId:     c.FileID,
 		Filename:   c.Filename,
 		Snippet:    c.Snippet,
-		StartIndex: int32(c.StartIndex),
-		EndIndex:   int32(c.EndIndex),
+		StartIndex: nonNegativeIntToInt32Clamped(c.StartIndex),
+		EndIndex:   nonNegativeIntToInt32Clamped(c.EndIndex),
 		BrokenLink: c.BrokenLink,
 	}
 }
@@ -1155,7 +1170,7 @@ func convertCodeExecution(ce provider.CodeExecutionResult) *pb.CodeExecutionResu
 		Language: ce.Language,
 		Stdout:   ce.Stdout,
 		Stderr:   ce.Stderr,
-		ExitCode: int32(ce.ExitCode),
+		ExitCode: intToInt32Clamped(ce.ExitCode),
 	}
 	for _, f := range ce.Files {
 		result.Files = append(result.Files, &pb.GeneratedFile{
@@ -1173,8 +1188,8 @@ func convertGeneratedImage(img provider.GeneratedImage) *pb.GeneratedImage {
 		MimeType:  img.MIMEType,
 		Prompt:    img.Prompt,
 		AltText:   img.AltText,
-		Width:     int32(img.Width),
-		Height:    int32(img.Height),
+		Width:     nonNegativeIntToInt32Clamped(img.Width),
+		Height:    nonNegativeIntToInt32Clamped(img.Height),
 		ContentId: img.ContentID,
 	}
 }
@@ -1316,7 +1331,7 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 	// Run persistence in background goroutine
 	go func() {
 		// Create a new context with timeout for the background operation
-		persistCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cancel()
 
 		// Get tenant-specific repository
@@ -1460,7 +1475,7 @@ func (s *ChatService) persistFailedRequest(ctx context.Context, req *pb.Generate
 
 	// Run persistence in background goroutine
 	go func() {
-		persistCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cancel()
 
 		repo, err := s.dbClient.TenantRepository(tenantID)

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,6 +63,9 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 
 	opts := pgkit.Options{DSN: dbURL}
 	if cfg.MaxConnections > 0 {
+		if cfg.MaxConnections > math.MaxInt32 {
+			return nil, fmt.Errorf("database max_connections exceeds supported maximum %d", math.MaxInt32)
+		}
 		opts.MaxConns = int32(cfg.MaxConnections)
 	}
 

@@ -6,14 +6,15 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
 
-	chassis "github.com/ai8future/chassis-go/v11"
 	"github.com/ai8future/airborne/internal/config/envutil"
+	chassis "github.com/ai8future/chassis-go/v11"
 	"github.com/ai8future/chassis-go/v11/call"
 	"github.com/ai8future/chassis-go/v11/kafkakit"
 )
@@ -42,7 +43,6 @@ type Config struct {
 
 	// Event bus (kafkakit) — enables heartbeatkit + announcekit automatically.
 	Kafkakit KafkakitConfig `yaml:"kafkakit"`
-
 }
 
 // KafkakitConfig holds event bus configuration.
@@ -74,8 +74,9 @@ type DatabaseConfig struct {
 
 // AdminConfig holds HTTP admin server settings
 type AdminConfig struct {
-	Enabled bool `yaml:"enabled"`
-	Port    int  `yaml:"port"`
+	Enabled        bool     `yaml:"enabled"`
+	Port           int      `yaml:"port"`
+	AllowedOrigins []string `yaml:"allowed_origins"`
 }
 
 // RAGConfig holds RAG (Retrieval-Augmented Generation) settings
@@ -246,6 +247,12 @@ func defaultConfig() *Config {
 		Admin: AdminConfig{
 			Enabled: false,
 			Port:    DefaultAdminPort,
+			AllowedOrigins: []string{
+				"http://localhost:3000",
+				"http://127.0.0.1:3000",
+				"http://localhost:4848",
+				"http://127.0.0.1:4848",
+			},
 		},
 		Auth: AuthConfig{
 			AuthMode: "static",
@@ -347,6 +354,9 @@ func (c *Config) applyEnvOverrides() {
 	// Admin HTTP server configuration
 	c.Admin.Enabled = envutil.GetBoolEnv("ADMIN_ENABLED", c.Admin.Enabled)
 	c.Admin.Port = envutil.GetIntEnv("ADMIN_PORT", c.Admin.Port)
+	if origins := splitCSVEnv("ADMIN_ALLOWED_ORIGINS"); len(origins) > 0 {
+		c.Admin.AllowedOrigins = origins
+	}
 
 	// Auth configuration
 	c.Auth.AdminToken = envutil.GetStringEnv("AIRBORNE_ADMIN_TOKEN", c.Auth.AdminToken)
@@ -411,10 +421,29 @@ func expandEnv(s string) string {
 	return os.ExpandEnv(s)
 }
 
+func splitCSVEnv(key string) []string {
+	value := os.Getenv(key)
+	if value == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			result = append(result, part)
+		}
+	}
+	return result
+}
+
 // validate checks configuration validity
 func (c *Config) validate() error {
 	if c.Server.GRPCPort <= 0 || c.Server.GRPCPort > 65535 {
 		return fmt.Errorf("invalid grpc_port: %d", c.Server.GRPCPort)
+	}
+	if err := validateAdminAllowedOrigins(c.Admin.AllowedOrigins); err != nil {
+		return err
 	}
 
 	if c.TLS.Enabled {
@@ -438,6 +467,29 @@ func (c *Config) validate() error {
 	return nil
 }
 
+func validateAdminAllowedOrigins(origins []string) error {
+	for _, origin := range origins {
+		origin = strings.TrimSpace(origin)
+		if origin == "" {
+			continue
+		}
+		if origin == "*" {
+			return fmt.Errorf("admin.allowed_origins wildcard is not allowed")
+		}
+		parsed, err := url.Parse(origin)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			return fmt.Errorf("invalid admin.allowed_origins entry %q", origin)
+		}
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			return fmt.Errorf("invalid admin.allowed_origins scheme %q", parsed.Scheme)
+		}
+		if parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.User != nil {
+			return fmt.Errorf("admin.allowed_origins entry %q must be an origin only", origin)
+		}
+	}
+	return nil
+}
+
 // fetchDopplerSecret fetches a single secret from Doppler.
 // Returns empty string if DOPPLER_TOKEN is not set or on any error.
 // Note: This runs before logger is configured, so we use fmt.Fprintf for errors.
@@ -452,10 +504,18 @@ func fetchDopplerSecret(project, secretName string) string {
 		config = "prod"
 	}
 
-	url := fmt.Sprintf("https://api.doppler.com/v3/configs/config/secrets?project=%s&config=%s", project, config)
+	endpoint, err := url.Parse("https://api.doppler.com/v3/configs/config/secrets")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "doppler: invalid endpoint: %v\n", err)
+		return ""
+	}
+	query := endpoint.Query()
+	query.Set("project", project)
+	query.Set("config", config)
+	endpoint.RawQuery = query.Encode()
 
 	client := call.New(call.WithTimeout(10*time.Second), call.WithRetry(3, 1*time.Second))
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest(http.MethodGet, endpoint.String(), nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "doppler: request creation failed: %v\n", err)
 		return ""

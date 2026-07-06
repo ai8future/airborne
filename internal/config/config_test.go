@@ -450,6 +450,7 @@ func TestLoad_MultipleEnvOverrides(t *testing.T) {
 	t.Setenv("REDIS_PASSWORD", "mypassword")
 	t.Setenv("REDIS_DB", "3")
 	t.Setenv("AIRBORNE_ADMIN_TOKEN", "supersecret")
+	t.Setenv("ADMIN_ALLOWED_ORIGINS", "https://dashboard.example.com, https://ops.example.com ")
 	t.Setenv("AIRBORNE_LOG_LEVEL", "error")
 	t.Setenv("AIRBORNE_LOG_FORMAT", "text")
 
@@ -476,11 +477,34 @@ func TestLoad_MultipleEnvOverrides(t *testing.T) {
 	if cfg.Auth.AdminToken != "supersecret" {
 		t.Errorf("expected Auth.AdminToken supersecret, got %s", cfg.Auth.AdminToken)
 	}
+	if len(cfg.Admin.AllowedOrigins) != 2 ||
+		cfg.Admin.AllowedOrigins[0] != "https://dashboard.example.com" ||
+		cfg.Admin.AllowedOrigins[1] != "https://ops.example.com" {
+		t.Errorf("expected Admin.AllowedOrigins env override, got %#v", cfg.Admin.AllowedOrigins)
+	}
 	if cfg.Logging.Level != "error" {
 		t.Errorf("expected Logging.Level error, got %s", cfg.Logging.Level)
 	}
 	if cfg.Logging.Format != "text" {
 		t.Errorf("expected Logging.Format text, got %s", cfg.Logging.Format)
+	}
+}
+
+func TestLoad_AdminAllowedOriginsRejectsWildcard(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte(`
+admin:
+  allowed_origins:
+    - "*"
+`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	t.Setenv("AIRBORNE_CONFIG", cfgPath)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected wildcard admin origin to be rejected")
 	}
 }
 

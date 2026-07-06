@@ -4,6 +4,7 @@ package admin
 import (
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -25,6 +26,7 @@ import (
 	"github.com/ai8future/airborne/internal/provider/gemini"
 	"github.com/ai8future/airborne/internal/redis"
 	"github.com/ai8future/airborne/internal/tenant"
+	"github.com/ai8future/airborne/internal/validation"
 	pricing_db "github.com/ai8future/pricing_db"
 	"github.com/google/uuid"
 	"google.golang.org/genai"
@@ -48,6 +50,11 @@ type Server struct {
 	version     VersionInfo
 }
 
+const (
+	maxAdminUploadBytes       int64 = 100 << 20
+	maxAdminUploadMemoryBytes int64 = 8 << 20
+)
+
 // VersionInfo holds version information for the service.
 type VersionInfo struct {
 	Version   string `json:"version"`
@@ -57,13 +64,14 @@ type VersionInfo struct {
 
 // Config holds admin server configuration.
 type Config struct {
-	Port         int
-	GRPCAddr     string                                 // Address of the gRPC server (e.g., "localhost:50051")
-	AuthToken    string                                 // Auth token for gRPC calls
-	TenantMgr    *tenant.Manager                        // Tenant manager for accessing API keys
-	RedisClient  *redis.Client                          // Redis client for idempotency
-	Version      VersionInfo                            // Version information
-	HealthChecks map[string]func(context.Context) error // Additional health checks (e.g., RAG dependencies)
+	Port           int
+	GRPCAddr       string                                 // Address of the gRPC server (e.g., "localhost:50051")
+	AuthToken      string                                 // Auth token for gRPC calls
+	AllowedOrigins []string                               // Browser origins allowed for CORS
+	TenantMgr      *tenant.Manager                        // Tenant manager for accessing API keys
+	RedisClient    *redis.Client                          // Redis client for idempotency
+	Version        VersionInfo                            // Version information
+	HealthChecks   map[string]func(context.Context) error // Additional health checks (e.g., RAG dependencies)
 }
 
 // NewServer creates a new admin HTTP server.
@@ -115,20 +123,27 @@ func NewServer(dbClient *db.Client, cfg Config) *Server {
 	maxBody := guard.MaxBody(2 * 1024 * 1024) // 2 MB for JSON POST endpoints
 	mux.Handle("/admin/test", maxBody(http.HandlerFunc(s.handleTest)))
 	mux.Handle("/admin/chat", maxBody(http.HandlerFunc(s.handleChat)))
-	mux.HandleFunc("/admin/upload", s.handleUpload) // upload has its own 100MB limit
+	mux.Handle("/admin/upload", guard.MaxBody(maxAdminUploadBytes)(http.HandlerFunc(s.handleUpload)))
 
-	// Stack chassis-go httpkit middleware: Recovery → CORS → Tracing → RequestID → Timeout → Logging → routes
+	// Stack chassis-go httpkit middleware: Recovery → CORS → Auth → Tracing → RequestID → Timeout → Logging → routes
+	//
+	// SECURITY: the HTTP admin server exposes database inspection and write-capable
+	// proxy endpoints. It must never rely on "only bind it internally" as the
+	// access-control boundary. Health probes stay public; all other /admin routes
+	// require the configured admin bearer token before a handler can reach local
+	// DB reads or proxy a privileged gRPC request with s.authToken.
 	logger := slog.Default()
 	handler := httpkit.Recovery(logger)(
 		guard.CORS(guard.CORSConfig{
-			AllowOrigins: []string{"*"},
+			AllowOrigins: adminAllowedOrigins(cfg.AllowedOrigins),
 			AllowMethods: []string{"GET", "POST", "OPTIONS"},
-			AllowHeaders: []string{"Content-Type", "Authorization"},
+			AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization", "X-API-Key"},
+			MaxAge:       10 * time.Minute,
 		})(
 			httpkit.Tracing()(
 				httpkit.RequestID(
 					guard.Timeout(30 * time.Second)(
-						httpkit.Logging(logger)(mux),
+						httpkit.Logging(logger)(s.requireHTTPAuth(mux)),
 					),
 				),
 			),
@@ -144,6 +159,87 @@ func NewServer(dbClient *db.Client, cfg Config) *Server {
 	}
 
 	return s
+}
+
+func adminAllowedOrigins(origins []string) []string {
+	cleaned := make([]string, 0, len(origins))
+	for _, origin := range origins {
+		origin = strings.TrimSpace(origin)
+		if origin == "*" {
+			slog.Warn("admin CORS wildcard origin ignored; configure explicit origins")
+			continue
+		}
+		if origin != "" {
+			cleaned = append(cleaned, origin)
+		}
+	}
+	if len(cleaned) > 0 {
+		return cleaned
+	}
+	return []string{
+		"http://localhost:3000",
+		"http://127.0.0.1:3000",
+		"http://localhost:4848",
+		"http://127.0.0.1:4848",
+	}
+}
+
+// requireHTTPAuth protects every non-health admin HTTP route with the same
+// static admin token used by the gRPC static authenticator. This closes the
+// accidental "admin HTTP as unauthenticated privileged proxy" class of bugs.
+func (s *Server) requireHTTPAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isPublicAdminPath(r.URL.Path) || r.Method == http.MethodOptions {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		if !constantTimeTokenEqual(extractHTTPAdminToken(r), s.authToken) {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="airborne-admin"`)
+			httpkit.JSONError(w, r, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func isPublicAdminPath(path string) bool {
+	return path == "/admin/health" || path == "/admin/healthz"
+}
+
+func extractHTTPAdminToken(r *http.Request) string {
+	if token := normalizeHTTPAuthHeader(r.Header.Get("Authorization")); token != "" {
+		return token
+	}
+	if token := strings.TrimSpace(r.Header.Get("X-API-Key")); token != "" {
+		return token
+	}
+	return ""
+}
+
+func normalizeHTTPAuthHeader(value string) string {
+	auth := strings.TrimSpace(value)
+	if auth == "" {
+		return ""
+	}
+	if strings.HasPrefix(strings.ToLower(auth), "bearer ") {
+		return strings.TrimSpace(auth[len("bearer "):])
+	}
+	return auth
+}
+
+func constantTimeTokenEqual(got, want string) bool {
+	if got == "" || want == "" {
+		return false
+	}
+	if len(got) != len(want) {
+		// Keep a constant-time operation on attacker-controlled input in the
+		// mismatch branch so wrong-length probes do not skip comparison work.
+		_ = subtle.ConstantTimeCompare([]byte(got), []byte(got))
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
 }
 
 // Start starts the admin HTTP server.
@@ -655,6 +751,18 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	req.RequestID = strings.TrimSpace(req.RequestID)
+	if req.RequestID != "" {
+		if _, err := validation.ValidateOrGenerateRequestID(req.RequestID); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(ChatResponse{
+				Error: "invalid request_id format",
+			})
+			return
+		}
+	}
+
 	// Idempotency check: if request_id provided, check Redis for duplicate request
 	var idempKey string
 	if req.RequestID != "" && s.redisClient != nil {
@@ -961,14 +1069,26 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse multipart form (max 100MB)
-	if err := r.ParseMultipartForm(100 << 20); err != nil {
+	// Defense in depth: MaxBody enforces this at the route wrapper, and
+	// MaxBytesReader keeps this handler bounded if it is called directly in
+	// tests or future routing changes. ParseMultipartForm's argument is only
+	// the memory/disk split, so keep it much lower than the total upload cap.
+	r.Body = http.MaxBytesReader(w, r.Body, maxAdminUploadBytes)
+	// #nosec G120 -- body is capped above and by route MaxBody; this value is the in-memory threshold.
+	if err := r.ParseMultipartForm(maxAdminUploadMemoryBytes); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(UploadResponse{
 			Error: "failed to parse multipart form: " + err.Error(),
 		})
 		return
+	}
+	if r.MultipartForm != nil {
+		defer func() {
+			if err := r.MultipartForm.RemoveAll(); err != nil {
+				slog.Warn("failed to remove multipart temp files", "error", err)
+			}
+		}()
 	}
 
 	// Get the file
@@ -982,6 +1102,14 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
+	if header.Size > maxAdminUploadBytes {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(UploadResponse{
+			Error: "file exceeds maximum upload size",
+		})
+		return
+	}
 
 	// Get tenant ID
 	tenantID := r.FormValue("tenant_id")
@@ -1071,10 +1199,14 @@ func (s *Server) uploadFileToGemini(ctx context.Context, apiKey string, file mul
 		return "", fmt.Errorf("create Gemini client: %w", err)
 	}
 
-	// Read file content
-	content, err := io.ReadAll(file)
+	// Read file content with a hard cap even when this helper is called outside
+	// the HTTP handler in tests or future code paths.
+	content, err := io.ReadAll(io.LimitReader(file, maxAdminUploadBytes+1))
 	if err != nil {
 		return "", fmt.Errorf("read file: %w", err)
+	}
+	if int64(len(content)) > maxAdminUploadBytes {
+		return "", fmt.Errorf("file exceeds maximum upload size of %d bytes", maxAdminUploadBytes)
 	}
 
 	// Upload file

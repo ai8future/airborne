@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
 func TestNewClient(t *testing.T) {
+	t.Setenv("AIRBORNE_ADMIN_TOKEN", "")
+
 	c := NewClient("http://localhost:8080")
 	if c == nil {
 		t.Fatal("NewClient returned nil")
@@ -17,6 +20,15 @@ func TestNewClient(t *testing.T) {
 	}
 	if c.HTTPClient == nil {
 		t.Fatal("HTTPClient is nil")
+	}
+}
+
+func TestNewClient_UsesEnvToken(t *testing.T) {
+	t.Setenv("AIRBORNE_ADMIN_TOKEN", "env-secret")
+
+	c := NewClient("http://localhost:8080")
+	if c.AuthToken != "env-secret" {
+		t.Errorf("AuthToken = %q, want env-secret", c.AuthToken)
 	}
 }
 
@@ -99,6 +111,28 @@ func TestClient_Activity_Success(t *testing.T) {
 	}
 }
 
+func TestClient_Activity_SendsAuthAndEscapesQuery(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer secret" {
+			t.Errorf("Authorization = %q, want bearer token", got)
+		}
+		if r.URL.Query().Get("tenant_id") != "ai8&other=bad" {
+			t.Errorf("tenant_id = %q, want literal tenant value", r.URL.Query().Get("tenant_id"))
+		}
+		if r.URL.Query().Get("other") != "" {
+			t.Errorf("query injection succeeded: other=%q", r.URL.Query().Get("other"))
+		}
+		json.NewEncoder(w).Encode(ActivityResponse{Activity: []Activity{}})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	c.AuthToken = "secret"
+	if _, err := c.Activity(5, "ai8&other=bad"); err != nil {
+		t.Fatalf("Activity() error = %v", err)
+	}
+}
+
 func TestClient_Activity_NoTenant(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("tenant_id") != "" {
@@ -137,6 +171,21 @@ func TestClient_Debug_Success(t *testing.T) {
 	}
 	if resp.MessageID != "msg-123" {
 		t.Errorf("MessageID = %q, want %q", resp.MessageID, "msg-123")
+	}
+}
+
+func TestClient_Debug_EscapesPath(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.EscapedPath(), "msg%2F..%2Fsecret") {
+			t.Errorf("EscapedPath = %q, want escaped message id", r.URL.EscapedPath())
+		}
+		json.NewEncoder(w).Encode(DebugResponse{MessageID: "msg/../secret"})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	if _, err := c.Debug("msg/../secret"); err != nil {
+		t.Fatalf("Debug() error = %v", err)
 	}
 }
 

@@ -97,6 +97,12 @@ Requests support: provider/model override for the runtime chat providers, system
 
 Endpoints: `/admin/activity`, `/admin/debug/{id}`, `/admin/thread/{id}`, `/admin/health`, `/admin/healthz`, `/admin/version`, `/admin/test`, `/admin/chat`, `/admin/upload`
 
+Security boundary: `/admin/health`, `/admin/healthz`, and CORS preflight requests are public for
+load balancers and probes. Every other HTTP admin endpoint requires the configured admin token as
+`Authorization: Bearer $AIRBORNE_ADMIN_TOKEN` or `X-API-Key: $AIRBORNE_ADMIN_TOKEN`. If no token is
+configured, protected admin HTTP routes fail closed. Browser CORS is restricted to explicit origins
+from `ADMIN_ALLOWED_ORIGINS` (wildcard origins are rejected/ignored).
+
 ## Multi-Tenancy
 
 Each tenant gets isolated configuration:
@@ -206,6 +212,9 @@ Key environment variables:
 | `RAG_ENABLED` | `false` | Enable RAG (requires Ollama + Qdrant) |
 | `ADMIN_ENABLED` | `false` | Enable HTTP admin server |
 | `ADMIN_PORT` | `8473` | HTTP admin port |
+| `ADMIN_ALLOWED_ORIGINS` | localhost dashboard origins | Comma-separated explicit CORS origins for HTTP admin; `*` is not allowed |
+| `AIRBORNE_ADMIN_URL` | CLI/dashboard dependent | HTTP admin server URL for CLI/dashboard proxy calls |
+| `DASHBOARD_ADMIN_TOKEN` | `AIRBORNE_ADMIN_TOKEN` | Token accepted by the Next.js dashboard API routes; set explicitly when dashboard auth should differ from backend admin auth |
 
 Provider keys: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `GROK_API_KEY`, `MISTRAL_API_KEY`, etc.
 
@@ -244,20 +253,53 @@ resolve to sibling paths outside the checkout. To make CI builds self-contained,
 dependency tree (`go mod vendor` + build with `-mod=vendor`) or check out chassis-go and its addons
 as sibling repos in the workflow using org-scoped tokens.
 
+## Admin Dashboard
+
+The Next.js dashboard under `dashboard/` is an operator UI and admin proxy. Its API routes are
+protected separately from the Go admin server:
+
+- Accepted client credentials: `Authorization: Bearer <token>`, `X-API-Key: <token>`, or an
+  `airborne_admin_token` cookie.
+- Expected dashboard token: `DASHBOARD_ADMIN_TOKEN`, falling back to `AIRBORNE_ADMIN_TOKEN`.
+- Backend forwarding token: `AIRBORNE_ADMIN_TOKEN`, falling back to `DASHBOARD_ADMIN_TOKEN`.
+- Cookie auth on state-changing requests requires same-origin `Origin`/`Referer` headers to reduce
+  CSRF exposure.
+
+Run locally:
+
+```bash
+cd dashboard
+AIRBORNE_ADMIN_URL=http://localhost:8473 \
+AIRBORNE_ADMIN_TOKEN="$AIRBORNE_ADMIN_TOKEN" \
+DASHBOARD_ADMIN_TOKEN="$AIRBORNE_ADMIN_TOKEN" \
+npm run dev
+```
+
+If you put the dashboard behind an auth gateway, configure that gateway to inject one of the
+accepted credentials into calls to `/api/*`, or set the `airborne_admin_token` cookie from a
+trusted same-origin login flow. The dashboard intentionally does not expose a built-in token entry
+screen.
+
 ## CLI Tool
 
 `airborne-cli` provides admin and debugging commands. `make build` only builds the server binary,
 so build or run the CLI explicitly. The CLI default URL is `http://localhost:50054`; with the
-checked-in server config, pass `--url http://localhost:8473` or set `AIRBORNE_ADMIN_URL`.
+checked-in server config, pass `--url http://localhost:8473` or set `AIRBORNE_ADMIN_URL`. Except
+for `health`, commands call protected admin endpoints and need `AIRBORNE_ADMIN_TOKEN` or `--token`.
 
 ```bash
 go build -o bin/airborne-cli ./cmd/airborne-cli
 
-bin/airborne-cli --url http://localhost:8473 health          # check server health
+export AIRBORNE_ADMIN_TOKEN="your-token"
+
+bin/airborne-cli --url http://localhost:8473 health          # public health check
 bin/airborne-cli --url http://localhost:8473 activity        # recent activity feed
 bin/airborne-cli --url http://localhost:8473 test            # send a test generation request
 bin/airborne-cli --url http://localhost:8473 debug <msg-id>  # inspect full request/response
 bin/airborne-cli --url http://localhost:8473 watch           # live activity monitoring
+
+# Or pass the token explicitly:
+bin/airborne-cli --url http://localhost:8473 --token "$AIRBORNE_ADMIN_TOKEN" activity
 ```
 
 ## Observability
@@ -270,10 +312,12 @@ bin/airborne-cli --url http://localhost:8473 watch           # live activity mon
 ## Security
 
 - gRPC interceptor chain: panic recovery, tracing, metrics, logging, tenant resolution, auth
-- HTTP admin: CORS, request timeouts (30s), body size limits (2MB/100MB), JSON security validation (rejects dangerous keys, excessive nesting)
+- HTTP admin: explicit bearer/API-key auth on protected routes, explicit-origin CORS, request timeouts (30s), body size limits (2MB JSON / 100MB upload), JSON security validation (rejects dangerous keys, excessive nesting)
+- Dashboard API proxy: bearer/API-key/cookie auth, same-origin CSRF guard for cookie writes, no raw AI-rendered HTML injection, and safe `http`/`https` citation links only
 - API key secrets stored as bcrypt hashes
 - Rate limiting via atomic Redis Lua scripts
-- SSRF protection on custom provider base URLs (requires admin permission)
+- SSRF protection on custom provider base URLs; FileService external store overrides require admin permission and reject credentials/userinfo in URLs
+- Request, history, upload, provider-error, Docbox, and HTTP-capture body reads are bounded to reduce memory-exhaustion and log-leak risk
 - TLS support for gRPC transport
 - Non-root Docker container
 
@@ -314,7 +358,7 @@ deploy/               Chassis deploy metadata
 |-----------|-----------|
 | Language | Go 1.26 |
 | API | gRPC + Protocol Buffers |
-| Dashboard | Next.js 16 / React 19 / TypeScript |
+| Dashboard | Next.js 16.3 canary / React 19 / TypeScript |
 | Database | PostgreSQL (via pgx) |
 | Cache/Auth Store | Redis |
 | Tracing/Metrics | OpenTelemetry (OTLP export) |

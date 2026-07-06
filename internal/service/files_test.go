@@ -25,6 +25,33 @@ func ctxWithFilePermission(clientID string) context.Context {
 	})
 }
 
+func ctxWithAdminFilePermission(clientID string) context.Context {
+	return context.WithValue(context.Background(), auth.ClientContextKey, &auth.ClientKey{
+		ClientID:    clientID,
+		Permissions: []auth.Permission{auth.PermissionFiles, auth.PermissionAdmin},
+	})
+}
+
+func TestRequireAdminForFileServiceBaseURL(t *testing.T) {
+	if err := requireAdminForFileServiceBaseURL(ctxWithFilePermission("tenant1"), ""); err != nil {
+		t.Fatalf("empty base URL should not require admin: %v", err)
+	}
+
+	err := requireAdminForFileServiceBaseURL(ctxWithFilePermission("tenant1"), "http://localhost:1234")
+	if status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("non-admin custom base URL code = %v, want %v (err=%v)", status.Code(err), codes.PermissionDenied, err)
+	}
+
+	err = requireAdminForFileServiceBaseURL(ctxWithAdminFilePermission("tenant1"), "file:///etc/passwd")
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("invalid admin custom base URL code = %v, want %v (err=%v)", status.Code(err), codes.InvalidArgument, err)
+	}
+
+	if err := requireAdminForFileServiceBaseURL(ctxWithAdminFilePermission("tenant1"), "http://localhost:1234"); err != nil {
+		t.Fatalf("admin localhost base URL should be allowed: %v", err)
+	}
+}
+
 func TestNewFileService(t *testing.T) {
 	mockRAG := createMockRAGService()
 	svc := NewFileService(mockRAG, nil)

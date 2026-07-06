@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { adminFetchHeaders, requireDashboardAdmin } from "@/lib/adminAuth";
 
 const AIRBORNE_ADMIN_URL = process.env.AIRBORNE_ADMIN_URL || "http://localhost:50054";
 
@@ -6,6 +7,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ threadId: string }> }
 ) {
+  const authError = requireDashboardAdmin(request);
+  if (authError) return authError;
+
   const { threadId } = await params;
 
   if (!threadId) {
@@ -13,10 +17,10 @@ export async function GET(
   }
 
   try {
-    const response = await fetch(`${AIRBORNE_ADMIN_URL}/admin/thread/${threadId}`, {
-      headers: {
+    const response = await fetch(`${AIRBORNE_ADMIN_URL}/admin/thread/${encodeURIComponent(threadId)}`, {
+      headers: adminFetchHeaders({
         "Content-Type": "application/json",
-      },
+      }),
       cache: "no-store",
     });
 

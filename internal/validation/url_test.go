@@ -43,6 +43,11 @@ func TestValidateProviderURL(t *testing.T) {
 			url:     "https://generativelanguage.googleapis.com",
 			wantErr: nil,
 		},
+		{
+			name:    "userinfo credentials blocked",
+			url:     "https://user:password@api.openai.com/v1",
+			wantErr: ErrUserInfoNotAllowed,
+		},
 
 		// Localhost HTTP allowed
 		{
@@ -260,10 +265,10 @@ func TestIsBlockedIP(t *testing.T) {
 		{"192.168.255.255", true},
 
 		// Non-private (allowed)
-		{"172.15.0.1", false},  // Just outside 172.16-31
-		{"172.32.0.1", false},  // Just outside 172.16-31
-		{"8.8.8.8", false},     // Public DNS
-		{"1.1.1.1", false},     // Cloudflare DNS
+		{"172.15.0.1", false}, // Just outside 172.16-31
+		{"172.32.0.1", false}, // Just outside 172.16-31
+		{"8.8.8.8", false},    // Public DNS
+		{"1.1.1.1", false},    // Cloudflare DNS
 
 		// Loopback (blocked by ssrfcheck)
 		{"127.0.0.1", true},

@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
@@ -15,6 +16,7 @@ import (
 	"github.com/ai8future/airborne/internal/provider/gemini"
 	"github.com/ai8future/airborne/internal/provider/openai"
 	"github.com/ai8future/airborne/internal/rag"
+	"github.com/ai8future/airborne/internal/validation"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -58,6 +60,20 @@ func (s *FileService) ensureRAGEnabled() error {
 	return nil
 }
 
+func requireAdminForFileServiceBaseURL(ctx context.Context, baseURL string) error {
+	baseURL = strings.TrimSpace(baseURL)
+	if baseURL == "" {
+		return nil
+	}
+	if err := auth.RequirePermission(ctx, auth.PermissionAdmin); err != nil {
+		return status.Error(codes.PermissionDenied, "custom base_url requires admin permission")
+	}
+	if err := validation.ValidateProviderURL(baseURL); err != nil {
+		return status.Errorf(codes.InvalidArgument, "invalid base_url: %v", err)
+	}
+	return nil
+}
+
 // CreateFileStore creates a new vector store based on provider.
 // - OpenAI: Creates OpenAI Vector Store
 // - Gemini: Creates Gemini FileSearchStore
@@ -85,6 +101,9 @@ func (s *FileService) createOpenAIVectorStore(ctx context.Context, req *pb.Creat
 		APIKey:         req.Config.GetApiKey(),
 		BaseURL:        req.Config.GetBaseUrl(),
 		ExpirationDays: int(req.ExpirationDays),
+	}
+	if err := requireAdminForFileServiceBaseURL(ctx, cfg.BaseURL); err != nil {
+		return nil, err
 	}
 
 	if cfg.APIKey == "" {
@@ -118,6 +137,9 @@ func (s *FileService) createGeminiFileSearchStore(ctx context.Context, req *pb.C
 	cfg := gemini.FileStoreConfig{
 		APIKey:  req.Config.GetApiKey(),
 		BaseURL: req.Config.GetBaseUrl(),
+	}
+	if err := requireAdminForFileServiceBaseURL(ctx, cfg.BaseURL); err != nil {
+		return nil, err
 	}
 
 	if cfg.APIKey == "" {
@@ -305,6 +327,9 @@ func (s *FileService) uploadToOpenAI(ctx context.Context, stream pb.FileService_
 		APIKey:  metadata.Config.GetApiKey(),
 		BaseURL: metadata.Config.GetBaseUrl(),
 	}
+	if err := requireAdminForFileServiceBaseURL(ctx, cfg.BaseURL); err != nil {
+		return err
+	}
 
 	if cfg.APIKey == "" {
 		return status.Error(codes.InvalidArgument, "OpenAI API key is required")
@@ -344,6 +369,9 @@ func (s *FileService) uploadToGemini(ctx context.Context, stream pb.FileService_
 	cfg := gemini.FileStoreConfig{
 		APIKey:  metadata.Config.GetApiKey(),
 		BaseURL: metadata.Config.GetBaseUrl(),
+	}
+	if err := requireAdminForFileServiceBaseURL(ctx, cfg.BaseURL); err != nil {
+		return err
 	}
 
 	if cfg.APIKey == "" {
@@ -461,6 +489,9 @@ func (s *FileService) deleteOpenAIVectorStore(ctx context.Context, req *pb.Delet
 		APIKey:  req.Config.GetApiKey(),
 		BaseURL: req.Config.GetBaseUrl(),
 	}
+	if err := requireAdminForFileServiceBaseURL(ctx, cfg.BaseURL); err != nil {
+		return nil, err
+	}
 
 	if cfg.APIKey == "" {
 		return nil, status.Error(codes.InvalidArgument, "OpenAI API key is required")
@@ -490,6 +521,9 @@ func (s *FileService) deleteGeminiFileSearchStore(ctx context.Context, req *pb.D
 	cfg := gemini.FileStoreConfig{
 		APIKey:  req.Config.GetApiKey(),
 		BaseURL: req.Config.GetBaseUrl(),
+	}
+	if err := requireAdminForFileServiceBaseURL(ctx, cfg.BaseURL); err != nil {
+		return nil, err
 	}
 
 	if cfg.APIKey == "" {
@@ -572,6 +606,9 @@ func (s *FileService) getOpenAIVectorStore(ctx context.Context, req *pb.GetFileS
 		APIKey:  req.Config.GetApiKey(),
 		BaseURL: req.Config.GetBaseUrl(),
 	}
+	if err := requireAdminForFileServiceBaseURL(ctx, cfg.BaseURL); err != nil {
+		return nil, err
+	}
 
 	if cfg.APIKey == "" {
 		return nil, status.Error(codes.InvalidArgument, "OpenAI API key is required")
@@ -586,7 +623,7 @@ func (s *FileService) getOpenAIVectorStore(ctx context.Context, req *pb.GetFileS
 		StoreId:   result.StoreID,
 		Name:      result.Name,
 		Provider:  pb.Provider_PROVIDER_OPENAI,
-		FileCount: int32(result.FileCount),
+		FileCount: nonNegativeIntToInt32Clamped(result.FileCount),
 		Status:    result.Status,
 		CreatedAt: result.CreatedAt.UTC().Format(time.RFC3339),
 	}, nil
@@ -597,6 +634,9 @@ func (s *FileService) getGeminiFileSearchStore(ctx context.Context, req *pb.GetF
 	cfg := gemini.FileStoreConfig{
 		APIKey:  req.Config.GetApiKey(),
 		BaseURL: req.Config.GetBaseUrl(),
+	}
+	if err := requireAdminForFileServiceBaseURL(ctx, cfg.BaseURL); err != nil {
+		return nil, err
 	}
 
 	if cfg.APIKey == "" {
@@ -612,7 +652,7 @@ func (s *FileService) getGeminiFileSearchStore(ctx context.Context, req *pb.GetF
 		StoreId:   result.StoreID,
 		Name:      result.Name,
 		Provider:  pb.Provider_PROVIDER_GEMINI,
-		FileCount: int32(result.DocumentCount),
+		FileCount: nonNegativeIntToInt32Clamped(result.DocumentCount),
 		Status:    result.Status,
 		CreatedAt: result.CreatedAt.UTC().Format(time.RFC3339),
 	}, nil
@@ -640,7 +680,7 @@ func (s *FileService) getInternalStore(ctx context.Context, req *pb.GetFileStore
 		StoreId:   req.StoreId,
 		Name:      info.Name,
 		Provider:  pb.Provider_PROVIDER_UNSPECIFIED,
-		FileCount: int32(info.PointCount),
+		FileCount: nonNegativeInt64ToInt32Clamped(info.PointCount),
 		Status:    "ready",
 		CreatedAt: "",
 	}, nil
@@ -671,6 +711,9 @@ func (s *FileService) listOpenAIVectorStores(ctx context.Context, req *pb.ListFi
 		APIKey:  req.Config.GetApiKey(),
 		BaseURL: req.Config.GetBaseUrl(),
 	}
+	if err := requireAdminForFileServiceBaseURL(ctx, cfg.BaseURL); err != nil {
+		return nil, err
+	}
 
 	if cfg.APIKey == "" {
 		return nil, status.Error(codes.InvalidArgument, "OpenAI API key is required")
@@ -687,7 +730,7 @@ func (s *FileService) listOpenAIVectorStores(ctx context.Context, req *pb.ListFi
 			StoreId:   r.StoreID,
 			Name:      r.Name,
 			Provider:  pb.Provider_PROVIDER_OPENAI,
-			FileCount: int32(r.FileCount),
+			FileCount: nonNegativeIntToInt32Clamped(r.FileCount),
 			Status:    r.Status,
 			CreatedAt: r.CreatedAt.UTC().Format(time.RFC3339),
 		})
@@ -703,6 +746,9 @@ func (s *FileService) listGeminiFileSearchStores(ctx context.Context, req *pb.Li
 	cfg := gemini.FileStoreConfig{
 		APIKey:  req.Config.GetApiKey(),
 		BaseURL: req.Config.GetBaseUrl(),
+	}
+	if err := requireAdminForFileServiceBaseURL(ctx, cfg.BaseURL); err != nil {
+		return nil, err
 	}
 
 	if cfg.APIKey == "" {
@@ -720,7 +766,7 @@ func (s *FileService) listGeminiFileSearchStores(ctx context.Context, req *pb.Li
 			StoreId:   r.StoreID,
 			Name:      r.Name,
 			Provider:  pb.Provider_PROVIDER_GEMINI,
-			FileCount: int32(r.DocumentCount),
+			FileCount: nonNegativeIntToInt32Clamped(r.DocumentCount),
 			Status:    r.Status,
 			CreatedAt: r.CreatedAt.UTC().Format(time.RFC3339),
 		})

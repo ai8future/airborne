@@ -23,6 +23,9 @@ type DocboxExtractor struct {
 	client  *call.Client
 }
 
+const maxDocboxResponseBytes = 4 * 1024 * 1024
+const maxDocboxErrorBodyBytes = 64 * 1024
+
 // DocboxConfig configures the Docbox extractor.
 type DocboxConfig struct {
 	// BaseURL is the Pandoc API base URL (default: http://localhost:41273).
@@ -175,14 +178,16 @@ func (e *DocboxExtractor) extractViaPandoc(ctx context.Context, file io.Reader, 
 		if json.NewDecoder(resp.Body).Decode(&errorResp) == nil && errorResp.Detail != "" {
 			return nil, fmt.Errorf("pandoc error: %s", errorResp.Detail)
 		}
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("pandoc error (status %d): %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("pandoc error (status %d): %s", resp.StatusCode, readDocboxErrorBody(resp.Body))
 	}
 
 	// Read extracted text
-	text, err := io.ReadAll(resp.Body)
+	text, err := io.ReadAll(io.LimitReader(resp.Body, maxDocboxResponseBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
+	}
+	if len(text) > maxDocboxResponseBytes {
+		return nil, fmt.Errorf("pandoc response exceeds maximum size of %d bytes", maxDocboxResponseBytes)
 	}
 
 	// Clean up the text
@@ -202,6 +207,14 @@ func (e *DocboxExtractor) extractViaPandoc(ctx context.Context, file io.Reader, 
 			"original_size": len(fileContent),
 		},
 	}, nil
+}
+
+func readDocboxErrorBody(body io.Reader) string {
+	data, _ := io.ReadAll(io.LimitReader(body, maxDocboxErrorBodyBytes+1))
+	if len(data) > maxDocboxErrorBodyBytes {
+		return string(data[:maxDocboxErrorBodyBytes]) + "...(truncated)"
+	}
+	return string(data)
 }
 
 // IsSupported checks if a file format is supported for extraction.

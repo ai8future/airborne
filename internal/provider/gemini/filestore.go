@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -19,9 +20,10 @@ import (
 
 const (
 	fileSearchBaseURL         = "https://generativelanguage.googleapis.com/v1beta"
-	filesAPIBaseURL           = "https://generativelanguage.googleapis.com/v1beta/files"
+	filesUploadBaseURL        = "https://generativelanguage.googleapis.com/upload/v1beta"
 	fileSearchPollingInterval = 2 * time.Second
 	fileSearchPollingTimeout  = 5 * time.Minute
+	maxGeminiErrorBodyBytes   = 64 * 1024
 )
 
 var fileStoreClient = sync.OnceValue(func() *call.Client {
@@ -112,6 +114,51 @@ func (cfg FileStoreConfig) getBaseURL() string {
 	return fileSearchBaseURL
 }
 
+func geminiURLWithKey(baseURL, apiKey, resourcePath string, query map[string]string) string {
+	raw := strings.TrimRight(baseURL, "/")
+	if resourcePath != "" {
+		raw += "/" + strings.TrimLeft(resourcePath, "/")
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		// Base URLs are validated by callers before use; keep a deterministic
+		// fallback rather than panic if a future caller violates that contract.
+		return raw
+	}
+	q := parsed.Query()
+	q.Set("key", apiKey)
+	for k, v := range query {
+		q.Set(k, v)
+	}
+	parsed.RawQuery = q.Encode()
+	return parsed.String()
+}
+
+func escapedResourcePath(resource string) string {
+	parts := strings.Split(strings.Trim(resource, "/"), "/")
+	escaped := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		escaped = append(escaped, url.PathEscape(part))
+	}
+	return strings.Join(escaped, "/")
+}
+
+func fileSearchStoreResource(storeID, action string) string {
+	return "fileSearchStores/" + url.PathEscape(storeID) + action
+}
+
+func readGeminiErrorBody(body io.Reader) string {
+	data, _ := io.ReadAll(io.LimitReader(body, maxGeminiErrorBodyBytes+1))
+	if len(data) > maxGeminiErrorBodyBytes {
+		data = data[:maxGeminiErrorBodyBytes]
+		return string(data) + "...(truncated)"
+	}
+	return string(data)
+}
+
 // filesAPIResponse represents the response from the Files API upload.
 type filesAPIResponse struct {
 	File struct {
@@ -129,7 +176,7 @@ type filesAPIResponse struct {
 // This is the first step of the Office file workaround.
 func uploadToFilesAPI(ctx context.Context, apiKey string, filename string, mimeType string, content []byte) (string, error) {
 	// Create the upload URL
-	uploadURL := fmt.Sprintf("https://generativelanguage.googleapis.com/upload/v1beta/files?key=%s", apiKey)
+	uploadURL := geminiURLWithKey(filesUploadBaseURL, apiKey, "files", nil)
 
 	// Create metadata JSON
 	metadata := map[string]interface{}{
@@ -161,8 +208,7 @@ func uploadToFilesAPI(ctx context.Context, apiKey string, filename string, mimeT
 	defer initResp.Body.Close()
 
 	if initResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(initResp.Body)
-		return "", fmt.Errorf("init upload failed: %s - %s", initResp.Status, string(body))
+		return "", fmt.Errorf("init upload failed: %s - %s", initResp.Status, readGeminiErrorBody(initResp.Body))
 	}
 
 	// Get the upload URL from the response header
@@ -187,8 +233,7 @@ func uploadToFilesAPI(ctx context.Context, apiKey string, filename string, mimeT
 	defer uploadResp.Body.Close()
 
 	if uploadResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(uploadResp.Body)
-		return "", fmt.Errorf("upload failed: %s - %s", uploadResp.Status, string(body))
+		return "", fmt.Errorf("upload failed: %s - %s", uploadResp.Status, readGeminiErrorBody(uploadResp.Body))
 	}
 
 	var fileResp filesAPIResponse
@@ -209,7 +254,7 @@ func uploadToFilesAPI(ctx context.Context, apiKey string, filename string, mimeT
 // This is the second step of the Office file workaround.
 // Based on the genai SDK, the endpoint is :importFile and body is {"fileName": "files/xxx"}
 func importFileToFileSearchStore(ctx context.Context, cfg FileStoreConfig, storeID string, fileName string, displayName string) (*UploadedFile, error) {
-	url := fmt.Sprintf("%s/fileSearchStores/%s:importFile?key=%s", cfg.getBaseURL(), storeID, cfg.APIKey)
+	url := geminiURLWithKey(cfg.getBaseURL(), cfg.APIKey, fileSearchStoreResource(storeID, ":importFile"), nil)
 
 	// The genai SDK sends fileName directly in the body
 	reqBody := map[string]interface{}{
@@ -240,8 +285,7 @@ func importFileToFileSearchStore(ctx context.Context, cfg FileStoreConfig, store
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("import to file search store failed: %s - %s", resp.Status, string(body))
+		return nil, fmt.Errorf("import to file search store failed: %s - %s", resp.Status, readGeminiErrorBody(resp.Body))
 	}
 
 	var opResp operationResponse
@@ -289,7 +333,7 @@ func importFileToFileSearchStore(ctx context.Context, cfg FileStoreConfig, store
 // deleteFromFilesAPI deletes a file from the Gemini Files API.
 // This is used for cleanup after the Office file workaround.
 func deleteFromFilesAPI(ctx context.Context, apiKey string, fileName string) error {
-	url := fmt.Sprintf("%s/%s?key=%s", filesAPIBaseURL, fileName, apiKey)
+	url := geminiURLWithKey(fileSearchBaseURL, apiKey, escapedResourcePath(fileName), nil)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
 	if err != nil {
@@ -304,8 +348,7 @@ func deleteFromFilesAPI(ctx context.Context, apiKey string, fileName string) err
 
 	// 200 OK or 404 Not Found are both acceptable
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotFound {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("delete from Files API failed: %s - %s", resp.Status, string(body))
+		return fmt.Errorf("delete from Files API failed: %s - %s", resp.Status, readGeminiErrorBody(resp.Body))
 	}
 
 	slog.Info("file deleted from Files API", "file_name", fileName)
@@ -324,7 +367,7 @@ func CreateFileSearchStore(ctx context.Context, cfg FileStoreConfig, name string
 		}
 	}
 
-	url := fmt.Sprintf("%s/fileSearchStores?key=%s", cfg.getBaseURL(), cfg.APIKey)
+	url := geminiURLWithKey(cfg.getBaseURL(), cfg.APIKey, "fileSearchStores", nil)
 
 	reqBody := map[string]string{}
 	if name != "" {
@@ -351,8 +394,7 @@ func CreateFileSearchStore(ctx context.Context, cfg FileStoreConfig, name string
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("create file search store failed: %s - %s", resp.Status, string(body))
+		return nil, fmt.Errorf("create file search store failed: %s - %s", resp.Status, readGeminiErrorBody(resp.Body))
 	}
 
 	var storeResp fileSearchStoreResponse
@@ -461,7 +503,7 @@ func uploadDirectToFileSearchStore(ctx context.Context, cfg FileStoreConfig, sto
 		baseURL = strings.Replace(baseURL, fileSearchBaseURL, fileSearchBaseURL+"/upload", 1)
 	}
 
-	url := fmt.Sprintf("%s/fileSearchStores/%s:uploadToFileSearchStore?key=%s", baseURL, storeID, cfg.APIKey)
+	url := geminiURLWithKey(baseURL, cfg.APIKey, fileSearchStoreResource(storeID, ":uploadToFileSearchStore"), nil)
 
 	slog.Info("uploading file to gemini file search store (direct)",
 		"store_id", storeID,
@@ -472,7 +514,7 @@ func uploadDirectToFileSearchStore(ctx context.Context, cfg FileStoreConfig, sto
 	// Create multipart request
 	// For Gemini upload, we need to send metadata as JSON and file as binary
 	// Using simple JSON metadata with file in body
-	metadataURL := fmt.Sprintf("%s/fileSearchStores/%s:uploadToFileSearchStore?key=%s", cfg.getBaseURL(), storeID, cfg.APIKey)
+	metadataURL := geminiURLWithKey(cfg.getBaseURL(), cfg.APIKey, fileSearchStoreResource(storeID, ":uploadToFileSearchStore"), nil)
 
 	reqBody := map[string]interface{}{
 		"displayName": filename,
@@ -517,8 +559,7 @@ func uploadDirectToFileSearchStore(ctx context.Context, cfg FileStoreConfig, sto
 		defer resp2.Body.Close()
 
 		if resp2.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp2.Body)
-			return nil, fmt.Errorf("upload to file search store failed: %s - %s", resp2.Status, string(body))
+			return nil, fmt.Errorf("upload to file search store failed: %s - %s", resp2.Status, readGeminiErrorBody(resp2.Body))
 		}
 		resp = resp2
 	}
@@ -577,7 +618,7 @@ func waitForOperation(ctx context.Context, cfg FileStoreConfig, operationName st
 	ticker := time.NewTicker(fileSearchPollingInterval)
 	defer ticker.Stop()
 
-	url := fmt.Sprintf("%s/%s?key=%s", cfg.getBaseURL(), operationName, cfg.APIKey)
+	url := geminiURLWithKey(cfg.getBaseURL(), cfg.APIKey, escapedResourcePath(operationName), nil)
 
 	for {
 		select {
@@ -594,12 +635,23 @@ func waitForOperation(ctx context.Context, cfg FileStoreConfig, operationName st
 				return "unknown", fmt.Errorf("execute request: %w", err)
 			}
 
-			var opResp operationResponse
-			if err := json.NewDecoder(resp.Body).Decode(&opResp); err != nil {
-				resp.Body.Close()
-				return "unknown", fmt.Errorf("decode response: %w", err)
+			if resp.StatusCode != http.StatusOK {
+				body := readGeminiErrorBody(resp.Body)
+				if err := resp.Body.Close(); err != nil {
+					return "unknown", fmt.Errorf("close response body: %w", err)
+				}
+				return "unknown", fmt.Errorf("operation status failed: status=%d body=%s", resp.StatusCode, body)
 			}
-			resp.Body.Close()
+
+			var opResp operationResponse
+			decodeErr := json.NewDecoder(resp.Body).Decode(&opResp)
+			closeErr := resp.Body.Close()
+			if decodeErr != nil {
+				return "unknown", fmt.Errorf("decode response: %w", decodeErr)
+			}
+			if closeErr != nil {
+				return "unknown", fmt.Errorf("close response body: %w", closeErr)
+			}
 
 			if opResp.Done {
 				if opResp.Error != nil {
@@ -626,10 +678,11 @@ func DeleteFileSearchStore(ctx context.Context, cfg FileStoreConfig, storeID str
 		}
 	}
 
-	url := fmt.Sprintf("%s/fileSearchStores/%s?key=%s", cfg.getBaseURL(), storeID, cfg.APIKey)
+	query := map[string]string{}
 	if force {
-		url += "&force=true"
+		query["force"] = "true"
 	}
+	url := geminiURLWithKey(cfg.getBaseURL(), cfg.APIKey, fileSearchStoreResource(storeID, ""), query)
 
 	slog.Info("deleting gemini file search store", "store_id", storeID)
 
@@ -645,8 +698,7 @@ func DeleteFileSearchStore(ctx context.Context, cfg FileStoreConfig, storeID str
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("delete file search store failed: %s - %s", resp.Status, string(body))
+		return fmt.Errorf("delete file search store failed: %s - %s", resp.Status, readGeminiErrorBody(resp.Body))
 	}
 
 	slog.Info("gemini file search store deleted", "store_id", storeID)
@@ -668,7 +720,7 @@ func GetFileSearchStore(ctx context.Context, cfg FileStoreConfig, storeID string
 		}
 	}
 
-	url := fmt.Sprintf("%s/fileSearchStores/%s?key=%s", cfg.getBaseURL(), storeID, cfg.APIKey)
+	url := geminiURLWithKey(cfg.getBaseURL(), cfg.APIKey, fileSearchStoreResource(storeID, ""), nil)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -682,8 +734,7 @@ func GetFileSearchStore(ctx context.Context, cfg FileStoreConfig, storeID string
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("get file search store failed: %s - %s", resp.Status, string(body))
+		return nil, fmt.Errorf("get file search store failed: %s - %s", resp.Status, readGeminiErrorBody(resp.Body))
 	}
 
 	var storeResp fileSearchStoreResponse
@@ -723,10 +774,11 @@ func ListFileSearchStores(ctx context.Context, cfg FileStoreConfig, limit int) (
 		}
 	}
 
-	url := fmt.Sprintf("%s/fileSearchStores?key=%s", cfg.getBaseURL(), cfg.APIKey)
+	query := map[string]string{}
 	if limit > 0 && limit <= 20 {
-		url += fmt.Sprintf("&pageSize=%d", limit)
+		query["pageSize"] = fmt.Sprintf("%d", limit)
 	}
+	url := geminiURLWithKey(cfg.getBaseURL(), cfg.APIKey, "fileSearchStores", query)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -740,8 +792,7 @@ func ListFileSearchStores(ctx context.Context, cfg FileStoreConfig, limit int) (
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("list file search stores failed: %s - %s", resp.Status, string(body))
+		return nil, fmt.Errorf("list file search stores failed: %s - %s", resp.Status, readGeminiErrorBody(resp.Body))
 	}
 
 	var listResp struct {

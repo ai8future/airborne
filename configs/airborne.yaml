@@ -27,6 +27,11 @@ database:
 admin:
   enabled: false
   port: 8473              # HTTP port for /admin/activity endpoint
+  allowed_origins:        # Browser origins allowed by admin CORS
+    - "http://localhost:3000"
+    - "http://127.0.0.1:3000"
+    - "http://localhost:4848"
+    - "http://127.0.0.1:4848"
 
 auth:
   admin_token: "${AIRBORNE_ADMIN_TOKEN}"
