@@ -57,6 +57,16 @@ describe("full dashboard surface", () => {
     vi.unstubAllGlobals();
   });
 
+  it("shows missing debug data and closes on the backdrop", async () => {
+    const close = vi.fn();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 404, statusText: "Not Found", json: async () => ({}) }));
+    const { container } = render(<DebugModal messageId="message" onClose={close} />);
+    expect(await screen.findByText("Debug data not found.")).toBeVisible();
+    fireEvent.click(container.firstElementChild!);
+    expect(close).toHaveBeenCalledOnce();
+    vi.unstubAllGlobals();
+  });
+
   it("sends a new conversation message and renders the assistant reply", async () => {
     const fetch = vi.fn().mockResolvedValue({ json: async () => ({ id: "reply", content: "generated reply", provider: "gemini", model: "m" }) });
     vi.stubGlobal("fetch", fetch);
@@ -67,5 +77,16 @@ describe("full dashboard surface", () => {
     expect(await screen.findByText("generated reply")).toBeVisible();
     expect(fetch).toHaveBeenCalledWith("/api/chat", expect.objectContaining({ method: "POST" }));
     vi.unstubAllGlobals();
+  });
+
+  it("creates a thread and configures a custom system prompt", async () => {
+    const select = vi.fn();
+    render(<TenantProvider><ConversationPanel activity={[]} selectedThreadId={null} onSelectThread={select} /></TenantProvider>);
+    fireEvent.click(screen.getByTitle("Start new conversation"));
+    expect(select).toHaveBeenCalledWith(expect.stringMatching(/^[0-9a-f-]{36}$/));
+    fireEvent.click(screen.getByRole("button", { name: /Email4.ai/ }));
+    fireEvent.click(screen.getByText("Custom prompt"));
+    fireEvent.change(screen.getByPlaceholderText(/Enter custom system prompt/), { target: { value: "custom" } });
+    expect(screen.getByDisplayValue("custom")).toBeVisible();
   });
 });
