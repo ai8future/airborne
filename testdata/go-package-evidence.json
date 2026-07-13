@@ -113,6 +113,7 @@
       "test_evidence": "direct",
       "evidence_files": [
         "admin_queries_test.go",
+        "integration_mode_test.go",
         "models_test.go",
         "repository_test.go",
         "rls_test.go",
