@@ -1,0 +1,396 @@
+{
+  "packages": [
+    {
+      "import_path": "github.com/ai8future/airborne",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1",
+      "evidence": "missing",
+      "test_files": []
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/cmd/airborne",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/cmd/airborne",
+      "evidence": "missing",
+      "test_files": []
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/cmd/airborne-cli",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/cmd/airborne-cli",
+      "evidence": "missing",
+      "test_files": []
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/cmd/airborne-freeze",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/cmd/airborne-freeze",
+      "evidence": "missing",
+      "test_files": []
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/gen/go/airborne/v1",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/gen/go/airborne/v1",
+      "evidence": "missing",
+      "test_files": []
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/admin",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/admin",
+      "evidence": "direct",
+      "test_files": [
+        "server_test.go",
+        "testmain_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/auth",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/auth",
+      "evidence": "direct",
+      "test_files": [
+        "interceptor_test.go",
+        "keys_test.go",
+        "ratelimit_test.go",
+        "static_test.go",
+        "tenant_interceptor_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/cli",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/cli",
+      "evidence": "direct",
+      "test_files": [
+        "client_test.go",
+        "output_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/commands",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/commands",
+      "evidence": "direct",
+      "test_files": [
+        "parser_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/config",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/config",
+      "evidence": "direct",
+      "test_files": [
+        "config_test.go",
+        "startup_mode_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/config/envutil",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/config/envutil",
+      "evidence": "direct",
+      "test_files": [
+        "helpers_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/db",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/db",
+      "evidence": "direct",
+      "test_files": [
+        "admin_queries_test.go",
+        "models_test.go",
+        "repository_test.go",
+        "rls_test.go",
+        "tenantcache_test.go",
+        "testmain_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/errors",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/errors",
+      "evidence": "direct",
+      "test_files": [
+        "sanitize_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/httpcapture",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/httpcapture",
+      "evidence": "direct",
+      "test_files": [
+        "transport_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/imagegen",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/imagegen",
+      "evidence": "direct",
+      "test_files": [
+        "client_test.go",
+        "testmain_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/markdownsvc",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/markdownsvc",
+      "evidence": "direct",
+      "test_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/pricing",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/pricing",
+      "evidence": "direct",
+      "test_files": [
+        "pricing_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/provider",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/provider",
+      "evidence": "direct",
+      "test_files": [
+        "model_test.go",
+        "providers_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/provider/anthropic",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/provider/anthropic",
+      "evidence": "direct",
+      "test_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/provider/cerebras",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/provider/cerebras",
+      "evidence": "missing",
+      "test_files": []
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/provider/cohere",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/provider/cohere",
+      "evidence": "missing",
+      "test_files": []
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/provider/compat",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/provider/compat",
+      "evidence": "direct",
+      "test_files": [
+        "openai_compat_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/provider/deepinfra",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/provider/deepinfra",
+      "evidence": "missing",
+      "test_files": []
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/provider/deepseek",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/provider/deepseek",
+      "evidence": "missing",
+      "test_files": []
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/provider/fireworks",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/provider/fireworks",
+      "evidence": "missing",
+      "test_files": []
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/provider/gemini",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/provider/gemini",
+      "evidence": "direct",
+      "test_files": [
+        "client_test.go",
+        "filestore_test.go",
+        "testmain_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/provider/grok",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/provider/grok",
+      "evidence": "missing",
+      "test_files": []
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/provider/httputil",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/provider/httputil",
+      "evidence": "direct",
+      "test_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/provider/hyperbolic",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/provider/hyperbolic",
+      "evidence": "missing",
+      "test_files": []
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/provider/mistral",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/provider/mistral",
+      "evidence": "direct",
+      "test_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/provider/nebius",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/provider/nebius",
+      "evidence": "missing",
+      "test_files": []
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/provider/openai",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/provider/openai",
+      "evidence": "direct",
+      "test_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/provider/openrouter",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/provider/openrouter",
+      "evidence": "missing",
+      "test_files": []
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/provider/perplexity",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/provider/perplexity",
+      "evidence": "missing",
+      "test_files": []
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/provider/together",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/provider/together",
+      "evidence": "missing",
+      "test_files": []
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/provider/upstage",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/provider/upstage",
+      "evidence": "missing",
+      "test_files": []
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/rag",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/rag",
+      "evidence": "direct",
+      "test_files": [
+        "service_test.go",
+        "service_validation_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/rag/chunker",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/rag/chunker",
+      "evidence": "direct",
+      "test_files": [
+        "chunker_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/rag/embedder",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/rag/embedder",
+      "evidence": "direct",
+      "test_files": [
+        "ollama_test.go",
+        "testmain_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/rag/extractor",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/rag/extractor",
+      "evidence": "direct",
+      "test_files": [
+        "docbox_test.go",
+        "testmain_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/rag/testutil",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/rag/testutil",
+      "evidence": "missing",
+      "test_files": []
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/rag/vectorstore",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/rag/vectorstore",
+      "evidence": "direct",
+      "test_files": [
+        "qdrant_test.go",
+        "testmain_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/redis",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/redis",
+      "evidence": "direct",
+      "test_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/retry",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/retry",
+      "evidence": "direct",
+      "test_files": [
+        "retry_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/server",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/server",
+      "evidence": "direct",
+      "test_files": [
+        "grpc_test.go",
+        "testmain_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/service",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/service",
+      "evidence": "direct",
+      "test_files": [
+        "admin_test.go",
+        "chat_test.go",
+        "files_test.go",
+        "idempotency_test.go",
+        "model_registry_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/service/config",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/service/config",
+      "evidence": "direct",
+      "test_files": [
+        "builder_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/tenant",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/tenant",
+      "evidence": "direct",
+      "test_files": [
+        "config_test.go",
+        "env_test.go",
+        "loader_test.go",
+        "manager_test.go",
+        "secrets_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/internal/validation",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/internal/validation",
+      "evidence": "direct",
+      "test_files": [
+        "limits_test.go",
+        "url_test.go"
+      ]
+    },
+    {
+      "import_path": "github.com/ai8future/airborne/tools/coverageaudit",
+      "directory": "/Users/cliff/Desktop/_code/ai_suite/airborne/.omx/team/execute-the-approved-06230481/worktrees/worker-1/tools/coverageaudit",
+      "evidence": "missing",
+      "test_files": []
+    }
+  ]
+}

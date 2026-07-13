@@ -38,6 +38,9 @@ func main() {
 		fatal(err)
 	}
 	if *output != "" {
+		if err := os.MkdirAll(filepath.Dir(*output), 0o755); err != nil {
+			fatal(err)
+		}
 		data, err := json.MarshalIndent(inv, "", "  ")
 		if err != nil {
 			fatal(err)

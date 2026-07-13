@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 from pathlib import Path
 
@@ -13,7 +14,10 @@ EXCLUDED_PATH_PARTS = {"vendor", ".git", ".omx", "dashboard", "markdown_svc"}
 
 def production_packages(root: Path) -> list[Path]:
     packages: list[Path] = []
-    for directory in sorted({path.parent for path in root.glob("{cmd,internal}/**/*.go")}):
+    source_paths = itertools.chain.from_iterable(
+        (root / name).rglob("*.go") for name in ("cmd", "internal")
+    )
+    for directory in sorted({path.parent for path in source_paths}):
         relative = directory.relative_to(root)
         if any(part in EXCLUDED_PATH_PARTS for part in relative.parts):
             continue
