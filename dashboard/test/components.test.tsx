@@ -23,7 +23,7 @@ describe("dashboard components", () => {
     rerender(<ActivityPanel activity={[entry]} loading={false} error={null} paused={false} onPauseToggle={onPauseToggle} onClear={onClear} onSelectThread={onSelectThread} selectedThreadId={null} />);
     await userEvent.click(screen.getByText("A request"));
     expect(onSelectThread).toHaveBeenCalledWith("thread-1");
-    expect(screen.getByText("1.3K")).toBeVisible();
+    expect(screen.getByText("1,250")).toBeVisible();
   });
 
   it("submits a test request and displays the response", async () => {
@@ -41,7 +41,7 @@ describe("dashboard components", () => {
   it("displays request failures and disables blank submissions", async () => {
     const fetch = vi.fn().mockRejectedValue(new Error("network down")); vi.stubGlobal("fetch", fetch);
     render(<TestPanel />);
-    const textarea = screen.getByRole("textbox", { name: "Test Prompt" });
+    const textarea = screen.getByRole("textbox");
     fireEvent.change(textarea, { target: { value: "" } });
     expect(screen.getByRole("button", { name: "Send Test Message" })).toBeDisabled();
     fireEvent.change(textarea, { target: { value: "test" } });

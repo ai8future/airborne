@@ -5,6 +5,7 @@ export default defineConfig({
   resolve: { alias: { "@": path.resolve(__dirname, "src") } },
   test: {
     environment: "jsdom",
+    exclude: ["e2e/**", "node_modules/**"],
     setupFiles: ["./test/setup.ts"],
     coverage: {
       provider: "v8",

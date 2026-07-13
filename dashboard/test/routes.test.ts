@@ -8,7 +8,7 @@ function request(path: string, init: RequestInit = {}) {
   return new NextRequest(`http://dashboard.test${path}`, {
     ...init,
     headers: { authorization: `Bearer ${token}`, ...(init.headers || {}) },
-  });
+  } as never);
 }
 
 function jsonResponse(body: unknown, status = 200) {
@@ -93,9 +93,17 @@ describe("dashboard proxy routes", () => {
     const fetch = vi.fn().mockResolvedValue(jsonResponse({ file_uri: "file://one", filename: "one.txt" })); vi.stubGlobal("fetch", fetch);
     const { POST } = await load<typeof import("@/app/api/upload/route")>("@/app/api/upload/route");
     const form = new FormData(); form.append("file", new File(["contents"], "one.txt", { type: "text/plain" })); form.append("tenant_id", "ai8");
-    expect(await (await POST(request("/api/upload", { method: "POST", body: form }))).json()).toMatchObject({ filename: "one.txt" });
+    const multipart = {
+      method: "POST", headers: new Headers({ authorization: `Bearer ${token}` }), cookies: { get: () => undefined },
+      nextUrl: new URL("http://dashboard.test/api/upload"), formData: async () => form,
+    } as unknown as NextRequest;
+    expect(await (await POST(multipart)).json()).toMatchObject({ filename: "one.txt" });
     expect(fetch.mock.calls[0][1]).toMatchObject({ method: "POST", headers: { Authorization: "Bearer backend-token" } });
-    expect((await POST(request("/api/upload", { method: "POST", body: new FormData() }))).status).toBe(400);
+    const missingFile = {
+      method: "POST", headers: new Headers({ authorization: `Bearer ${token}` }), cookies: { get: () => undefined },
+      nextUrl: new URL("http://dashboard.test/api/upload"), formData: async () => new FormData(),
+    } as unknown as NextRequest;
+    expect((await POST(missingFile)).status).toBe(400);
     expect((await POST(request("/api/upload", { method: "POST", headers: { "content-length": String(101 * 1024 * 1024) }, body: new FormData() }))).status).toBe(413);
   });
 });
