@@ -773,3 +773,48 @@ func createRAGServiceWithMocks(
 
 	return rag.NewService(embedder, store, extractor, rag.DefaultServiceOptions())
 }
+
+func TestExternalFileBackendsRejectMissingCredentialsBeforeNetwork(t *testing.T) {
+	svc := NewFileService(nil, nil)
+	ctx := ctxWithFilePermission("tenant1")
+	checks := []struct {
+		name string
+		err  error
+	}{
+		{"create openai", func() error {
+			_, err := svc.createOpenAIVectorStore(ctx, &pb.CreateFileStoreRequest{Name: "store"})
+			return err
+		}()},
+		{"create gemini", func() error {
+			_, err := svc.createGeminiFileSearchStore(ctx, &pb.CreateFileStoreRequest{Name: "store"})
+			return err
+		}()},
+		{"delete openai", func() error {
+			_, err := svc.deleteOpenAIVectorStore(ctx, &pb.DeleteFileStoreRequest{StoreId: "store"})
+			return err
+		}()},
+		{"delete gemini", func() error {
+			_, err := svc.deleteGeminiFileSearchStore(ctx, &pb.DeleteFileStoreRequest{StoreId: "store"})
+			return err
+		}()},
+		{"get openai", func() error {
+			_, err := svc.getOpenAIVectorStore(ctx, &pb.GetFileStoreRequest{StoreId: "store"})
+			return err
+		}()},
+		{"get gemini", func() error {
+			_, err := svc.getGeminiFileSearchStore(ctx, &pb.GetFileStoreRequest{StoreId: "store"})
+			return err
+		}()},
+		{"list openai", func() error { _, err := svc.listOpenAIVectorStores(ctx, &pb.ListFileStoresRequest{}); return err }()},
+		{"list gemini", func() error { _, err := svc.listGeminiFileSearchStores(ctx, &pb.ListFileStoresRequest{}); return err }()},
+		{"upload openai", svc.uploadToOpenAI(ctx, &mockUploadFileServer{ctx: ctx}, &pb.UploadFileMetadata{StoreId: "store", Filename: "file.txt"}, strings.NewReader("data"))},
+		{"upload gemini", svc.uploadToGemini(ctx, &mockUploadFileServer{ctx: ctx}, &pb.UploadFileMetadata{StoreId: "store", Filename: "file.txt"}, strings.NewReader("data"))},
+	}
+	for _, check := range checks {
+		t.Run(check.name, func(t *testing.T) {
+			if status.Code(check.err) != codes.InvalidArgument {
+				t.Fatalf("error code = %v, want InvalidArgument (err=%v)", status.Code(check.err), check.err)
+			}
+		})
+	}
+}

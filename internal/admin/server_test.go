@@ -1,8 +1,10 @@
 package admin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,7 +15,9 @@ import (
 	"github.com/ai8future/chassis-go/v11/guard"
 	"github.com/ai8future/chassis-go/v11/registry"
 
+	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/db"
+	"google.golang.org/grpc"
 )
 
 func TestDetectMIMEType(t *testing.T) {
@@ -635,5 +639,153 @@ func TestHandleDebug_NoDB(t *testing.T) {
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
+	}
+}
+
+type recordingAirborneClient struct {
+	pb.AirborneServiceClient
+	response *pb.GenerateReplyResponse
+	err      error
+	requests []*pb.GenerateReplyRequest
+}
+
+func (c *recordingAirborneClient) GenerateReply(_ context.Context, req *pb.GenerateReplyRequest, _ ...grpc.CallOption) (*pb.GenerateReplyResponse, error) {
+	c.requests = append(c.requests, req)
+	return c.response, c.err
+}
+
+func TestHandleTestAndChatSuccessUseRecordedGRPCRequest(t *testing.T) {
+	client := &recordingAirborneClient{response: &pb.GenerateReplyResponse{
+		ResponseId: "response-1",
+		Text:       "hello from fake",
+		Provider:   pb.Provider_PROVIDER_GEMINI,
+		Model:      "gemini-test",
+		Usage:      &pb.Usage{InputTokens: 3, OutputTokens: 5},
+	}}
+	s := &Server{grpcClient: client, authToken: "secret"}
+
+	testRecorder := httptest.NewRecorder()
+	s.handleTest(testRecorder, httptest.NewRequest(http.MethodPost, "/admin/test", strings.NewReader(`{"prompt":"test prompt","tenant_id":"tenant-a","provider":"openai"}`)))
+	if testRecorder.Code != http.StatusOK || !strings.Contains(testRecorder.Body.String(), `"reply":"hello from fake"`) {
+		t.Fatalf("test response = %d %s", testRecorder.Code, testRecorder.Body.String())
+	}
+	if len(client.requests) != 1 || client.requests[0].PreferredProvider != pb.Provider_PROVIDER_OPENAI || client.requests[0].ClientId != "dashboard-test" {
+		t.Fatalf("test request = %#v", client.requests)
+	}
+
+	threadID := "a28a7a8c-464c-4ec7-a965-5b7f466608d8"
+	chatRecorder := httptest.NewRecorder()
+	s.handleChat(chatRecorder, httptest.NewRequest(http.MethodPost, "/admin/chat", strings.NewReader(`{"thread_id":"`+threadID+`","message":"continue","tenant_id":"tenant-a"}`)))
+	if chatRecorder.Code != http.StatusOK || !strings.Contains(chatRecorder.Body.String(), `"content":"hello from fake"`) {
+		t.Fatalf("chat response = %d %s", chatRecorder.Code, chatRecorder.Body.String())
+	}
+	if len(client.requests) != 2 || client.requests[1].RequestId != threadID || client.requests[1].ClientId != "dashboard-chat" {
+		t.Fatalf("chat request = %#v", client.requests)
+	}
+}
+
+func TestHandleUploadValidationAndUnavailableTenantManager(t *testing.T) {
+	s := &Server{}
+
+	method := httptest.NewRecorder()
+	s.handleUpload(method, httptest.NewRequest(http.MethodGet, "/admin/upload", nil))
+	if method.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("GET upload status = %d", method.Code)
+	}
+
+	missing := httptest.NewRecorder()
+	missingReq := httptest.NewRequest(http.MethodPost, "/admin/upload", strings.NewReader("--not-a-form"))
+	missingReq.Header.Set("Content-Type", "multipart/form-data; boundary=missing")
+	s.handleUpload(missing, missingReq)
+	if missing.Code != http.StatusBadRequest || !strings.Contains(missing.Body.String(), "failed to parse multipart form") {
+		t.Fatalf("missing upload response = %d %s", missing.Code, missing.Body.String())
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	file, err := writer.CreateFormFile("file", "notes.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Write([]byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	unavailable := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/admin/upload", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	s.handleUpload(unavailable, req)
+	if unavailable.Code != http.StatusBadRequest || !strings.Contains(unavailable.Body.String(), "tenant manager not configured") {
+		t.Fatalf("unavailable upload response = %d %s", unavailable.Code, unavailable.Body.String())
+	}
+}
+
+func TestHandleChatWithFileRejectsInvalidThreadAndUnavailableTenant(t *testing.T) {
+	s := &Server{}
+	invalid := httptest.NewRecorder()
+	s.handleChatWithFile(invalid, httptest.NewRequest(http.MethodPost, "/admin/chat", nil), ChatWithFileRequest{ThreadID: "not-a-uuid"})
+	if invalid.Code != http.StatusBadRequest || !strings.Contains(invalid.Body.String(), "invalid thread_id") {
+		t.Fatalf("invalid file chat = %d %s", invalid.Code, invalid.Body.String())
+	}
+
+	unavailable := httptest.NewRecorder()
+	s.handleChatWithFile(unavailable, httptest.NewRequest(http.MethodPost, "/admin/chat", nil), ChatWithFileRequest{ThreadID: "a28a7a8c-464c-4ec7-a965-5b7f466608d8", TenantID: "tenant-a"})
+	if unavailable.Code != http.StatusBadRequest || !strings.Contains(unavailable.Body.String(), "tenant manager not configured") {
+		t.Fatalf("unavailable file chat = %d %s", unavailable.Code, unavailable.Body.String())
+	}
+}
+
+func TestAdminHTTPAuthAndTokenNormalization(t *testing.T) {
+	s := &Server{authToken: "expected-token"}
+	called := false
+	handler := s.requireHTTPAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { called = true; w.WriteHeader(http.StatusNoContent) }))
+
+	unauthorized := httptest.NewRecorder()
+	handler.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "/admin/activity", nil))
+	if unauthorized.Code != http.StatusUnauthorized || called || unauthorized.Header().Get("WWW-Authenticate") == "" {
+		t.Fatalf("unauthorized response = %d called=%t", unauthorized.Code, called)
+	}
+
+	authorizedReq := httptest.NewRequest(http.MethodGet, "/admin/activity", nil)
+	authorizedReq.Header.Set("Authorization", "Bearer expected-token")
+	authorized := httptest.NewRecorder()
+	handler.ServeHTTP(authorized, authorizedReq)
+	if authorized.Code != http.StatusNoContent || !called {
+		t.Fatalf("authorized response = %d called=%t", authorized.Code, called)
+	}
+
+	public := httptest.NewRecorder()
+	handler.ServeHTTP(public, httptest.NewRequest(http.MethodGet, "/admin/health", nil))
+	if public.Code != http.StatusNoContent {
+		t.Fatalf("public health = %d", public.Code)
+	}
+	if got := normalizeHTTPAuthHeader(" bearer  token "); got != "token" {
+		t.Fatalf("normalized token = %q", got)
+	}
+	if !constantTimeTokenEqual("same", "same") || constantTimeTokenEqual("short", "longer") {
+		t.Fatal("constant-time equality contract violated")
+	}
+}
+
+func TestHandleActivityAndHealthWithoutDatabase(t *testing.T) {
+	s := &Server{}
+	activity := httptest.NewRecorder()
+	s.handleActivity(activity, httptest.NewRequest(http.MethodGet, "/admin/activity?limit=invalid&tenant_id=tenant", nil))
+	if activity.Code != http.StatusOK || !strings.Contains(activity.Body.String(), `"activity":[]`) {
+		t.Fatalf("activity = %d %s", activity.Code, activity.Body.String())
+	}
+	health := httptest.NewRecorder()
+	s.handleHealth(health, httptest.NewRequest(http.MethodGet, "/admin/health", nil))
+	if health.Code != http.StatusOK || !strings.Contains(health.Body.String(), `"database":"not_configured"`) {
+		t.Fatalf("health = %d %s", health.Code, health.Body.String())
+	}
+}
+
+func TestServerShutdownHandlesUnstartedHTTPServer(t *testing.T) {
+	s := &Server{server: &http.Server{}}
+	if err := s.Shutdown(context.Background()); err != nil {
+		t.Fatalf("shutdown unstarted server: %v", err)
 	}
 }
