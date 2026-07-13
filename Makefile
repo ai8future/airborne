@@ -9,7 +9,7 @@ LDFLAGS := -ldflags="-w -s -X main.version=$(VERSION) -X main.GitCommit=$(GIT_CO
 PRICING_DB_REF ?= b7cf0ec4e2f5ccae0ee5bb7545a137777e4b2c24
 POSTGRES_E2E_IMAGE ?= postgres:16@sha256:be01cf82fc7dbba824acf0a82e150b4b360f3ff93c6631d7844af431e841a95c
 E2E_IMAGE ?= airborne:e2e-$(GIT_COMMIT)
-E2E_CLI := airborne-cli
+E2E_CLI = $(BIN_DIR)/airborne-cli
 PRICING_DB_DIR ?= ../pricing_db
 CHASSIS_GO_DIR ?= ../../chassis_suite/chassis-go
 CHASSIS_GO_ADDONS_DIR ?= ../../chassis_suite/chassis-go-addons
@@ -94,15 +94,20 @@ e2e: docker-build e2e-cli
 
 # Build the exact current CLI used by the black-box E2E runner.
 e2e-cli:
-	CGO_ENABLED=0 $(GOBUILD) $(LDFLAGS) -o $(E2E_CLI) ./$(CMD_DIR)
+	@mkdir -p $(BIN_DIR)
+	CGO_ENABLED=0 $(GOBUILD) $(LDFLAGS) -o $(E2E_CLI) ./cmd/airborne-cli
+	@$(E2E_CLI) --help | grep -q '^  health'
 
 # Fail-closed release verification across Go, dashboard, Docker integration, and cleanup.
 verify: test-fast test-integration test-coverage
 	@echo "Verifying dashboard test, coverage, lint, build, and browser gates..."
+	@if [ ! -d dashboard/node_modules ]; then cd dashboard && npm ci; fi
 	cd dashboard && CI=1 npm test && npm run test:coverage && npm run lint && npm run build && npm run test:e2e
+	$(GOCMD) vet ./...
 	$(MAKE) e2e
 	$(MAKE) clean
-	@rm -rf dashboard/playwright-report dashboard/test-results dashboard/coverage
+	@rm -rf dashboard/playwright-report dashboard/test-results dashboard/coverage e2e/artifacts
+	@docker image rm -f $(E2E_IMAGE) >/dev/null 2>&1 || true
 
 
 # Format code

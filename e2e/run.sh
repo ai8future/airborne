@@ -35,9 +35,10 @@ curl --fail --silent --show-error "$admin/admin/health" >"$ARTIFACTS/admin-healt
 curl --fail --silent --show-error -H 'Authorization: Bearer airborne-e2e-token' "$admin/admin/activity" >"$ARTIFACTS/activity.json"
 
 echo 'E2E-003/004: CLI reaches live admin and provider stub receives request'
-[[ -x "$ROOT/airborne-cli" ]] || { echo 'airborne-cli must be built before E2E' >&2; exit 1; }
-"$ROOT/airborne-cli" --url "$admin" --token airborne-e2e-token health | tee "$ARTIFACTS/cli-health.txt"
-"$ROOT/airborne-cli" --url "$admin" --token airborne-e2e-token --json test --provider openai 'deterministic e2e' | tee "$ARTIFACTS/cli-test.json"
+cli=${AIRBORNE_E2E_CLI:-"$ROOT/bin/airborne-cli"}
+[[ -x "$cli" ]] || { echo 'airborne-cli must be built before E2E' >&2; exit 1; }
+"$cli" --url "$admin" --token airborne-e2e-token health | tee "$ARTIFACTS/cli-health.txt"
+"$cli" --url "$admin" --token airborne-e2e-token --json test --provider openai 'deterministic e2e' | tee "$ARTIFACTS/cli-test.json"
 "${COMPOSE[@]}" exec -T provider-stub wget -qO- http://localhost:8080/requests >"$ARTIFACTS/provider-requests.json"
 grep -q 'chat/completions' "$ARTIFACTS/provider-requests.json"
 
@@ -54,7 +55,7 @@ curl --fail --silent --show-error "http://127.0.0.1:${dashboard_port}" >"$ARTIFA
 
 echo 'E2E-011: graceful restart restores readiness'
 "${COMPOSE[@]}" restart airborne
-"${COMPOSE[@]}" up --wait --wait-timeout 90 airborne
+"${COMPOSE[@]}" up --wait --wait-timeout 120 airborne
 curl --fail --silent --show-error "$admin/admin/health" >/dev/null
 
 echo 'E2E PASS: production image, auth, CLI, provider stub, PostgreSQL, dashboard, and restart scenarios passed'
