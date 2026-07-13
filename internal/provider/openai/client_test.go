@@ -414,3 +414,22 @@ func TestUploadFileToVectorStoreUploadFailureFixture(t *testing.T) {
 		t.Fatalf("upload error = %v", err)
 	}
 }
+
+func TestUploadFileToVectorStoreAttachFailureFixture(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/files":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"id":"file_1","filename":"note.txt"}`)
+		case "/vector_stores/store_1/files":
+			http.Error(w, "attach rejected", http.StatusBadGateway)
+		default:
+			t.Errorf("unexpected request %s", r.URL.Path)
+		}
+	}))
+	defer s.Close()
+	_, err := UploadFileToVectorStore(context.Background(), FileStoreConfig{APIKey: "test", BaseURL: s.URL}, "store_1", "note.txt", strings.NewReader("hello"))
+	if err == nil || !strings.Contains(err.Error(), "add file to vector store") {
+		t.Fatalf("attach error = %v", err)
+	}
+}
