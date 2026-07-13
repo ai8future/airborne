@@ -473,7 +473,7 @@ func uploadOfficeFileToFileSearchStore(ctx context.Context, cfg FileStoreConfig,
 
 	// Ensure cleanup of the Files API file
 	defer func() {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
 		if cleanupErr := deleteFromFilesAPI(cleanupCtx, cfg.APIKey, filesAPIName); cleanupErr != nil {
 			slog.Warn("failed to cleanup file from Files API",

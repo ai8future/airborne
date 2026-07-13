@@ -24,6 +24,8 @@ type clientOptions struct {
 	timeout time.Duration
 }
 
+const defaultOperationTimeout = 120 * time.Second
+
 // WithTimeout sets the default timeout for operations.
 func WithTimeout(d time.Duration) Option {
 	return func(o *clientOptions) {
@@ -34,7 +36,7 @@ func WithTimeout(d time.Duration) Option {
 // NewClient creates a new markdown_svc client.
 func NewClient(address string, opts ...Option) (*Client, error) {
 	options := &clientOptions{
-		timeout: 30 * time.Second,
+		timeout: defaultOperationTimeout,
 	}
 	for _, opt := range opts {
 		opt(options)
