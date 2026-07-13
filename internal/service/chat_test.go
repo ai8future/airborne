@@ -1325,3 +1325,16 @@ func TestSelectProviderProtocol(t *testing.T) {
 		t.Fatalf("default response = %#v, %v", defaultResponse, err)
 	}
 }
+
+func TestNewChatServiceInstallsCoreProviders(t *testing.T) {
+	svc := NewChatService(nil, nil, nil, nil, nil)
+	if svc.openaiProvider == nil || svc.geminiProvider == nil || svc.anthropicProvider == nil {
+		t.Fatal("NewChatService must install core provider adapters")
+	}
+	if svc.configBuilder == nil {
+		t.Fatal("NewChatService must initialize config builder")
+	}
+	if svc.idem != nil {
+		t.Fatal("nil Redis must leave idempotency replay disabled")
+	}
+}
