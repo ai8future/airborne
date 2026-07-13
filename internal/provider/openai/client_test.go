@@ -320,3 +320,30 @@ func TestFileStoreValidationFailures(t *testing.T) {
 		}
 	}
 }
+func TestVectorStoreHTTPLifecycle(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method + " " + r.URL.Path {
+		case "POST /vector_stores", "GET /vector_stores/vs", "DELETE /vector_stores/vs":
+			io.WriteString(w, `{"id":"vs","name":"fixture","status":"completed","created_at":0,"file_counts":{"total":1}}`)
+		case "GET /vector_stores":
+			io.WriteString(w, `{"data":[{"id":"vs","name":"fixture","status":"completed","created_at":0,"file_counts":{"total":1}}]}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer s.Close()
+	cfg := FileStoreConfig{APIKey: "x", BaseURL: s.URL}
+	if _, e := CreateVectorStore(context.Background(), cfg, "fixture"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := GetVectorStore(context.Background(), cfg, "vs"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := ListVectorStores(context.Background(), cfg, 1); e != nil {
+		t.Fatal(e)
+	}
+	if e := DeleteVectorStore(context.Background(), cfg, "vs"); e != nil {
+		t.Fatal(e)
+	}
+}
