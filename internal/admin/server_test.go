@@ -789,3 +789,29 @@ func TestServerShutdownHandlesUnstartedHTTPServer(t *testing.T) {
 		t.Fatalf("shutdown unstarted server: %v", err)
 	}
 }
+
+func TestAdminReadHandlersValidationAndNoDatabase(t *testing.T) {
+	s := NewServer(nil, Config{Version: VersionInfo{Version: "v1"}})
+	for _, tc := range []struct {
+		name, path, method string
+		handler            http.HandlerFunc
+		want               int
+	}{
+		{"health method", "/admin/health", http.MethodPost, s.handleHealth, http.StatusMethodNotAllowed},
+		{"health no db", "/admin/health", http.MethodGet, s.handleHealth, http.StatusOK},
+		{"debug missing", "/admin/debug/", http.MethodGet, s.handleDebug, http.StatusBadRequest},
+		{"debug invalid", "/admin/debug/nope", http.MethodGet, s.handleDebug, http.StatusBadRequest},
+		{"debug unavailable", "/admin/debug/00000000-0000-0000-0000-000000000000", http.MethodGet, s.handleDebug, http.StatusServiceUnavailable},
+		{"thread missing", "/admin/thread/", http.MethodGet, s.handleThread, http.StatusBadRequest},
+		{"thread invalid", "/admin/thread/nope", http.MethodGet, s.handleThread, http.StatusBadRequest},
+		{"thread unavailable", "/admin/thread/00000000-0000-0000-0000-000000000000", http.MethodGet, s.handleThread, http.StatusServiceUnavailable},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRecorder()
+			tc.handler(r, httptest.NewRequest(tc.method, tc.path, nil))
+			if r.Code != tc.want {
+				t.Fatalf("status = %d body=%s, want %d", r.Code, r.Body.String(), tc.want)
+			}
+		})
+	}
+}
