@@ -339,3 +339,19 @@ func TestGenerateReply_MissingAPIKey(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+func TestGeminiConversionBoundaries(t *testing.T) {
+	if parseThinkingLevel("high") == parseThinkingLevel("nonsense") {
+		t.Fatal("thinking levels")
+	}
+	s := convertToSchema(map[string]interface{}{"type": "string", "enum": []interface{}{"a"}})
+	if s == nil || len(s.Enum) != 1 {
+		t.Fatal("schema")
+	}
+	d := buildFunctionDeclaration(provider.Tool{Name: "f", ParametersSchema: `{"type":"object"}`})
+	if d.Name != "f" {
+		t.Fatal("function")
+	}
+	if len(extractFunctionCalls(nil)) != 0 || len(extractCodeExecutionResults(nil)) != 0 {
+		t.Fatal("nil")
+	}
+}
