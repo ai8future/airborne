@@ -347,3 +347,35 @@ func TestVectorStoreHTTPLifecycle(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+func TestGenerateReplyStreamResponsesSSEFixture(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_stream\"}}\n\n")
+		_, _ = io.WriteString(w, "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n")
+		_, _ = io.WriteString(w, "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_stream\",\"usage\":{\"input_tokens\":2,\"output_tokens\":3,\"total_tokens\":5}}}\n\n")
+	}))
+	defer s.Close()
+	ch, err := NewClient().GenerateReplyStream(context.Background(), provider.GenerateParams{UserInput: "hi", Config: provider.ProviderConfig{APIKey: "test", BaseURL: s.URL}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []provider.StreamChunk
+	for chunk := range ch {
+		got = append(got, chunk)
+	}
+	if len(got) != 2 || got[0].Text != "hello" || got[1].Type != provider.ChunkTypeComplete || got[1].Usage.TotalTokens != 5 {
+		t.Fatalf("chunks = %#v", got)
+	}
+}
+
+func TestWaitForCompletionNilAndCanceled(t *testing.T) {
+	if _, err := waitForCompletion(context.Background(), openai.Client{}, nil); err == nil {
+		t.Fatal("nil response must fail")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := waitForCompletion(ctx, openai.Client{}, &responses.Response{ID: "resp_1", Status: responses.ResponseStatusInProgress}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled wait error = %v", err)
+	}
+}
