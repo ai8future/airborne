@@ -2,6 +2,7 @@ package openai
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -516,5 +517,20 @@ func TestWaitForFileProcessingTerminalFailures(t *testing.T) {
 				t.Fatalf("status=%q err=%v", status, err)
 			}
 		})
+	}
+}
+
+func TestExtractToolAndCodeExecutionStructuredOutputs(t *testing.T) {
+	var response responses.Response
+	if err := json.Unmarshal([]byte(`{"output":[{"type":"function_call","id":"call_1","name":"lookup","arguments":"{\"q\":\"airborne\"}"},{"type":"code_interpreter_call","id":"code_1","code":"print(1)","outputs":[{"type":"logs","logs":"1"},{"type":"image"}]}]}`), &response); err != nil {
+		t.Fatal(err)
+	}
+	tools := extractToolCalls(&response)
+	if len(tools) != 1 || tools[0].Name != "lookup" || tools[0].Arguments == "" {
+		t.Fatalf("tools = %#v", tools)
+	}
+	execs := extractCodeExecutions(&response)
+	if len(execs) != 1 || execs[0].Stdout != "1" || len(execs[0].Files) != 1 {
+		t.Fatalf("executions = %#v", execs)
 	}
 }
