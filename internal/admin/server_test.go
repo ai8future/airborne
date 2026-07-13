@@ -368,6 +368,33 @@ func TestGetGRPCClientRequiresAddress(t *testing.T) {
 	}
 }
 
+func TestHandleTestValidationAndUnavailableGRPC(t *testing.T) {
+	s := &Server{}
+	for _, test := range []struct {
+		name     string
+		method   string
+		body     string
+		status   int
+		contains string
+	}{
+		{"method", http.MethodGet, "", http.StatusMethodNotAllowed, ""},
+		{"invalid json", http.MethodPost, "{", http.StatusBadRequest, ""},
+		{"missing prompt", http.MethodPost, `{}`, http.StatusBadRequest, "prompt is required"},
+		{"unavailable grpc", http.MethodPost, `{"prompt":"hello"}`, http.StatusServiceUnavailable, "gRPC address not configured"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			s.handleTest(w, httptest.NewRequest(test.method, "/admin/test", strings.NewReader(test.body)))
+			if w.Code != test.status {
+				t.Fatalf("status = %d, want %d; body=%s", w.Code, test.status, w.Body.String())
+			}
+			if test.contains != "" && !strings.Contains(w.Body.String(), test.contains) {
+				t.Fatalf("body %q lacks %q", w.Body.String(), test.contains)
+			}
+		})
+	}
+}
+
 func TestAdminHTTPAuthMiddleware_PublicHealthNoToken(t *testing.T) {
 	s := &Server{authToken: "secret-token"}
 	handler := s.requireHTTPAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
