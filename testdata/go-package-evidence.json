@@ -65,7 +65,9 @@
       ],
       "test_evidence": "direct",
       "evidence_files": [
+        "client_extra_test.go",
         "client_test.go",
+        "commands_test.go",
         "output_test.go"
       ]
     },
@@ -195,7 +197,8 @@
       ],
       "test_evidence": "direct",
       "evidence_files": [
-        "client_test.go"
+        "client_test.go",
+        "coverage_smoke_test.go"
       ]
     },
     {
@@ -267,6 +270,7 @@
       "test_evidence": "direct",
       "evidence_files": [
         "client_test.go",
+        "coverage_smoke_test.go",
         "filestore_test.go",
         "testmain_test.go"
       ]
@@ -329,7 +333,8 @@
       ],
       "test_evidence": "direct",
       "evidence_files": [
-        "client_test.go"
+        "client_test.go",
+        "coverage_smoke_test.go"
       ]
     },
     {

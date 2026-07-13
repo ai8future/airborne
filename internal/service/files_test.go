@@ -818,3 +818,94 @@ func TestExternalFileBackendsRejectMissingCredentialsBeforeNetwork(t *testing.T)
 		})
 	}
 }
+
+func TestFileService_ExternalStoreHTTPRoutes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/vector_stores":
+			if r.Method != http.MethodPost {
+				t.Errorf("OpenAI method = %s", r.Method)
+			}
+			_, _ = io.WriteString(w, `{"id":"vs_1","name":"external","status":"completed","created_at":1700000000}`)
+		case "/fileSearchStores":
+			if r.URL.Query().Get("key") != "gem-key" {
+				t.Errorf("Gemini key = %q", r.URL.Query().Get("key"))
+			}
+			_, _ = io.WriteString(w, `{"name":"fileSearchStores/fs_1","displayName":"external","createTime":"2026-01-01T00:00:00Z"}`)
+		default:
+			http.Error(w, "unexpected route "+r.URL.Path, http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	svc := NewFileService(nil, nil)
+	ctx := ctxWithAdminFilePermission("tenant1")
+	for _, tc := range []struct {
+		name     string
+		provider pb.Provider
+		key      string
+		want     string
+	}{
+		{"openai", pb.Provider_PROVIDER_OPENAI, "open-key", "vs_1"},
+		{"gemini", pb.Provider_PROVIDER_GEMINI, "gem-key", "fs_1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			response, err := svc.CreateFileStore(ctx, &pb.CreateFileStoreRequest{Provider: tc.provider, Name: "external", Config: &pb.ProviderConfig{ApiKey: tc.key, BaseUrl: server.URL}})
+			if err != nil {
+				t.Fatalf("CreateFileStore() error = %v", err)
+			}
+			if response.StoreId != tc.want || response.Provider != tc.provider {
+				t.Fatalf("response = %#v", response)
+			}
+		})
+	}
+}
+
+func TestMain(m *testing.M) {
+	chassis.RequireMajor(11)
+	os.Exit(m.Run())
+}
+
+func TestFileService_ExternalStoreGetListDelete(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/vector_stores":
+			_, _ = io.WriteString(w, `{"data":[{"id":"vs_1","name":"external","status":"completed","file_counts":{"total":2},"created_at":1700000000}]}`)
+		case "/vector_stores/vs_1":
+			_, _ = io.WriteString(w, `{"id":"vs_1","name":"external","status":"completed","file_counts":{"total":2},"created_at":1700000000}`)
+		case "/fileSearchStores":
+			_, _ = io.WriteString(w, `{"fileSearchStores":[{"name":"fileSearchStores/fs_1","displayName":"external","createTime":"2026-01-01T00:00:00Z","totalDocumentCount":2}]}`)
+		case "/fileSearchStores/fs_1":
+			_, _ = io.WriteString(w, `{"name":"fileSearchStores/fs_1","displayName":"external","createTime":"2026-01-01T00:00:00Z","totalDocumentCount":2}`)
+		default:
+			http.Error(w, "unexpected route "+r.URL.Path, http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	svc, ctx := NewFileService(nil, nil), ctxWithAdminFilePermission("tenant1")
+	for _, tc := range []struct {
+		name     string
+		provider pb.Provider
+		id, key  string
+	}{
+		{"openai", pb.Provider_PROVIDER_OPENAI, "vs_1", "open-key"},
+		{"gemini", pb.Provider_PROVIDER_GEMINI, "fs_1", "gem-key"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &pb.ProviderConfig{ApiKey: tc.key, BaseUrl: server.URL}
+			got, err := svc.GetFileStore(ctx, &pb.GetFileStoreRequest{Provider: tc.provider, StoreId: tc.id, Config: cfg})
+			if err != nil || got.FileCount != 2 {
+				t.Fatalf("GetFileStore() = %#v, %v", got, err)
+			}
+			listed, err := svc.ListFileStores(ctx, &pb.ListFileStoresRequest{Provider: tc.provider, Limit: 10, Config: cfg})
+			if err != nil || len(listed.Stores) != 1 {
+				t.Fatalf("ListFileStores() = %#v, %v", listed, err)
+			}
+			deleted, err := svc.DeleteFileStore(ctx, &pb.DeleteFileStoreRequest{Provider: tc.provider, StoreId: tc.id, Config: cfg, Force: true})
+			if err != nil || !deleted.Success {
+				t.Fatalf("DeleteFileStore() = %#v, %v", deleted, err)
+			}
+		})
+	}
+}
