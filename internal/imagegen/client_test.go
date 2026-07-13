@@ -1,6 +1,7 @@
 package imagegen
 
 import (
+	"context"
 	"testing"
 )
 
@@ -200,5 +201,21 @@ func TestConfigGetModel(t *testing.T) {
 				t.Errorf("GetModel() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestGenerateValidationAndProviderSelection(t *testing.T) {
+	client := NewClient()
+	if _, err := client.Generate(context.Background(), nil); err == nil {
+		t.Fatal("nil request should fail")
+	}
+	if _, err := client.Generate(context.Background(), &ImageRequest{Config: &Config{Provider: "unknown"}}); err == nil {
+		t.Fatal("unsupported provider should fail")
+	}
+	if _, err := client.Generate(context.Background(), &ImageRequest{Config: &Config{Provider: "gemini"}}); err == nil {
+		t.Fatal("gemini without a key should fail before network access")
+	}
+	if _, err := client.Generate(context.Background(), &ImageRequest{Config: &Config{Provider: "openai"}}); err == nil {
+		t.Fatal("openai without a key should fail before network access")
 	}
 }
