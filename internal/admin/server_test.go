@@ -395,6 +395,36 @@ func TestHandleTestValidationAndUnavailableGRPC(t *testing.T) {
 	}
 }
 
+func TestHandleChatRequestValidation(t *testing.T) {
+	s := &Server{}
+	validThread := "8e67ec2c-3f3a-4b1a-9f21-8ad9bd298c3a"
+	for _, test := range []struct {
+		name     string
+		method   string
+		body     string
+		status   int
+		contains string
+	}{
+		{"method", http.MethodGet, "", http.StatusMethodNotAllowed, ""},
+		{"invalid json", http.MethodPost, "{", http.StatusBadRequest, ""},
+		{"missing message", http.MethodPost, `{}`, http.StatusBadRequest, "message is required"},
+		{"missing thread", http.MethodPost, `{"message":"hello"}`, http.StatusBadRequest, "thread_id is required"},
+		{"invalid thread", http.MethodPost, `{"message":"hello","thread_id":"nope"}`, http.StatusBadRequest, "invalid thread_id format"},
+		{"invalid request id", http.MethodPost, `{"message":"hello","thread_id":"` + validThread + `","request_id":"bad id"}`, http.StatusBadRequest, "invalid request_id format"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			s.handleChat(w, httptest.NewRequest(test.method, "/admin/chat", strings.NewReader(test.body)))
+			if w.Code != test.status {
+				t.Fatalf("status = %d, want %d; body=%s", w.Code, test.status, w.Body.String())
+			}
+			if test.contains != "" && !strings.Contains(w.Body.String(), test.contains) {
+				t.Fatalf("body %q lacks %q", w.Body.String(), test.contains)
+			}
+		})
+	}
+}
+
 func TestAdminHTTPAuthMiddleware_PublicHealthNoToken(t *testing.T) {
 	s := &Server{authToken: "secret-token"}
 	handler := s.requireHTTPAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
