@@ -26,6 +26,17 @@ admin_port=$("${COMPOSE[@]}" port airborne 8473 | sed 's/.*://')
 dashboard_port=$("${COMPOSE[@]}" port dashboard 4848 | sed 's/.*://')
 admin="http://127.0.0.1:${admin_port}"
 
+wait_for_admin() {
+  for _ in $(seq 1 60); do
+    if curl --fail --silent --show-error "$admin/admin/health" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  echo "admin endpoint did not become ready within 120 seconds" >&2
+  return 1
+}
+
 echo 'E2E-001: production image and gRPC health'
 "${COMPOSE[@]}" exec -T airborne /app/airborne --health-check
 
@@ -48,7 +59,7 @@ grep -q '"path": "/v1/responses"' "$ARTIFACTS/provider-requests.json"
 echo 'E2E-005/006: real PostgreSQL migrations and RLS are installed'
 "${COMPOSE[@]}" exec -T postgres psql -U airborne -d airborne -Atc 'select 1' | grep -qx 1
 "${COMPOSE[@]}" exec -T postgres psql -U airborne -d airborne -Atc "select count(*) from pg_tables where schemaname = 'public' and tablename in ('airborne_tenants', 'airborne_chats', 'airborne_chat_messages')" | grep -qx 3
-"${COMPOSE[@]}" exec -T postgres psql -U airborne -d airborne -Atc "select relrowsecurity and relforcerowsecurity from pg_class where relname = 'airborne_chat_messages'" | grep -qx 't|t'
+"${COMPOSE[@]}" exec -T postgres psql -U airborne -d airborne -Atc "select relrowsecurity::text || '|' || relforcerowsecurity::text from pg_class where relname = 'airborne_chat_messages'" | grep -qx 'true|true'
 
 echo 'E2E-007: disabled RAG contract is explicit'
 [[ $(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer airborne-e2e-token' -F 'file=@/dev/null;filename=e2e.txt' "$admin/admin/upload") =~ ^(400|404|503)$ ]]
@@ -59,6 +70,6 @@ curl --fail --silent --show-error "http://127.0.0.1:${dashboard_port}" >"$ARTIFA
 echo 'E2E-011: graceful restart restores readiness'
 "${COMPOSE[@]}" restart airborne
 "${COMPOSE[@]}" up --wait --wait-timeout 120 airborne
-curl --fail --silent --show-error "$admin/admin/health" >/dev/null
+wait_for_admin
 
 echo 'E2E PASS: production image, auth, CLI, provider stub, PostgreSQL, dashboard, and restart scenarios passed'
