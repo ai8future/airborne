@@ -309,6 +309,23 @@ func TestValidateProviderURL_ResolvesPrivateIP(t *testing.T) {
 	}
 }
 
+func TestValidateProviderURLE2EProviderStubIsNarrowlyOptIn(t *testing.T) {
+	originalLookup := lookupIP
+	lookupIP = func(string) ([]net.IP, error) { return []net.IP{net.ParseIP("192.168.1.10")}, nil }
+	t.Cleanup(func() { lookupIP = originalLookup })
+
+	t.Setenv("AIRBORNE_E2E_ALLOW_PROVIDER_STUB", "true")
+	if err := ValidateProviderURL("https://provider-stub:8443/v1"); err != nil {
+		t.Fatalf("explicit TLS E2E fixture should be allowed: %v", err)
+	}
+	if err := ValidateProviderURL("https://other-service:8443/v1"); !errors.Is(err, ErrPrivateIP) {
+		t.Fatalf("only provider-stub may bypass private DNS check, got %v", err)
+	}
+	if err := ValidateProviderURL("http://provider-stub:8443/v1"); !errors.Is(err, ErrHTTPNotAllowed) {
+		t.Fatalf("E2E fixture must remain HTTPS-only, got %v", err)
+	}
+}
+
 func TestValidateProviderURL_ResolvesMetadataIP(t *testing.T) {
 	originalLookup := lookupIP
 	lookupIP = func(host string) ([]net.IP, error) {

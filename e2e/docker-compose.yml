@@ -40,9 +40,12 @@ services:
       AIRBORNE_STARTUP_MODE: development
       AIRBORNE_CONFIGS_DIR: /e2e/configs
       OPENAI_API_KEY: deterministic-e2e-key
+      SSL_CERT_FILE: /e2e/provider-stub-ca.pem
+      AIRBORNE_E2E_ALLOW_PROVIDER_STUB: "true"
     volumes:
       - ./fixtures/airborne.yaml:/e2e/airborne.yaml:ro
       - ./fixtures/configs:/e2e/configs:ro
+      - ./stub/certs/provider-stub-cert.pem:/e2e/provider-stub-ca.pem:ro
     depends_on:
       postgres: { condition: service_healthy }
       provider-stub: { condition: service_healthy }

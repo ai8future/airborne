@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/ai8future/chassis-go-addons/ssrfcheck"
@@ -147,13 +148,22 @@ func ValidateProviderURL(rawURL string) error {
 	}
 
 	// For non-IP hostnames (not localhost), verify they don't resolve to private IPs
-	if ip == nil && !isLocalhost {
+	if ip == nil && !isLocalhost && !allowsE2EProviderStub(parsedURL) {
 		if err := validateHostnameResolvesPublic(hostname); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// allowsE2EProviderStub permits only the TLS-only Compose fixture when an
+// explicit E2E switch is set. Production provider URLs keep the normal SSRF
+// checks; this narrowly avoids weakening them merely to exercise an isolated
+// provider in a private Docker network.
+func allowsE2EProviderStub(u *url.URL) bool {
+	return os.Getenv("AIRBORNE_E2E_ALLOW_PROVIDER_STUB") == "true" &&
+		u.Scheme == "https" && u.Hostname() == "provider-stub" && u.Port() == "8443"
 }
 
 // isLocalhostHost checks if the hostname is localhost or a loopback address

@@ -4,5 +4,5 @@ providers:
     enabled: true
     api_key: "ENV=OPENAI_API_KEY"
     model: "e2e-model"
-    base_url: "http://provider-stub:8080/v1"
+    base_url: "https://provider-stub:8443/v1"
 failover: { enabled: false, order: [openai] }
