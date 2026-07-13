@@ -17,6 +17,7 @@ import (
 
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/db"
+	"github.com/ai8future/airborne/internal/tenant"
 	"google.golang.org/grpc"
 )
 
@@ -814,4 +815,92 @@ func TestAdminReadHandlersValidationAndNoDatabase(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAdminProxyRequestValidationAndUnavailableGRPC(t *testing.T) {
+	s := &Server{}
+	threadID := "a28a7a8c-464c-4ec7-a965-5b7f466608d8"
+	for _, tc := range []struct {
+		name, path, body string
+		handler          http.HandlerFunc
+		want             int
+	}{
+		{"test method", "/admin/test", "", s.handleTest, http.StatusMethodNotAllowed},
+		{"test malformed", "/admin/test", "{", s.handleTest, http.StatusBadRequest},
+		{"test missing prompt", "/admin/test", `{}`, s.handleTest, http.StatusBadRequest},
+		{"test unavailable grpc", "/admin/test", `{"prompt":"hello"}`, s.handleTest, http.StatusServiceUnavailable},
+		{"chat method", "/admin/chat", "", s.handleChat, http.StatusMethodNotAllowed},
+		{"chat malformed", "/admin/chat", "{", s.handleChat, http.StatusBadRequest},
+		{"chat missing message", "/admin/chat", `{"thread_id":"` + threadID + `"}`, s.handleChat, http.StatusBadRequest},
+		{"chat missing thread", "/admin/chat", `{"message":"hello"}`, s.handleChat, http.StatusBadRequest},
+		{"chat invalid thread", "/admin/chat", `{"message":"hello","thread_id":"bad"}`, s.handleChat, http.StatusBadRequest},
+		{"chat invalid idempotency key", "/admin/chat", `{"message":"hello","thread_id":"` + threadID + `","request_id":"bad key"}`, s.handleChat, http.StatusBadRequest},
+		{"chat unavailable grpc", "/admin/chat", `{"message":"hello","thread_id":"` + threadID + `"}`, s.handleChat, http.StatusServiceUnavailable},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRecorder()
+			tc.handler(r, httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body)))
+			if r.Code != tc.want {
+				t.Fatalf("status = %d body=%s, want %d", r.Code, r.Body.String(), tc.want)
+			}
+		})
+	}
+}
+
+func TestAdminProxyProviderBranchesAndClientLifecycle(t *testing.T) {
+	client := &recordingAirborneClient{response: &pb.GenerateReplyResponse{Text: "ok", Provider: pb.Provider_PROVIDER_ANTHROPIC}}
+	s := &Server{grpcClient: client, authToken: "admin-token"}
+	threadID := "a28a7a8c-464c-4ec7-a965-5b7f466608d8"
+	for _, tc := range []struct {
+		path, body string
+		want       pb.Provider
+	}{
+		{"/admin/test", `{"prompt":"hello","provider":"anthropic"}`, pb.Provider_PROVIDER_ANTHROPIC},
+		{"/admin/chat", `{"message":"hello","thread_id":"` + threadID + `","provider":"openai"}`, pb.Provider_PROVIDER_OPENAI},
+	} {
+		r := httptest.NewRecorder()
+		if tc.path == "/admin/test" {
+			s.handleTest(r, httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body)))
+		} else {
+			s.handleChat(r, httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body)))
+		}
+		if r.Code != http.StatusOK {
+			t.Fatalf("%s status = %d body=%s", tc.path, r.Code, r.Body.String())
+		}
+		got := client.requests[len(client.requests)-1]
+		if got.PreferredProvider != tc.want {
+			t.Fatalf("provider = %v, want %v", got.PreferredProvider, tc.want)
+		}
+	}
+
+	missing := &Server{}
+	if _, err := missing.getGRPCClient(); err == nil {
+		t.Fatal("empty gRPC address should fail")
+	}
+
+	remote := &Server{grpcAddr: "127.0.0.1:1"}
+	if _, err := remote.getGRPCClient(); err != nil {
+		t.Fatalf("lazy gRPC client creation = %v", err)
+	}
+	if err := remote.Shutdown(context.Background()); err != nil {
+		t.Fatalf("lazy client shutdown = %v", err)
+	}
+}
+
+func TestGeminiKeyResolution(t *testing.T) {
+	manager := &tenant.Manager{Tenants: map[string]tenant.TenantConfig{
+		"configured": {TenantID: "configured", Providers: map[string]tenant.ProviderConfig{"gemini": {Enabled: true, APIKey: "test-key"}}},
+		"empty-key":  {TenantID: "empty-key", Providers: map[string]tenant.ProviderConfig{"gemini": {Enabled: true}}},
+	}}
+	s := &Server{tenantMgr: manager}
+	if _, err := s.getGeminiAPIKey("missing"); err == nil {
+		t.Fatal("missing tenant should fail")
+	}
+	if _, err := s.getGeminiAPIKey("empty-key"); err == nil {
+		t.Fatal("empty Gemini key should fail")
+	}
+	if got, err := s.getGeminiAPIKey("configured"); err != nil || got != "test-key" {
+		t.Fatalf("getGeminiAPIKey() = %q, %v", got, err)
+	}
+
 }
