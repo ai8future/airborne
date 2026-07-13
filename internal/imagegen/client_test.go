@@ -1,7 +1,10 @@
 package imagegen
 
 import (
+	"bytes"
 	"context"
+	"image"
+	"image/png"
 	"testing"
 )
 
@@ -217,5 +220,22 @@ func TestGenerateValidationAndProviderSelection(t *testing.T) {
 	}
 	if _, err := client.Generate(context.Background(), &ImageRequest{Config: &Config{Provider: "openai"}}); err == nil {
 		t.Fatal("openai without a key should fail before network access")
+	}
+}
+
+func TestImageEncodingHelpers(t *testing.T) {
+	var pngData bytes.Buffer
+	if err := png.Encode(&pngData, image.NewRGBA(image.Rect(0, 0, 2, 3))); err != nil {
+		t.Fatal(err)
+	}
+	jpegData, width, height := convertToJPEG(pngData.Bytes())
+	if len(jpegData) == 0 || width != 2 || height != 3 {
+		t.Fatalf("convertToJPEG dimensions = %d x %d", width, height)
+	}
+	if width, height := getImageDimensions(pngData.Bytes()); width != 2 || height != 3 {
+		t.Fatalf("getImageDimensions = %d x %d", width, height)
+	}
+	if got, width, height := convertToJPEG([]byte("not-an-image")); string(got) != "not-an-image" || width != 0 || height != 0 {
+		t.Fatal("invalid image should be returned unchanged")
 	}
 }
