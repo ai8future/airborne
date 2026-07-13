@@ -11,6 +11,7 @@ vi.mock("next/navigation", () => ({
 import { TenantProvider, useTenant } from "@/context/TenantContext";
 import ConversationPanel from "@/components/ConversationPanel";
 import DebugModal from "@/components/DebugModal";
+import TenantSelector from "@/components/TenantSelector";
 
 function TenantProbe() {
   const { tenant, setTenant } = useTenant();
@@ -21,6 +22,13 @@ describe("full dashboard surface", () => {
   it("updates the tenant context and URL", async () => {
     render(<TenantProvider><TenantProbe /></TenantProvider>);
     fireEvent.click(screen.getByRole("button", { name: "ai8" }));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/?tenant=zztest"));
+  });
+
+  it("opens the tenant selector and changes the selected tenant", async () => {
+    render(<TenantProvider><TenantSelector /></TenantProvider>);
+    fireEvent.click(screen.getByRole("button", { name: /Tenant: ai8/ }));
+    fireEvent.click(screen.getByRole("button", { name: "zztest" }));
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/?tenant=zztest"));
   });
 
