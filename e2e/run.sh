@@ -28,7 +28,11 @@ admin="http://127.0.0.1:${admin_port}"
 
 wait_for_admin() {
   for _ in $(seq 1 60); do
-    if curl --fail --silent --show-error "$admin/admin/health" >/dev/null 2>&1; then
+    # Docker may replace an ephemeral host port while restarting a service.
+    # Resolve it again so readiness checks stay bound to the restarted admin.
+    admin_port=$("${COMPOSE[@]}" port airborne 8473 | sed 's/.*://')
+    admin="http://127.0.0.1:${admin_port}"
+    if curl --connect-timeout 2 --max-time 5 --fail --silent --show-error "$admin/admin/health" >/dev/null 2>&1; then
       return 0
     fi
     sleep 2
