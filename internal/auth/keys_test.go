@@ -1,7 +1,11 @@
 package auth
 
 import (
+	"context"
 	"testing"
+
+	airborneredis "github.com/ai8future/airborne/internal/redis"
+	"github.com/alicebob/miniredis/v2"
 )
 
 func TestParseAPIKey(t *testing.T) {
@@ -178,5 +182,33 @@ func TestClientKeyHasPermission(t *testing.T) {
 				t.Errorf("HasPermission() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestKeyStoreLifecycleWithMiniRedis(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client, err := airborneredis.NewClient(airborneredis.Config{Addr: mr.Addr()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	store := NewKeyStore(client)
+	ctx := context.Background()
+	key, raw, err := store.CreateKey(ctx, CreateKeyParams{ClientName: "test", Permissions: []Permission{PermissionChat}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.ValidateKey(ctx, raw); err != nil || got.KeyID != key.KeyID {
+		t.Fatalf("ValidateKey = %#v, %v", got, err)
+	}
+	keys, err := store.ListKeys(ctx)
+	if err != nil || len(keys) != 1 || keys[0].SecretHash != "" {
+		t.Fatalf("ListKeys = %#v, %v", keys, err)
+	}
+	if err := store.DeleteKey(ctx, key.KeyID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GetKey(ctx, key.KeyID); err != ErrKeyNotFound {
+		t.Fatalf("GetKey error = %v", err)
 	}
 }
