@@ -433,3 +433,17 @@ func TestUploadFileToVectorStoreAttachFailureFixture(t *testing.T) {
 		t.Fatalf("attach error = %v", err)
 	}
 }
+
+func TestResponseExtractionNilAndEmptyBoundaries(t *testing.T) {
+	for _, response := range []*responses.Response{nil, {}} {
+		if got := extractToolCalls(response); len(got) != 0 {
+			t.Fatalf("tool calls = %#v", got)
+		}
+		if got := extractCodeExecutions(response); len(got) != 0 {
+			t.Fatalf("code executions = %#v", got)
+		}
+		if got := extractCitations(response, map[string]string{}); len(got) != 0 {
+			t.Fatalf("citations = %#v", got)
+		}
+	}
+}
