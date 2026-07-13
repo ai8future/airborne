@@ -9,7 +9,9 @@ import (
 	"testing"
 	"time"
 
+	chassis "github.com/ai8future/chassis-go/v11"
 	"github.com/ai8future/chassis-go/v11/guard"
+	"github.com/ai8future/chassis-go/v11/registry"
 
 	"github.com/ai8future/airborne/internal/db"
 )
@@ -98,6 +100,11 @@ func TestAdminRequestTimeoutPolicyFitsWriteTimeout(t *testing.T) {
 }
 
 func TestNewServerInstallsAdminRequestTimeout(t *testing.T) {
+	if err := registry.Init(func() {}, chassis.Version); err != nil {
+		t.Fatalf("initialize chassis registry: %v", err)
+	}
+	t.Cleanup(func() { registry.Shutdown("admin timeout test complete") })
+
 	var got time.Duration
 	s := NewServer(nil, Config{
 		HealthChecks: map[string]func(context.Context) error{
