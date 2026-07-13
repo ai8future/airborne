@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	openai "github.com/openai/openai-go"
@@ -298,5 +299,24 @@ func TestGenerateReplyHTTPError(t *testing.T) {
 	_, err := NewClient().GenerateReply(context.Background(), provider.GenerateParams{Config: provider.ProviderConfig{APIKey: "x", BaseURL: s.URL}})
 	if err == nil {
 		t.Fatal("error expected")
+	}
+}
+func TestBuildFunctionToolSchemas(t *testing.T) {
+	for _, x := range []provider.Tool{{Name: "x"}, {Name: "x", ParametersSchema: "bad"}, {Name: "x", ParametersSchema: `{"type":"object"}`, Strict: true}} {
+		got := buildFunctionTool(x)
+		if got.OfFunction == nil || got.OfFunction.Name != "x" {
+			t.Fatal("tool")
+		}
+	}
+}
+func TestFileStoreValidationFailures(t *testing.T) {
+	ctx := context.Background()
+	for _, fn := range []func() error{func() error { _, e := CreateVectorStore(ctx, FileStoreConfig{}, "x"); return e }, func() error { return DeleteVectorStore(ctx, FileStoreConfig{}, "x") }, func() error { _, e := GetVectorStore(ctx, FileStoreConfig{}, "x"); return e }, func() error { _, e := ListVectorStores(ctx, FileStoreConfig{}, 1); return e }, func() error {
+		_, e := UploadFileToVectorStore(ctx, FileStoreConfig{}, "s", "f", strings.NewReader("x"))
+		return e
+	}} {
+		if fn() == nil {
+			t.Fatal("expected validation error")
+		}
 	}
 }
