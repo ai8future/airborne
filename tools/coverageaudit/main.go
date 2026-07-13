@@ -33,11 +33,11 @@ func main() {
 	minimum := flag.Float64("minimum", 75, "minimum filtered statement coverage percentage")
 	flag.Parse()
 
-	inv, err := collectInventory()
-	if err != nil {
-		fatal(err)
-	}
 	if *output != "" {
+		inv, err := collectInventory()
+		if err != nil {
+			fatal(err)
+		}
 		if err := os.MkdirAll(filepath.Dir(*output), 0o755); err != nil {
 			fatal(err)
 		}
@@ -48,15 +48,14 @@ func main() {
 		if err := os.WriteFile(*output, append(data, '\n'), 0o644); err != nil {
 			fatal(err)
 		}
-	}
-
-	missing := 0
-	for _, pkg := range inv.Packages {
-		if pkg.Evidence == "missing" {
-			missing++
+		missing := 0
+		for _, pkg := range inv.Packages {
+			if pkg.Evidence == "missing" {
+				missing++
+			}
 		}
+		fmt.Printf("package evidence: %d packages, %d without direct tests\n", len(inv.Packages), missing)
 	}
-	fmt.Printf("package evidence: %d packages, %d without direct tests\n", len(inv.Packages), missing)
 
 	if *profile == "" {
 		return
