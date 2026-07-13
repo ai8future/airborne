@@ -51,8 +51,12 @@ type Server struct {
 }
 
 const (
-	maxAdminUploadBytes       int64 = 100 << 20
-	maxAdminUploadMemoryBytes int64 = 8 << 20
+	maxAdminUploadBytes        int64 = 100 << 20
+	maxAdminUploadMemoryBytes  int64 = 8 << 20
+	defaultAdminRequestTimeout       = 120 * time.Second
+	adminLLMRequestTimeout           = 4 * time.Minute
+	adminUploadRequestTimeout        = 2 * time.Minute
+	adminServerWriteTimeout          = 5 * time.Minute
 )
 
 // VersionInfo holds version information for the service.
@@ -125,7 +129,7 @@ func NewServer(dbClient *db.Client, cfg Config) *Server {
 	mux.Handle("/admin/chat", maxBody(http.HandlerFunc(s.handleChat)))
 	mux.Handle("/admin/upload", guard.MaxBody(maxAdminUploadBytes)(http.HandlerFunc(s.handleUpload)))
 
-	// Stack chassis-go httpkit middleware: Recovery → CORS → Auth → Tracing → RequestID → Timeout → Logging → routes
+	// Stack chassis-go httpkit middleware: Recovery → CORS → Auth → Tracing → RequestID → route-aware Timeout → Logging → routes
 	//
 	// SECURITY: the HTTP admin server exposes database inspection and write-capable
 	// proxy endpoints. It must never rely on "only bind it internally" as the
@@ -142,7 +146,7 @@ func NewServer(dbClient *db.Client, cfg Config) *Server {
 		})(
 			httpkit.Tracing()(
 				httpkit.RequestID(
-					guard.Timeout(30 * time.Second)(
+					adminRequestTimeout(
 						httpkit.Logging(logger)(s.requireHTTPAuth(mux)),
 					),
 				),
@@ -154,11 +158,30 @@ func NewServer(dbClient *db.Client, cfg Config) *Server {
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
 		Handler:      handler,
 		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 5 * time.Minute, // Must exceed context timeout for LLM requests
+		WriteTimeout: adminServerWriteTimeout, // Must exceed every route request timeout.
 		IdleTimeout:  60 * time.Second,
 	}
 
 	return s
+}
+
+// adminRequestTimeout applies exactly one preconstructed timeout guard selected
+// by route. Routes not explicitly listed retain the safe default budget.
+func adminRequestTimeout(next http.Handler) http.Handler {
+	defaultTimeout := guard.Timeout(defaultAdminRequestTimeout)(next)
+	llmTimeout := guard.Timeout(adminLLMRequestTimeout)(next)
+	uploadTimeout := guard.Timeout(adminUploadRequestTimeout)(next)
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/admin/chat", "/admin/test":
+			llmTimeout.ServeHTTP(w, r)
+		case "/admin/upload":
+			uploadTimeout.ServeHTTP(w, r)
+		default:
+			defaultTimeout.ServeHTTP(w, r)
+		}
+	})
 }
 
 func adminAllowedOrigins(origins []string) []string {
@@ -627,8 +650,8 @@ func (s *Server) handleTest(w http.ResponseWriter, r *http.Request) {
 		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+s.authToken)
 	}
 
-	// Set timeout (must be less than HTTP WriteTimeout of 120s)
-	ctx, cancel := context.WithTimeout(ctx, 4*time.Minute)
+	// Keep the downstream gRPC budget aligned with the route-aware request deadline.
+	ctx, cancel := context.WithTimeout(ctx, adminLLMRequestTimeout)
 	defer cancel()
 
 	start := time.Now()
@@ -895,8 +918,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+s.authToken)
 	}
 
-	// Set timeout (must be less than HTTP WriteTimeout of 120s)
-	ctx, cancel := context.WithTimeout(ctx, 4*time.Minute)
+	// Keep the downstream gRPC budget aligned with the route-aware request deadline.
+	ctx, cancel := context.WithTimeout(ctx, adminLLMRequestTimeout)
 	defer cancel()
 
 	// Make gRPC call
@@ -1135,7 +1158,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Upload to Gemini Files API
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(r.Context(), adminUploadRequestTimeout)
 	defer cancel()
 
 	fileURI, err := s.uploadFileToGemini(ctx, apiKey, file, header.Filename, mimeType)
@@ -1376,7 +1399,7 @@ func (s *Server) handleChatWithFile(w http.ResponseWriter, r *http.Request, req 
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 4*time.Minute)
+	ctx, cancel := context.WithTimeout(r.Context(), adminLLMRequestTimeout)
 	defer cancel()
 
 	// Call Gemini directly

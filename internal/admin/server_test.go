@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,7 +9,9 @@ import (
 	"testing"
 	"time"
 
+	chassis "github.com/ai8future/chassis-go/v11"
 	"github.com/ai8future/chassis-go/v11/guard"
+	"github.com/ai8future/chassis-go/v11/registry"
 
 	"github.com/ai8future/airborne/internal/db"
 )
@@ -55,6 +58,71 @@ func TestDetectMIMEType(t *testing.T) {
 				t.Errorf("detectMIMEType(%q) = %q, want %q", tt.filename, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestAdminRequestTimeoutPolicy(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want time.Duration
+	}{
+		{name: "ordinary admin route", path: "/admin/activity", want: defaultAdminRequestTimeout},
+		{name: "unknown admin route", path: "/admin/future", want: defaultAdminRequestTimeout},
+		{name: "chat route", path: "/admin/chat", want: adminLLMRequestTimeout},
+		{name: "test route", path: "/admin/test", want: adminLLMRequestTimeout},
+		{name: "upload route", path: "/admin/upload", want: adminUploadRequestTimeout},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got time.Duration
+			handler := adminRequestTimeout(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				deadline, ok := r.Context().Deadline()
+				if !ok {
+					t.Fatal("request context has no deadline")
+				}
+				got = time.Until(deadline)
+			}))
+
+			handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, tt.path, nil))
+			if delta := got - tt.want; delta < -time.Second || delta > time.Second {
+				t.Fatalf("request timeout = %s, want approximately %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAdminRequestTimeoutPolicyFitsWriteTimeout(t *testing.T) {
+	if adminLLMRequestTimeout >= adminServerWriteTimeout {
+		t.Fatalf("maximum request timeout %s must be less than write timeout %s", adminLLMRequestTimeout, adminServerWriteTimeout)
+	}
+}
+
+func TestNewServerInstallsAdminRequestTimeout(t *testing.T) {
+	if err := registry.Init(func() {}, chassis.Version); err != nil {
+		t.Fatalf("initialize chassis registry: %v", err)
+	}
+	t.Cleanup(func() { registry.Shutdown("admin timeout test complete") })
+
+	var got time.Duration
+	s := NewServer(nil, Config{
+		HealthChecks: map[string]func(context.Context) error{
+			"deadline": func(ctx context.Context) error {
+				deadline, ok := ctx.Deadline()
+				if !ok {
+					t.Error("health check context has no deadline")
+					return nil
+				}
+				got = time.Until(deadline)
+				return nil
+			},
+		},
+	})
+
+	s.server.Handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/admin/healthz", nil))
+	if delta := got - defaultAdminRequestTimeout; delta < -time.Second || delta > time.Second {
+		t.Fatalf("installed request timeout = %s, want approximately %s", got, defaultAdminRequestTimeout)
 	}
 }
 

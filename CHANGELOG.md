@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.4] - 2026-07-13
+
+### Fixed — Admin request timeout policy
+- Replaced the implicit 30-second admin request deadline with a route-aware policy: 120 seconds by default, four minutes for chat/test operations, and two minutes for uploads, all beneath the five-minute write timeout.
+- Added deterministic middleware and installed-server deadline regression coverage, plus documented the operational policy and recorded the corrected timeout-preemption bug.
+
+Agent: Codex:gpt-5.5-high
+
 ## [1.10.3] - 2026-07-13
 
 ### Fixed — Build, Docker, and verification hardening
