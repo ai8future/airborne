@@ -20,7 +20,9 @@ import json
 import sys
 from pathlib import Path
 
-profile, report, minimum = map(Path, sys.argv[1:3]) + [float(sys.argv[3])]
+profile = Path(sys.argv[1])
+report = Path(sys.argv[2])
+minimum = float(sys.argv[3])
 covered = statements = 0
 for line in profile.read_text().splitlines()[1:]:
     location, count = line.rsplit(" ", 1)
