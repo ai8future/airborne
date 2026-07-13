@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,8 +14,24 @@ import (
 	"github.com/ai8future/chassis-go/v11/guard"
 	"github.com/ai8future/chassis-go/v11/registry"
 
+	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/db"
+	"google.golang.org/grpc"
 )
+
+type failingTestClient struct{}
+
+func (failingTestClient) GenerateReply(context.Context, *pb.GenerateReplyRequest, ...grpc.CallOption) (*pb.GenerateReplyResponse, error) {
+	return nil, errors.New("upstream unavailable")
+}
+
+func (failingTestClient) GenerateReplyStream(context.Context, *pb.GenerateReplyRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[pb.GenerateReplyChunk], error) {
+	return nil, errors.New("not implemented")
+}
+
+func (failingTestClient) SelectProvider(context.Context, *pb.SelectProviderRequest, ...grpc.CallOption) (*pb.SelectProviderResponse, error) {
+	return nil, errors.New("not implemented")
+}
 
 func TestDetectMIMEType(t *testing.T) {
 	tests := []struct {
@@ -90,6 +107,21 @@ func TestAdminRequestTimeoutPolicy(t *testing.T) {
 				t.Fatalf("request timeout = %s, want approximately %s", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestHandleTestProviderFailureIsBadGateway(t *testing.T) {
+	s := &Server{grpcClient: failingTestClient{}}
+	req := httptest.NewRequest(http.MethodPost, "/admin/test", strings.NewReader(`{"prompt":"hello","tenant_id":"ai8","provider":"openai"}`))
+	rec := httptest.NewRecorder()
+
+	s.handleTest(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusBadGateway, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "provider test failed") {
+		t.Fatalf("expected provider failure message, got %s", rec.Body.String())
 	}
 }
 

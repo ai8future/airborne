@@ -39,8 +39,11 @@ cli=${AIRBORNE_E2E_CLI:-"$ROOT/bin/airborne-cli"}
 [[ -x "$cli" ]] || { echo 'airborne-cli must be built before E2E' >&2; exit 1; }
 "$cli" --url "$admin" --token airborne-e2e-token health | tee "$ARTIFACTS/cli-health.txt"
 "$cli" --url "$admin" --token airborne-e2e-token --json test --provider openai 'deterministic e2e' | tee "$ARTIFACTS/cli-test.json"
+grep -q 'deterministic-e2e-response' "$ARTIFACTS/cli-test.json"
+grep -q '"provider"[[:space:]]*:[[:space:]]*"openai"' "$ARTIFACTS/cli-test.json"
+grep -q '"model"[[:space:]]*:[[:space:]]*"e2e-model"' "$ARTIFACTS/cli-test.json"
 "${COMPOSE[@]}" exec -T provider-stub python -c "from urllib.request import urlopen; print(urlopen('http://localhost:8080/requests').read().decode())" >"$ARTIFACTS/provider-requests.json"
-grep -q 'chat/completions' "$ARTIFACTS/provider-requests.json"
+grep -q '"path": "/v1/responses"' "$ARTIFACTS/provider-requests.json"
 
 echo 'E2E-005/006: real PostgreSQL migrations and RLS are installed'
 "${COMPOSE[@]}" exec -T postgres psql -U airborne -d airborne -Atc 'select 1' | grep -qx 1
