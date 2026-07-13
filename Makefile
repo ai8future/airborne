@@ -28,14 +28,18 @@ BIN_DIR := bin
 CMD_DIR := cmd/airborne
 BINARY := $(BIN_DIR)/airborne
 
-.PHONY: all build build-linux build-darwin build-all clean test test-fast test-integration test-coverage e2e e2e-cli verify lint fmt proto deps help run
+.PHONY: all build build-linux build-darwin build-all clean preflight test test-fast test-integration test-coverage e2e e2e-cli verify lint fmt proto deps help run
 .DEFAULT_GOAL := build
 
 # Default target
 all: proto build
 
 # Build the binary
-build:
+preflight:
+	@echo "Refreshing vendor for local replace directives..."
+	$(GOMOD) vendor
+
+build: preflight
 	@rm -f $(BINARY)
 	@mkdir -p $(BIN_DIR)
 	CGO_ENABLED=0 $(GOBUILD) $(LDFLAGS) -o $(BINARY) ./$(CMD_DIR)
@@ -72,23 +76,23 @@ run: build
 test: test-fast
 
 # Fast unit and contract tests that do not require a Docker daemon.
-test-fast:
+test-fast: preflight
 	@echo "Running fast Go verification..."
 	./e2e/tests/test-resolve-docker-host.sh
 	$(GOTEST) -short -race ./...
 
 # Required Docker-backed database integration checks; skips are converted to failures.
-test-integration:
+test-integration: preflight
 	@echo "Running required database integration tests..."
 	AIRBORNE_REQUIRE_INTEGRATION=1 $(GOTEST) -race ./internal/db
 
 # Atomic all-package coverage with the repository's enforced floor.
-test-coverage:
+test-coverage: preflight
 	@echo "Running enforced Go coverage..."
 	./scripts/test-go-coverage.sh
 
 # Build the exact current production image, then exercise it against the isolated stack.
-e2e: docker-build e2e-cli
+e2e: preflight docker-build e2e-cli
 	@echo "Running deterministic production-image E2E..."
 	POSTGRES_E2E_IMAGE='$(POSTGRES_E2E_IMAGE)' AIRBORNE_E2E_IMAGE='$(E2E_IMAGE)' ./e2e/run.sh
 
