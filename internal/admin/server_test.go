@@ -301,6 +301,33 @@ func TestHandleVersionResponseContract(t *testing.T) {
 	}
 }
 
+func TestHandleDebugValidationAndNoDatabase(t *testing.T) {
+	s := &Server{}
+	for _, test := range []struct {
+		name   string
+		method string
+		path   string
+		status int
+		error  string
+	}{
+		{"method", http.MethodPost, "/admin/debug/id", http.StatusMethodNotAllowed, ""},
+		{"missing id", http.MethodGet, "/admin/debug/", http.StatusBadRequest, "message_id required"},
+		{"invalid id", http.MethodGet, "/admin/debug/nope", http.StatusBadRequest, "invalid message_id format"},
+		{"no database", http.MethodGet, "/admin/debug/8e67ec2c-3f3a-4b1a-9f21-8ad9bd298c3a", http.StatusServiceUnavailable, "database not configured"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			s.handleDebug(w, httptest.NewRequest(test.method, test.path, nil))
+			if w.Code != test.status {
+				t.Fatalf("status = %d, want %d; body=%s", w.Code, test.status, w.Body.String())
+			}
+			if test.error != "" && !strings.Contains(w.Body.String(), test.error) {
+				t.Fatalf("body %q lacks %q", w.Body.String(), test.error)
+			}
+		})
+	}
+}
+
 func TestAdminHTTPAuthMiddleware_PublicHealthNoToken(t *testing.T) {
 	s := &Server{authToken: "secret-token"}
 	handler := s.requireHTTPAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
