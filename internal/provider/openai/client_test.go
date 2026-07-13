@@ -379,3 +379,24 @@ func TestWaitForCompletionNilAndCanceled(t *testing.T) {
 		t.Fatalf("canceled wait error = %v", err)
 	}
 }
+
+func TestGenerateReplyMalformedResponseFailsWithoutSuccess(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{not-json`)
+	}))
+	defer s.Close()
+	_, err := NewClient().GenerateReply(context.Background(), provider.GenerateParams{UserInput: "hi", Config: provider.ProviderConfig{APIKey: "test", BaseURL: s.URL}})
+	if err == nil {
+		t.Fatal("malformed Responses API body must fail")
+	}
+}
+
+func TestWaitForFileProcessingCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	status, err := waitForFileProcessing(ctx, openai.Client{}, "store", "file")
+	if err == nil || status != "in_progress" {
+		t.Fatalf("status=%q err=%v", status, err)
+	}
+}
