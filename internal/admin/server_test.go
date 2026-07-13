@@ -821,25 +821,25 @@ func TestAdminProxyRequestValidationAndUnavailableGRPC(t *testing.T) {
 	s := &Server{}
 	threadID := "a28a7a8c-464c-4ec7-a965-5b7f466608d8"
 	for _, tc := range []struct {
-		name, path, body string
-		handler          http.HandlerFunc
-		want             int
+		name, method, path, body string
+		handler                  http.HandlerFunc
+		want                     int
 	}{
-		{"test method", "/admin/test", "", s.handleTest, http.StatusMethodNotAllowed},
-		{"test malformed", "/admin/test", "{", s.handleTest, http.StatusBadRequest},
-		{"test missing prompt", "/admin/test", `{}`, s.handleTest, http.StatusBadRequest},
-		{"test unavailable grpc", "/admin/test", `{"prompt":"hello"}`, s.handleTest, http.StatusServiceUnavailable},
-		{"chat method", "/admin/chat", "", s.handleChat, http.StatusMethodNotAllowed},
-		{"chat malformed", "/admin/chat", "{", s.handleChat, http.StatusBadRequest},
-		{"chat missing message", "/admin/chat", `{"thread_id":"` + threadID + `"}`, s.handleChat, http.StatusBadRequest},
-		{"chat missing thread", "/admin/chat", `{"message":"hello"}`, s.handleChat, http.StatusBadRequest},
-		{"chat invalid thread", "/admin/chat", `{"message":"hello","thread_id":"bad"}`, s.handleChat, http.StatusBadRequest},
-		{"chat invalid idempotency key", "/admin/chat", `{"message":"hello","thread_id":"` + threadID + `","request_id":"bad key"}`, s.handleChat, http.StatusBadRequest},
-		{"chat unavailable grpc", "/admin/chat", `{"message":"hello","thread_id":"` + threadID + `"}`, s.handleChat, http.StatusServiceUnavailable},
+		{"test method", http.MethodGet, "/admin/test", "", s.handleTest, http.StatusMethodNotAllowed},
+		{"test malformed", http.MethodPost, "/admin/test", "{", s.handleTest, http.StatusBadRequest},
+		{"test missing prompt", http.MethodPost, "/admin/test", `{}`, s.handleTest, http.StatusBadRequest},
+		{"test unavailable grpc", http.MethodPost, "/admin/test", `{"prompt":"hello"}`, s.handleTest, http.StatusServiceUnavailable},
+		{"chat method", http.MethodGet, "/admin/chat", "", s.handleChat, http.StatusMethodNotAllowed},
+		{"chat malformed", http.MethodPost, "/admin/chat", "{", s.handleChat, http.StatusBadRequest},
+		{"chat missing message", http.MethodPost, "/admin/chat", `{"thread_id":"` + threadID + `"}`, s.handleChat, http.StatusBadRequest},
+		{"chat missing thread", http.MethodPost, "/admin/chat", `{"message":"hello"}`, s.handleChat, http.StatusBadRequest},
+		{"chat invalid thread", http.MethodPost, "/admin/chat", `{"message":"hello","thread_id":"bad"}`, s.handleChat, http.StatusBadRequest},
+		{"chat invalid idempotency key", http.MethodPost, "/admin/chat", `{"message":"hello","thread_id":"` + threadID + `","request_id":"bad key"}`, s.handleChat, http.StatusBadRequest},
+		{"chat unavailable grpc", http.MethodPost, "/admin/chat", `{"message":"hello","thread_id":"` + threadID + `"}`, s.handleChat, http.StatusServiceUnavailable},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := httptest.NewRecorder()
-			tc.handler(r, httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body)))
+			tc.handler(r, httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body)))
 			if r.Code != tc.want {
 				t.Fatalf("status = %d body=%s, want %d", r.Code, r.Body.String(), tc.want)
 			}
@@ -878,7 +878,7 @@ func TestAdminProxyProviderBranchesAndClientLifecycle(t *testing.T) {
 		t.Fatal("empty gRPC address should fail")
 	}
 
-	remote := &Server{grpcAddr: "127.0.0.1:1"}
+	remote := &Server{grpcAddr: "127.0.0.1:1", server: &http.Server{}}
 	if _, err := remote.getGRPCClient(); err != nil {
 		t.Fatalf("lazy gRPC client creation = %v", err)
 	}
