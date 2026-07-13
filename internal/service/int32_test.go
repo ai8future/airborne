@@ -7,9 +7,9 @@ import (
 
 func TestIntToInt32Clamped(t *testing.T) {
 	for _, test := range []struct {
-		name string
+		name  string
 		input int
-		want int32
+		want  int32
 	}{
 		{"in range", 42, 42},
 		{"max", math.MaxInt32, math.MaxInt32},
