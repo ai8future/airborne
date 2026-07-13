@@ -224,6 +224,22 @@ func TestFormatRAGContext_Empty(t *testing.T) {
 	}
 }
 
+func TestChatServiceRegistryAndPersistenceNoDependencyPaths(t *testing.T) {
+	svc := NewChatService(nil, nil, nil, nil, nil)
+	cfg := provider.ProviderConfig{Model: "alias"}
+	if got := svc.applyModelRegistry(context.Background(), cfg); got.Model != cfg.Model {
+		t.Fatalf("registry without database = %#v, want model %q", got, cfg.Model)
+	}
+	if got := svc.applyModelRegistry(context.Background(), provider.ProviderConfig{}); got.Model != "" {
+		t.Fatalf("registry without model = %#v", got)
+	}
+
+	// Persistence is intentionally a no-op without a tenant identity. This guards
+	// the asynchronous lifecycle path from dereferencing optional dependencies.
+	svc.persistConversation(context.Background(), &pb.GenerateReplyRequest{UserInput: "hello"}, provider.GenerateResult{}, "openai", "gpt-test", "", 1, "")
+	svc.persistFailedRequest(context.Background(), &pb.GenerateReplyRequest{UserInput: "hello"}, "openai", "gpt-test", "failed", 1)
+}
+
 func TestFormatRAGContext_SingleChunk(t *testing.T) {
 	chunks := []rag.RetrieveResult{
 		{Text: "This is chunk text.", Filename: "doc.pdf", ChunkIndex: 0, Score: 0.95},

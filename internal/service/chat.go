@@ -1224,6 +1224,10 @@ func convertStructuredMetadata(m *provider.StructuredMetadata) *pb.StructuredMet
 // the chat owning that ref — reused if it exists, created with the ref if not;
 // an empty externalRef keeps today's PK-keyed behavior.
 func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateReplyRequest, result provider.GenerateResult, providerName, model, renderedHTML string, processingTimeMs int, externalRef string) {
+	if s.dbClient == nil {
+		return
+	}
+
 	// Extract tenant and user info from context
 	tenantID := auth.TenantIDFromContext(ctx)
 	if tenantID == "" {

@@ -274,7 +274,12 @@ func (s *Server) Start() error {
 // Shutdown gracefully shuts down the server.
 func (s *Server) Shutdown(ctx context.Context) error {
 	if s.grpcConn != nil {
-		s.grpcConn.Close()
+		if err := s.grpcConn.Close(); err != nil {
+			return err
+		}
+	}
+	if s.server == nil {
+		return nil
 	}
 	return s.server.Shutdown(ctx)
 }
