@@ -189,3 +189,25 @@ func TestGenerateReply_HTTPSuccessFixture(t *testing.T) {
 		t.Fatalf("response = %#v", resp)
 	}
 }
+
+func TestGenerateReplyStream_SSEFixture(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_stream\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-test\",\"usage\":{\"input_tokens\":2,\"output_tokens\":0}}}\n\n"))
+		_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\n"))
+		_, _ = w.Write([]byte("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":3}}\n\n"))
+		_, _ = w.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+	}))
+	defer srv.Close()
+	ch, err := NewClient().GenerateReplyStream(context.Background(), provider.GenerateParams{UserInput: "hi", Config: provider.ProviderConfig{APIKey: "test-key", BaseURL: srv.URL}})
+	if err != nil {
+		t.Fatalf("GenerateReplyStream: %v", err)
+	}
+	var chunks []provider.StreamChunk
+	for chunk := range ch {
+		chunks = append(chunks, chunk)
+	}
+	if len(chunks) != 2 || chunks[0].Text != "hello" || chunks[1].Type != provider.ChunkTypeComplete || chunks[1].Usage.TotalTokens != 5 {
+		t.Fatalf("chunks = %#v", chunks)
+	}
+}
