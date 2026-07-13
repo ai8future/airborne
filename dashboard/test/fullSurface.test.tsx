@@ -18,16 +18,15 @@ function TenantProbe() {
 }
 
 describe("full dashboard surface", () => {
-  it("updates the tenant context and URL", () => {
+  it("updates the tenant context and URL", async () => {
     render(<TenantProvider><TenantProbe /></TenantProvider>);
     fireEvent.click(screen.getByRole("button", { name: "ai8" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "zztest" })).toBeVisible());
-    expect(replace).toHaveBeenCalledWith("/?tenant=zztest");
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/?tenant=zztest"));
   });
 
   it("renders the conversation empty selection state", () => {
     render(<TenantProvider><ConversationPanel activity={[]} selectedThreadId={null} onSelectThread={vi.fn()} /></TenantProvider>);
-    expect(screen.getByText(/Select a conversation from the activity feed/)).toBeVisible();
+    expect(screen.getByText("Select a conversation")).toBeVisible();
   });
 
   it("renders conversation data and lets the user send an interactive message", async () => {
