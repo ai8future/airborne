@@ -17,6 +17,7 @@ import (
 
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/db"
+	"github.com/ai8future/airborne/internal/tenant"
 	"google.golang.org/grpc"
 )
 
@@ -787,5 +788,19 @@ func TestServerShutdownHandlesUnstartedHTTPServer(t *testing.T) {
 	s := &Server{server: &http.Server{}}
 	if err := s.Shutdown(context.Background()); err != nil {
 		t.Fatalf("shutdown unstarted server: %v", err)
+	}
+}
+
+func TestHandleChatWithFileBuildsRequestBeforeCanceledProviderCall(t *testing.T) {
+	s := &Server{tenantMgr: &tenant.Manager{Tenants: map[string]tenant.TenantConfig{
+		"tenant-a": {TenantID: "tenant-a", Providers: map[string]tenant.ProviderConfig{"gemini": {Enabled: true, APIKey: "not-a-real-key"}}},
+	}}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequest(http.MethodPost, "/admin/chat", nil).WithContext(ctx)
+	recorder := httptest.NewRecorder()
+	s.handleChatWithFile(recorder, req, ChatWithFileRequest{ThreadID: "a28a7a8c-464c-4ec7-a965-5b7f466608d8", TenantID: "tenant-a", Message: "look at this", FileURI: "files/1", FileMIMEType: "text/plain", Filename: "note.txt"})
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"error"`) {
+		t.Fatalf("canceled file chat = %d %s", recorder.Code, recorder.Body.String())
 	}
 }
