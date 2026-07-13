@@ -1290,3 +1290,26 @@ func TestResponseConversionHelpers(t *testing.T) {
 		t.Fatalf("unknown citation = %#v", unknownCitation)
 	}
 }
+
+func TestSelectProviderProtocol(t *testing.T) {
+	svc := &ChatService{}
+	if _, err := svc.SelectProvider(context.Background(), &pb.SelectProviderRequest{}); err == nil {
+		t.Fatal("SelectProvider must require chat permission")
+	}
+	ctx := ctxWithChatPermission("chat-client")
+	trigger, err := svc.SelectProvider(ctx, &pb.SelectProviderRequest{
+		Content:  "Please use FAST mode",
+		Triggers: []*pb.ProviderTrigger{{Phrase: "fast", Provider: pb.Provider_PROVIDER_GEMINI, Model: "flash"}},
+	})
+	if err != nil || trigger.Reason != "trigger" || trigger.Provider != pb.Provider_PROVIDER_GEMINI || trigger.ModelOverride != "flash" {
+		t.Fatalf("trigger response = %#v, %v", trigger, err)
+	}
+	continuity, err := svc.SelectProvider(ctx, &pb.SelectProviderRequest{ExistingProvider: provider.NameAnthropic})
+	if err != nil || continuity.Reason != "continuity" || continuity.Provider != pb.Provider_PROVIDER_ANTHROPIC {
+		t.Fatalf("continuity response = %#v, %v", continuity, err)
+	}
+	defaultResponse, err := svc.SelectProvider(ctx, &pb.SelectProviderRequest{})
+	if err != nil || defaultResponse.Reason != "default" || defaultResponse.Provider != pb.Provider_PROVIDER_OPENAI {
+		t.Fatalf("default response = %#v, %v", defaultResponse, err)
+	}
+}
