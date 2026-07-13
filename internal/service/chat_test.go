@@ -2,18 +2,35 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/auth"
+	"github.com/ai8future/airborne/internal/db"
+	"github.com/ai8future/airborne/internal/imagegen"
 	"github.com/ai8future/airborne/internal/provider"
 	"github.com/ai8future/airborne/internal/rag"
 	"github.com/ai8future/airborne/internal/rag/testutil"
 	"github.com/ai8future/airborne/internal/rag/vectorstore"
 	"github.com/ai8future/airborne/internal/tenant"
 	"github.com/ai8future/airborne/internal/validation"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
+
+type recordingPublisher struct {
+	subject string
+	data    any
+	err     error
+}
+
+func (p *recordingPublisher) Publish(_ context.Context, subject string, data any) error {
+	p.subject, p.data = subject, data
+	return p.err
+}
 
 // mockProvider implements provider.Provider for testing.
 type mockProvider struct {
@@ -26,6 +43,7 @@ type mockProvider struct {
 	supportsStream bool
 	generateCalls  []provider.GenerateParams
 	streamCalls    []provider.GenerateParams
+	streamChunks   []provider.StreamChunk
 }
 
 func newMockProvider(name string) *mockProvider {
@@ -59,11 +77,17 @@ func (m *mockProvider) GenerateReplyStream(ctx context.Context, params provider.
 	if m.generateErr != nil {
 		return nil, m.generateErr
 	}
-	ch := make(chan provider.StreamChunk, 1)
-	ch <- provider.StreamChunk{
-		Type:       provider.ChunkTypeComplete,
-		ResponseID: "resp-stream-123",
-		Model:      "mock-model",
+	chunks := m.streamChunks
+	if len(chunks) == 0 {
+		chunks = []provider.StreamChunk{{
+			Type:       provider.ChunkTypeComplete,
+			ResponseID: "resp-stream-123",
+			Model:      "mock-model",
+		}}
+	}
+	ch := make(chan provider.StreamChunk, len(chunks))
+	for _, chunk := range chunks {
+		ch <- chunk
 	}
 	close(ch)
 	return ch, nil
@@ -1226,5 +1250,235 @@ func TestMapProviderToProto(t *testing.T) {
 		if result != tc.expected {
 			t.Errorf("mapProviderToProto(%q) = %v, expected %v", tc.input, result, tc.expected)
 		}
+	}
+}
+
+func TestPublishInferenceCompleted(t *testing.T) {
+	svc := &ChatService{}
+	// Nil publishers are intentionally no-ops.
+	svc.publishInferenceCompleted(context.Background(), "openai", "model", 12, 34)
+
+	publisher := &recordingPublisher{}
+	svc.SetEventPublisher(publisher)
+	svc.publishInferenceCompleted(context.Background(), "openai", "model", 12, 34)
+	if publisher.subject != "ai8.ai.airborne.inference.completed" {
+		t.Fatalf("subject = %q", publisher.subject)
+	}
+	payload, ok := publisher.data.(map[string]any)
+	if !ok || payload["provider"] != "openai" || payload["total_tokens"] != int64(34) {
+		t.Fatalf("payload = %#v", publisher.data)
+	}
+
+	// Publishing is additive; failures must not affect the request path.
+	publisher.err = errors.New("broker unavailable")
+	svc.publishInferenceCompleted(context.Background(), "openai", "model", 12, 34)
+}
+
+func TestResponseConversionHelpers(t *testing.T) {
+	if got := truncateString("short", 10); got != "short" {
+		t.Fatalf("short truncation = %q", got)
+	}
+	if got := truncateString("abcdef", 3); got != "abc..." {
+		t.Fatalf("long truncation = %q", got)
+	}
+	if got := convertGeneratedImages(nil); got != nil {
+		t.Fatalf("nil images = %#v", got)
+	}
+	images := convertGeneratedImages([]provider.GeneratedImage{{Data: []byte("image"), MIMEType: "image/png", Prompt: "draw", Width: -1, Height: 3, ContentID: "cid"}})
+	if len(images) != 1 || images[0].Width != 0 || images[0].Height != 3 || images[0].ContentId != "cid" {
+		t.Fatalf("images = %#v", images)
+	}
+
+	fileCitation := convertCitation(provider.Citation{Type: provider.CitationTypeFile, Provider: "provider", FileID: "f1", StartIndex: -1, EndIndex: 4})
+	if fileCitation.Type != pb.Citation_TYPE_FILE || fileCitation.StartIndex != 0 || fileCitation.EndIndex != 4 {
+		t.Fatalf("file citation = %#v", fileCitation)
+	}
+	urlCitation := convertCitation(provider.Citation{Type: provider.CitationTypeURL, URL: "https://example.test"})
+	if urlCitation.Type != pb.Citation_TYPE_URL {
+		t.Fatalf("url citation = %#v", urlCitation)
+	}
+	unknownCitation := convertCitation(provider.Citation{})
+	if unknownCitation.Type != pb.Citation_TYPE_UNSPECIFIED {
+		t.Fatalf("unknown citation = %#v", unknownCitation)
+	}
+	toolCall := convertToolCall(provider.ToolCall{ID: "call", Name: "search", Arguments: `{}`})
+	if toolCall.Id != "call" || toolCall.Name != "search" {
+		t.Fatalf("tool call = %#v", toolCall)
+	}
+	code := convertCodeExecution(provider.CodeExecutionResult{Code: "print(1)", Language: "python", ExitCode: -1, Files: []provider.GeneratedFile{{Name: "out.txt", MIMEType: "text/plain", Content: []byte("out")}}})
+	if code.ExitCode != -1 || len(code.Files) != 1 || code.Files[0].Name != "out.txt" {
+		t.Fatalf("code execution = %#v", code)
+	}
+	if convertStructuredMetadata(nil) != nil {
+		t.Fatal("nil metadata must remain nil")
+	}
+	metadata := convertStructuredMetadata(&provider.StructuredMetadata{Intent: "task", RequiresUserAction: true, Topics: []string{"go"}, Entities: []provider.StructuredEntity{{Name: "Airborne", Type: "product"}}, Scheduling: &provider.SchedulingIntent{Detected: true, DatetimeMentioned: "tomorrow"}})
+	if metadata.Intent != "task" || len(metadata.Entities) != 1 || metadata.Scheduling == nil || !metadata.Scheduling.Detected {
+		t.Fatalf("metadata = %#v", metadata)
+	}
+}
+
+func TestSelectProviderProtocol(t *testing.T) {
+	svc := &ChatService{}
+	if _, err := svc.SelectProvider(context.Background(), &pb.SelectProviderRequest{}); err == nil {
+		t.Fatal("SelectProvider must require chat permission")
+	}
+	ctx := ctxWithChatPermission("chat-client")
+	trigger, err := svc.SelectProvider(ctx, &pb.SelectProviderRequest{
+		Content:  "Please use FAST mode",
+		Triggers: []*pb.ProviderTrigger{{Phrase: "fast", Provider: pb.Provider_PROVIDER_GEMINI, Model: "flash"}},
+	})
+	if err != nil || trigger.Reason != "trigger" || trigger.Provider != pb.Provider_PROVIDER_GEMINI || trigger.ModelOverride != "flash" {
+		t.Fatalf("trigger response = %#v, %v", trigger, err)
+	}
+	continuity, err := svc.SelectProvider(ctx, &pb.SelectProviderRequest{ExistingProvider: provider.NameAnthropic})
+	if err != nil || continuity.Reason != "continuity" || continuity.Provider != pb.Provider_PROVIDER_ANTHROPIC {
+		t.Fatalf("continuity response = %#v, %v", continuity, err)
+	}
+	defaultResponse, err := svc.SelectProvider(ctx, &pb.SelectProviderRequest{})
+	if err != nil || defaultResponse.Reason != "default" || defaultResponse.Provider != pb.Provider_PROVIDER_OPENAI {
+		t.Fatalf("default response = %#v, %v", defaultResponse, err)
+	}
+}
+
+func TestNewChatServiceInstallsCoreProviders(t *testing.T) {
+	svc := NewChatService(nil, nil, nil, nil, nil)
+	if svc.openaiProvider == nil || svc.geminiProvider == nil || svc.anthropicProvider == nil {
+		t.Fatal("NewChatService must install core provider adapters")
+	}
+	if svc.configBuilder == nil {
+		t.Fatal("NewChatService must initialize config builder")
+	}
+	if svc.idem != nil {
+		t.Fatal("nil Redis must leave idempotency replay disabled")
+	}
+}
+
+type recordingReplyStream struct {
+	pb.AirborneService_GenerateReplyStreamServer
+	ctx    context.Context
+	chunks []*pb.GenerateReplyChunk
+	err    error
+}
+
+func (s *recordingReplyStream) Context() context.Context { return s.ctx }
+func (s *recordingReplyStream) Send(chunk *pb.GenerateReplyChunk) error {
+	s.chunks = append(s.chunks, chunk)
+	return s.err
+}
+
+var _ grpc.ServerStreamingServer[pb.GenerateReplyChunk] = (*recordingReplyStream)(nil)
+
+func TestGenerateReplyStreamForwardsProviderChunksAndCompletion(t *testing.T) {
+	mock := newMockProvider(provider.NameGemini)
+	mock.streamChunks = []provider.StreamChunk{
+		{Type: provider.ChunkTypeText, Text: "hello ", Index: 2},
+		{Type: provider.ChunkTypeUsage, Usage: &provider.Usage{InputTokens: 2, OutputTokens: 3, TotalTokens: 5}},
+		{Type: provider.ChunkTypeComplete, ResponseID: "stream-1", Model: "gemini-test", Usage: &provider.Usage{TotalTokens: 5}},
+	}
+	svc := NewChatService(nil, nil, nil, nil, nil)
+	svc.geminiProvider = mock
+	stream := &recordingReplyStream{ctx: ctxWithChatPermissionAndTenant("client-1", createTestTenantConfig(provider.NameGemini))}
+	err := svc.GenerateReplyStream(&pb.GenerateReplyRequest{
+		ClientId: "client-1", UserInput: "hello", PreferredProvider: pb.Provider_PROVIDER_GEMINI,
+	}, stream)
+	if err != nil {
+		t.Fatalf("GenerateReplyStream error: %v", err)
+	}
+	if len(mock.streamCalls) != 1 || mock.streamCalls[0].UserInput != "hello" {
+		t.Fatalf("provider calls = %#v", mock.streamCalls)
+	}
+	if len(stream.chunks) != 3 {
+		t.Fatalf("sent chunks = %d, want 3", len(stream.chunks))
+	}
+	if got := stream.chunks[0].GetTextDelta(); got == nil || got.Text != "hello " || got.Index != 2 {
+		t.Fatalf("text chunk = %#v", stream.chunks[0])
+	}
+	if got := stream.chunks[1].GetUsageUpdate(); got == nil || got.Usage.TotalTokens != 5 {
+		t.Fatalf("usage chunk = %#v", stream.chunks[1])
+	}
+	if got := stream.chunks[2].GetComplete(); got == nil || got.ResponseId != "stream-1" || got.Provider != pb.Provider_PROVIDER_GEMINI {
+		t.Fatalf("complete chunk = %#v", stream.chunks[2])
+	}
+}
+
+func TestGenerateReplyStreamProviderFailureIsSanitizedInternalError(t *testing.T) {
+	mock := newMockProvider(provider.NameGemini)
+	mock.generateErr = errors.New("upstream provider failed")
+	svc := NewChatService(nil, nil, nil, nil, nil)
+	svc.geminiProvider = mock
+	stream := &recordingReplyStream{ctx: ctxWithChatPermissionAndTenant("client-1", createTestTenantConfig(provider.NameGemini))}
+	err := svc.GenerateReplyStream(&pb.GenerateReplyRequest{ClientId: "client-1", UserInput: "hello", PreferredProvider: pb.Provider_PROVIDER_GEMINI}, stream)
+	if status.Code(err) != codes.Internal {
+		t.Fatalf("error code = %v, want Internal (err=%v)", status.Code(err), err)
+	}
+	if len(stream.chunks) != 0 {
+		t.Fatalf("provider failure sent chunks: %#v", stream.chunks)
+	}
+}
+
+func TestBuildResponsePreservesRichProviderResult(t *testing.T) {
+	svc := &ChatService{}
+	result := provider.GenerateResult{
+		Text: "answer", ResponseID: "response-1", Model: "gemini-model", RequiresToolOutput: true,
+		Usage:              &provider.Usage{InputTokens: 4, OutputTokens: 6, TotalTokens: 10, CachedTokens: 1, ToolUseTokens: 2, ThinkingTokens: 3},
+		Citations:          []provider.Citation{{Type: provider.CitationTypeURL, Provider: "google", URL: "https://example.com", Title: "source", Snippet: "snippet"}},
+		ToolCalls:          []provider.ToolCall{{ID: "call-1", Name: "search", Arguments: `{"q":"airborne"}`}},
+		CodeExecutions:     []provider.CodeExecutionResult{{Code: "1+1", Language: "python", Stdout: "2", ExitCode: 0}},
+		Images:             []provider.GeneratedImage{{Data: []byte("png"), MIMEType: "image/png", Prompt: "prompt"}},
+		StructuredMetadata: &provider.StructuredMetadata{Intent: "question", Topics: []string{"airborne"}},
+		GroundingQueries:   2,
+	}
+	resp := svc.buildResponse(result, provider.NameGemini, true, provider.NameOpenAI, "fallback", "<p>answer</p>")
+	if resp.Text != "answer" || resp.Provider != pb.Provider_PROVIDER_GEMINI || !resp.FailedOver || resp.OriginalProvider != pb.Provider_PROVIDER_OPENAI {
+		t.Fatalf("response identity = %#v", resp)
+	}
+	if len(resp.Citations) != 1 || len(resp.ToolCalls) != 1 || len(resp.CodeExecutions) != 1 || len(resp.Images) != 1 || resp.StructuredMetadata == nil {
+		t.Fatalf("rich result lost: %#v", resp)
+	}
+	if resp.Usage.TotalTokens != 10 || resp.GroundingQueries != 2 || resp.HtmlContent != "<p>answer</p>" {
+		t.Fatalf("response metrics = %#v", resp)
+	}
+}
+
+func TestGenerateImageFromCommandReturnsNilWithoutUsableConfiguration(t *testing.T) {
+	svc := &ChatService{}
+	if got := svc.generateImageFromCommand(context.Background(), "draw a bird"); got != nil {
+		t.Fatalf("nil image client result = %#v", got)
+	}
+	svc.imageGen = &imagegen.Client{}
+	if got := svc.generateImageFromCommand(ctxWithChatPermissionAndTenant("client", createTestTenantConfig(provider.NameGemini)), "draw a bird"); got != nil {
+		t.Fatalf("disabled image generation result = %#v", got)
+	}
+}
+
+func TestApplyModelRegistryAndMergeDefaultsWithoutDatabase(t *testing.T) {
+	svc := &ChatService{}
+	cfg := provider.ProviderConfig{Model: "alias"}
+	if got := svc.applyModelRegistry(context.Background(), cfg); got.Model != "alias" {
+		t.Fatalf("no-db registry changed config: %#v", got)
+	}
+	base := "upstream-model"
+	params := []byte(`{"temperature":0.3,"top_p":0.8,"max_tokens":123}`)
+	got := mergeRegistryParams(cfg, &db.Model{BaseModelID: &base, Params: params})
+	if got.Model != base || got.Temperature == nil || got.TopP == nil || got.MaxOutputTokens == nil {
+		t.Fatalf("registry defaults not merged: %#v", got)
+	}
+	existing := 0.9
+	got = mergeRegistryParams(provider.ProviderConfig{Model: "requested", Temperature: &existing}, &db.Model{BaseModelID: &base, Params: params})
+	if got.Temperature != &existing {
+		t.Fatal("request temperature must override registry default")
+	}
+}
+
+func TestGenerateReplyStreamReturnsSendFailure(t *testing.T) {
+	mock := newMockProvider(provider.NameGemini)
+	mock.streamChunks = []provider.StreamChunk{{Type: provider.ChunkTypeText, Text: "hello"}}
+	svc := NewChatService(nil, nil, nil, nil, nil)
+	svc.geminiProvider = mock
+	want := errors.New("client disconnected")
+	stream := &recordingReplyStream{ctx: ctxWithChatPermissionAndTenant("client-1", createTestTenantConfig(provider.NameGemini)), err: want}
+	if err := svc.GenerateReplyStream(&pb.GenerateReplyRequest{ClientId: "client-1", UserInput: "hello", PreferredProvider: pb.Provider_PROVIDER_GEMINI}, stream); !errors.Is(err, want) {
+		t.Fatalf("stream error = %v, want %v", err, want)
 	}
 }

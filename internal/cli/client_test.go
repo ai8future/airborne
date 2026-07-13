@@ -261,3 +261,30 @@ func TestClient_Test_ServerError(t *testing.T) {
 		t.Fatal("expected error for 400 response")
 	}
 }
+
+func TestClient_Test_HTTP200BodyErrorIsReturned(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(TestResponse{Error: "provider unavailable"})
+	}))
+	defer srv.Close()
+
+	resp, err := NewClient(srv.URL).Test(TestRequest{Prompt: "Hello"})
+	if err == nil || !strings.Contains(err.Error(), "provider unavailable") {
+		t.Fatalf("Test() error = %v, want body error", err)
+	}
+	if resp != nil {
+		t.Fatalf("Test() response = %#v, want nil on body error", resp)
+	}
+}
+
+func TestClient_Test_EmptyBodyErrorRemainsSuccessful(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(TestResponse{Reply: "ok", Error: ""})
+	}))
+	defer srv.Close()
+
+	resp, err := NewClient(srv.URL).Test(TestRequest{Prompt: "Hello"})
+	if err != nil || resp == nil || resp.Reply != "ok" {
+		t.Fatalf("Test() = %#v, %v; want successful response", resp, err)
+	}
+}
