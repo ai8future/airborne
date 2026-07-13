@@ -501,3 +501,20 @@ func TestUploadFileToVectorStoreCompletedFixture(t *testing.T) {
 		t.Fatalf("upload = %#v, %v", got, err)
 	}
 }
+
+func TestWaitForFileProcessingTerminalFailures(t *testing.T) {
+	for _, test := range []struct{ name, status string }{{"failed", "failed"}, {"cancelled", "cancelled"}} {
+		t.Run(test.name, func(t *testing.T) {
+			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"id":"file_1","status":"`+test.status+`","last_error":{"code":"bad","message":"fixture failure"}}`)
+			}))
+			defer s.Close()
+			api := openai.NewClient(option.WithAPIKey("test"), option.WithBaseURL(s.URL))
+			status, err := waitForFileProcessing(context.Background(), api, "store_1", "file_1")
+			if err == nil || status != test.status {
+				t.Fatalf("status=%q err=%v", status, err)
+			}
+		})
+	}
+}
