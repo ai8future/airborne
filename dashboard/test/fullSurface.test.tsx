@@ -85,8 +85,8 @@ describe("full dashboard surface", () => {
     fireEvent.click(screen.getByTitle("Start new conversation"));
     expect(select).toHaveBeenCalledWith(expect.stringMatching(/^[0-9a-f-]{36}$/));
     fireEvent.click(screen.getByRole("button", { name: /Email4.ai/ }));
-    fireEvent.click(screen.getByText("Custom prompt"));
-    fireEvent.change(screen.getByPlaceholderText(/Enter custom system prompt/), { target: { value: "custom" } });
+    fireEvent.click(screen.getByText("Custom", { selector: "span" }));
+    fireEvent.change(screen.getByPlaceholderText(/custom instructions/i), { target: { value: "custom" } });
     expect(screen.getByDisplayValue("custom")).toBeVisible();
   });
 });
