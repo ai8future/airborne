@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -13,6 +16,7 @@ import (
 	"github.com/ai8future/airborne/internal/rag/extractor"
 	"github.com/ai8future/airborne/internal/rag/testutil"
 	"github.com/ai8future/airborne/internal/rag/vectorstore"
+	chassis "github.com/ai8future/chassis-go/v11"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
