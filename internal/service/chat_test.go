@@ -1470,3 +1470,15 @@ func TestApplyModelRegistryAndMergeDefaultsWithoutDatabase(t *testing.T) {
 		t.Fatal("request temperature must override registry default")
 	}
 }
+
+func TestGenerateReplyStreamReturnsSendFailure(t *testing.T) {
+	mock := newMockProvider(provider.NameGemini)
+	mock.streamChunks = []provider.StreamChunk{{Type: provider.ChunkTypeText, Text: "hello"}}
+	svc := NewChatService(nil, nil, nil, nil, nil)
+	svc.geminiProvider = mock
+	want := errors.New("client disconnected")
+	stream := &recordingReplyStream{ctx: ctxWithChatPermissionAndTenant("client-1", createTestTenantConfig(provider.NameGemini)), err: want}
+	if err := svc.GenerateReplyStream(&pb.GenerateReplyRequest{ClientId: "client-1", UserInput: "hello", PreferredProvider: pb.Provider_PROVIDER_GEMINI}, stream); !errors.Is(err, want) {
+		t.Fatalf("stream error = %v, want %v", err, want)
+	}
+}
