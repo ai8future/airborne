@@ -69,6 +69,61 @@ func TestNewGRPCServer_FailsWithoutTokenInStaticAuthMode(t *testing.T) {
 	}
 }
 
+func TestNewGRPCServer_InitializesOptionalRAGLifecycle(t *testing.T) {
+	cfg := &config.Config{
+		Auth: config.AuthConfig{AuthMode: "static", AdminToken: "test-token"},
+		RAG: config.RAGConfig{
+			Enabled:        true,
+			OllamaURL:      "http://127.0.0.1:1",
+			EmbeddingModel: "test-embedding",
+			QdrantURL:      "http://127.0.0.1:1",
+			DocboxURL:      "http://127.0.0.1:1",
+			ChunkSize:      32,
+			ChunkOverlap:   4,
+			RetrievalTopK:  2,
+		},
+	}
+
+	server, components, err := NewGRPCServer(cfg, VersionInfo{Version: "test-rag"})
+	if err != nil {
+		t.Fatalf("NewGRPCServer() error = %v", err)
+	}
+	t.Cleanup(server.Stop)
+	if components.ChatService == nil {
+		t.Fatal("ChatService was not initialized")
+	}
+	if len(components.HealthChecks) != 2 || components.HealthChecks["qdrant"] == nil || components.HealthChecks["ollama"] == nil {
+		t.Fatalf("RAG health checks = %#v, want qdrant and ollama", components.HealthChecks)
+	}
+	components.Close()
+}
+
+func TestNewGRPCServer_RejectsUnreadableTLSFiles(t *testing.T) {
+	cfg := &config.Config{
+		Auth: config.AuthConfig{AuthMode: "static", AdminToken: "test-token"},
+		TLS:  config.TLSConfig{Enabled: true, CertFile: "missing-cert.pem", KeyFile: "missing-key.pem"},
+	}
+	server, components, err := NewGRPCServer(cfg, VersionInfo{Version: "test-tls"})
+	if err == nil || server != nil || components != nil {
+		t.Fatalf("NewGRPCServer() = (%v, %v, %v), want TLS setup failure", server, components, err)
+	}
+}
+
+func TestNewGRPCServer_ContinuesWhenOptionalDatabaseIsUnavailable(t *testing.T) {
+	cfg := &config.Config{
+		Auth:     config.AuthConfig{AuthMode: "static", AdminToken: "test-token"},
+		Database: config.DatabaseConfig{Enabled: true, URL: "postgres://127.0.0.1:1/unavailable", MaxConnections: 1},
+	}
+	server, components, err := NewGRPCServer(cfg, VersionInfo{Version: "test-db"})
+	if err != nil {
+		t.Fatalf("NewGRPCServer() error = %v", err)
+	}
+	t.Cleanup(server.Stop)
+	if components.DBClient != nil {
+		t.Fatal("unreachable optional database should not produce a client")
+	}
+}
+
 func TestDevelopmentAuthInterceptor_NoAdminPermission(t *testing.T) {
 	interceptor := developmentAuthInterceptor()
 
