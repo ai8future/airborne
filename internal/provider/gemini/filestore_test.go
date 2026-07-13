@@ -139,3 +139,23 @@ func TestFileStore_RetriesTransientFailure_CreateStoreRewindsBody(t *testing.T) 
 		t.Fatalf("calls = %d, want 2", got)
 	}
 }
+func TestFileStoreHelperContracts(t *testing.T) {
+	if !isOfficeFile("text/csv") || isOfficeFile("text/plain") {
+		t.Fatal("office types")
+	}
+	if (FileStoreConfig{}).getBaseURL() == "" || (FileStoreConfig{BaseURL: "http://x"}).getBaseURL() != "http://x" {
+		t.Fatal("base")
+	}
+	if got := escapedResourcePath("/a b/c/"); got != "a%20b/c" {
+		t.Fatal(got)
+	}
+	if got := fileSearchStoreResource("a/b", ":import"); got != "fileSearchStores/a%2Fb:import" {
+		t.Fatal(got)
+	}
+	if !strings.Contains(geminiURLWithKey("http://x", "k", "p", map[string]string{"x": "y"}), "key=k") {
+		t.Fatal("url")
+	}
+	if readGeminiErrorBody(strings.NewReader("x")) != "x" {
+		t.Fatal("body")
+	}
+}
