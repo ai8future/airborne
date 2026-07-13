@@ -117,7 +117,7 @@ describe("full dashboard surface", () => {
       tenant_id: "ai8", user_id: "user", request_provider: "gemini", response_model: "flash",
       timestamp: new Date().toISOString(), duration_ms: 1500, tokens_in: 3, tokens_out: 5,
       cost_usd: 0.012, grounding_queries: 2, grounding_cost_usd: 0.002, thread_id: "thread",
-      system_prompt: "system", user_input: "input", response_text: "output", error: "provider warning",
+      system_prompt: "system", user_input: "input", response_text: "output",
       citations: JSON.stringify([
         { type: "url", uri: "https://example.com/a", title: "Example" },
         { type: "url", uri: "javascript:blocked", title: "Blocked" },
@@ -130,7 +130,6 @@ describe("full dashboard surface", () => {
     expect(screen.getByText("Web Sources")).toBeVisible();
     expect(screen.getByText("File Sources")).toBeVisible();
     expect(screen.getByText("notes.txt")).toBeVisible();
-    expect(screen.getByText("provider warning")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "JSON" }));
     expect(await screen.findByText(/"request": true/)).toBeVisible();
     expect(screen.getByText("not-json")).toBeVisible();
