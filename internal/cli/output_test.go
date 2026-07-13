@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"io"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -140,4 +143,53 @@ func TestFormatStatus(t *testing.T) {
 	if successOut == failedOut {
 		t.Error("FormatStatus should produce different output for success vs failure")
 	}
+}
+
+func TestPrintOutputContracts(t *testing.T) {
+	activity := Activity{ID: "a1", ThreadID: "thread-1", Tenant: "ai8", Model: "model", Provider: "provider", InputTokens: 10, OutputTokens: 20, CostUSD: .1, GroundingCostUSD: .02, ProcessingTimeMs: 50, Status: "success", Timestamp: "2026-01-01T00:00:00Z", FullContent: "full content"}
+	debug := &DebugResponse{MessageID: "m1", ThreadID: "thread-1", TenantID: "ai8", Timestamp: activity.Timestamp, RequestProvider: "provider", ResponseModel: "model", TokensIn: 10, TokensOut: 20, CostUSD: .1, GroundingQueries: 1, GroundingCostUSD: .02, DurationMs: 50, SystemPrompt: "system", UserInput: "input", ResponseText: "reply", Status: "success"}
+	testResult := &TestResponse{Model: "model", Provider: "provider", InputTokens: 10, OutputTokens: 20, ProcessingMs: 50, Reply: "reply"}
+
+	output := captureStdout(t, func() {
+		PrintActivityTable([]Activity{activity})
+		PrintActivityDetail(activity)
+		PrintDebugInfo(debug)
+		PrintThreadMessages([]ThreadMessage{{Role: "user", Timestamp: activity.Timestamp, Model: "model", Content: "message"}, {Role: "assistant", Timestamp: activity.Timestamp, Content: "answer"}})
+		PrintTestResult(testResult)
+	})
+	for _, want := range []string{"TIME", "thread-1", "Grounding:", "system", "message", "answer", "reply"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("output does not contain %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestPrintDebugInfoOmitsGroundingWhenUnused(t *testing.T) {
+	output := captureStdout(t, func() {
+		PrintDebugInfo(&DebugResponse{Timestamp: "invalid", Status: "failed"})
+	})
+	if strings.Contains(output, "Grounding:") {
+		t.Fatalf("unexpected grounding section:\n%s", output)
+	}
+}
+
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	previous := os.Stdout
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = write
+	defer func() { os.Stdout = previous }()
+
+	fn()
+	if err := write.Close(); err != nil {
+		t.Fatal(err)
+	}
+	output, err := io.ReadAll(read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(output)
 }
