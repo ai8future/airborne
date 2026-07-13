@@ -22,7 +22,7 @@ services:
     environment:
       STUB_SEED: "e2e-fixed-seed"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://localhost:8080/healthz')"]
       interval: 2s
       timeout: 2s
       retries: 15
