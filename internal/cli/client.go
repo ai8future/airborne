@@ -84,6 +84,7 @@ type TestRequest struct {
 }
 
 type TestResponse struct {
+	Error        string `json:"error,omitempty"`
 	Reply        string `json:"reply"`
 	Provider     string `json:"provider"`
 	Model        string `json:"model"`
@@ -209,6 +210,9 @@ func (c *Client) Test(req TestRequest) (*TestResponse, error) {
 	var testResp TestResponse
 	if err := json.NewDecoder(resp.Body).Decode(&testResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+	if testResp.Error != "" {
+		return nil, fmt.Errorf("test request failed: %s", testResp.Error)
 	}
 	return &testResp, nil
 }
