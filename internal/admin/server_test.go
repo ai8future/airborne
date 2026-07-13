@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +18,7 @@ import (
 
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/db"
+	"github.com/ai8future/airborne/internal/provider"
 	"github.com/ai8future/airborne/internal/tenant"
 	"google.golang.org/grpc"
 )
@@ -903,4 +905,70 @@ func TestGeminiKeyResolution(t *testing.T) {
 		t.Fatalf("getGeminiAPIKey() = %q, %v", got, err)
 	}
 
+}
+
+func TestUploadAndFileChatUseDeterministicProviderSeams(t *testing.T) {
+	manager := &tenant.Manager{Tenants: map[string]tenant.TenantConfig{
+		"tenant-a": {TenantID: "tenant-a", Providers: map[string]tenant.ProviderConfig{"gemini": {Enabled: true, APIKey: "key"}}},
+	}}
+	var uploadedName, uploadedMIME string
+	var generated provider.GenerateParams
+	s := &Server{
+		tenantMgr: manager,
+		uploadGeminiFile: func(_ context.Context, key string, file multipart.File, name, mime string) (string, error) {
+			if key != "key" {
+				t.Fatalf("upload key = %q", key)
+			}
+			if _, err := io.ReadAll(file); err != nil {
+				t.Fatalf("read upload = %v", err)
+			}
+			uploadedName, uploadedMIME = name, mime
+			return "gemini://files/123", nil
+		},
+		generateFileChat: func(_ context.Context, params provider.GenerateParams) (provider.GenerateResult, error) {
+			generated = params
+			return provider.GenerateResult{
+				Text: "file summary", ResponseID: "response-1", Model: "gemini-test", GroundingQueries: 2,
+				Usage: &provider.Usage{InputTokens: 3, OutputTokens: 4},
+			}, nil
+		},
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("tenant_id", "tenant-a"); err != nil {
+		t.Fatal(err)
+	}
+	file, err := writer.CreateFormFile("file", "notes.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Write([]byte("notes")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	uploaded := httptest.NewRecorder()
+	uploadReq := httptest.NewRequest(http.MethodPost, "/admin/upload", &body)
+	uploadReq.Header.Set("Content-Type", writer.FormDataContentType())
+	s.handleUpload(uploaded, uploadReq)
+	if uploaded.Code != http.StatusOK || !strings.Contains(uploaded.Body.String(), "gemini://files/123") {
+		t.Fatalf("upload = %d %s", uploaded.Code, uploaded.Body.String())
+	}
+	if uploadedName != "notes.txt" || uploadedMIME != "text/plain" {
+		t.Fatalf("upload metadata = %q %q", uploadedName, uploadedMIME)
+	}
+
+	threadID := "a28a7a8c-464c-4ec7-a965-5b7f466608d8"
+	chat := httptest.NewRecorder()
+	s.handleChatWithFile(chat, httptest.NewRequest(http.MethodPost, "/admin/chat", nil), ChatWithFileRequest{
+		ThreadID: threadID, TenantID: "tenant-a", Message: "summarize", FileURI: "gemini://files/123", FileMIMEType: "text/plain", Filename: "notes.txt",
+	})
+	if chat.Code != http.StatusOK || !strings.Contains(chat.Body.String(), "file summary") {
+		t.Fatalf("file chat = %d %s", chat.Code, chat.Body.String())
+	}
+	if generated.RequestID != threadID || generated.FileIDToFilename["gemini://files/123"] != "notes.txt" || len(generated.InlineImages) != 1 {
+		t.Fatalf("generated params = %#v", generated)
+	}
 }

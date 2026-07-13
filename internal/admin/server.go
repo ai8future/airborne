@@ -48,6 +48,10 @@ type Server struct {
 	grpcConn    *grpc.ClientConn
 	grpcClient  pb.AirborneServiceClient
 	version     VersionInfo
+	// Test seams keep HTTP handler behavior deterministic without changing the
+	// production provider/database contracts.
+	uploadGeminiFile func(context.Context, string, multipart.File, string, string) (string, error)
+	generateFileChat func(context.Context, provider.GenerateParams) (provider.GenerateResult, error)
 }
 
 const (
@@ -1162,7 +1166,11 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), adminUploadRequestTimeout)
 	defer cancel()
 
-	fileURI, err := s.uploadFileToGemini(ctx, apiKey, file, header.Filename, mimeType)
+	upload := s.uploadFileToGemini
+	if s.uploadGeminiFile != nil {
+		upload = s.uploadGeminiFile
+	}
+	fileURI, err := upload(ctx, apiKey, file, header.Filename, mimeType)
 	if err != nil {
 		slog.Error("failed to upload file to Gemini", "error", err, "filename", header.Filename)
 		w.Header().Set("Content-Type", "application/json")
@@ -1404,8 +1412,12 @@ func (s *Server) handleChatWithFile(w http.ResponseWriter, r *http.Request, req 
 	defer cancel()
 
 	// Call Gemini directly
-	geminiClient := gemini.NewClient()
-	result, err := geminiClient.GenerateReply(ctx, params)
+	generate := s.generateFileChat
+	if generate == nil {
+		geminiClient := gemini.NewClient()
+		generate = geminiClient.GenerateReply
+	}
+	result, err := generate(ctx, params)
 	if err != nil {
 		slog.Error("Gemini chat failed", "error", err, "thread_id", req.ThreadID)
 		w.Header().Set("Content-Type", "application/json")
