@@ -11,6 +11,9 @@ import (
 )
 
 func TestNewQdrantStore_Defaults(t *testing.T) {
+	if defaultQdrantTimeout != 120*time.Second {
+		t.Fatalf("default timeout = %s, want 120s", defaultQdrantTimeout)
+	}
 	store := NewQdrantStore(QdrantConfig{})
 
 	if store.baseURL != "http://localhost:6333" {

@@ -22,13 +22,14 @@ type QdrantStore struct {
 }
 
 const maxQdrantErrorBodyBytes = 64 * 1024
+const defaultQdrantTimeout = 120 * time.Second
 
 // QdrantConfig configures the Qdrant store.
 type QdrantConfig struct {
 	// BaseURL is the Qdrant REST API base URL (default: http://localhost:6333).
 	BaseURL string
 
-	// Timeout is the HTTP request timeout (default: 30s).
+	// Timeout is the HTTP request timeout (default: 120s).
 	Timeout time.Duration
 }
 
@@ -42,7 +43,7 @@ func NewQdrantStore(cfg QdrantConfig) *QdrantStore {
 		cfg.BaseURL = "http://localhost:6333"
 	}
 	if cfg.Timeout == 0 {
-		cfg.Timeout = 30 * time.Second
+		cfg.Timeout = defaultQdrantTimeout
 	}
 
 	return &QdrantStore{

@@ -3,6 +3,10 @@ package openai
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	openai "github.com/openai/openai-go"
@@ -258,5 +262,88 @@ func TestNewClientWithDebugLogging(t *testing.T) {
 	client2 := NewClient(WithDebugLogging(false))
 	if client2.debug {
 		t.Error("expected debug to be false")
+	}
+}
+
+func TestGenerateReplyInvalidBaseURL(t *testing.T) {
+	_, err := NewClient().GenerateReply(context.Background(), provider.GenerateParams{Config: provider.ProviderConfig{APIKey: "key", BaseURL: "ftp://invalid"}})
+	if err == nil {
+		t.Fatal("invalid base URL must fail before network")
+	}
+	_, err = NewClient().GenerateReplyStream(context.Background(), provider.GenerateParams{Config: provider.ProviderConfig{APIKey: "key", BaseURL: "ftp://invalid"}})
+	if err == nil {
+		t.Fatal("invalid stream base URL must fail before network")
+	}
+}
+
+func TestGenerateReplyHTTPTSuccess(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/responses" {
+			t.Errorf("path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"id":"resp_1","status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"fixture reply"}]}],"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3}}`)
+	}))
+	defer s.Close()
+	got, err := NewClient().GenerateReply(context.Background(), provider.GenerateParams{UserInput: "hi", Config: provider.ProviderConfig{APIKey: "test", BaseURL: s.URL}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Text != "fixture reply" {
+		t.Fatalf("%+v", got)
+	}
+}
+func TestGenerateReplyHTTPError(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "bad", http.StatusBadRequest) }))
+	defer s.Close()
+	_, err := NewClient().GenerateReply(context.Background(), provider.GenerateParams{Config: provider.ProviderConfig{APIKey: "x", BaseURL: s.URL}})
+	if err == nil {
+		t.Fatal("error expected")
+	}
+}
+func TestBuildFunctionToolSchemas(t *testing.T) {
+	for _, x := range []provider.Tool{{Name: "x"}, {Name: "x", ParametersSchema: "bad"}, {Name: "x", ParametersSchema: `{"type":"object"}`, Strict: true}} {
+		got := buildFunctionTool(x)
+		if got.OfFunction == nil || got.OfFunction.Name != "x" {
+			t.Fatal("tool")
+		}
+	}
+}
+func TestFileStoreValidationFailures(t *testing.T) {
+	ctx := context.Background()
+	for _, fn := range []func() error{func() error { _, e := CreateVectorStore(ctx, FileStoreConfig{}, "x"); return e }, func() error { return DeleteVectorStore(ctx, FileStoreConfig{}, "x") }, func() error { _, e := GetVectorStore(ctx, FileStoreConfig{}, "x"); return e }, func() error { _, e := ListVectorStores(ctx, FileStoreConfig{}, 1); return e }, func() error {
+		_, e := UploadFileToVectorStore(ctx, FileStoreConfig{}, "s", "f", strings.NewReader("x"))
+		return e
+	}} {
+		if fn() == nil {
+			t.Fatal("expected validation error")
+		}
+	}
+}
+func TestVectorStoreHTTPLifecycle(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method + " " + r.URL.Path {
+		case "POST /vector_stores", "GET /vector_stores/vs", "DELETE /vector_stores/vs":
+			io.WriteString(w, `{"id":"vs","name":"fixture","status":"completed","created_at":0,"file_counts":{"total":1}}`)
+		case "GET /vector_stores":
+			io.WriteString(w, `{"data":[{"id":"vs","name":"fixture","status":"completed","created_at":0,"file_counts":{"total":1}}]}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer s.Close()
+	cfg := FileStoreConfig{APIKey: "x", BaseURL: s.URL}
+	if _, e := CreateVectorStore(context.Background(), cfg, "fixture"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := GetVectorStore(context.Background(), cfg, "vs"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := ListVectorStores(context.Background(), cfg, 1); e != nil {
+		t.Fatal(e)
+	}
+	if e := DeleteVectorStore(context.Background(), cfg, "vs"); e != nil {
+		t.Fatal(e)
 	}
 }

@@ -17,7 +17,7 @@ providers:
   openai:
     enabled: true
     default_model: "e2e-model"
-    base_url: "http://provider-stub:8080/v1"
+    base_url: "https://provider-stub:8443/v1"
   gemini: { enabled: false }
   anthropic: { enabled: false }
 failover:

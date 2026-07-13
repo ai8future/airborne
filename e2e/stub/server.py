@@ -1,5 +1,7 @@
-"""Deterministic, no-egress OpenAI-compatible provider stub for E2E."""
+"""Deterministic, no-egress OpenAI Responses API stub for E2E."""
 import json
+import ssl
+import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 class Handler(BaseHTTPRequestHandler):
@@ -16,11 +18,23 @@ class Handler(BaseHTTPRequestHandler):
         try: data = json.loads(body or b"{}")
         except json.JSONDecodeError: return self._json(400, {"error": "malformed JSON"})
         self.server.requests.append({"path": self.path, "body": data})
-        if self.path != "/v1/chat/completions": return self._json(404, {"error": "not found"})
+        if self.path != "/v1/responses": return self._json(404, {"error": "not found"})
         content = "deterministic-e2e-response"
-        return self._json(200, {"id":"e2e-fixed-id","object":"chat.completion","created":0,"model":"e2e-model","choices":[{"index":0,"message":{"role":"assistant","content":content},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}})
+        return self._json(200, {"id":"resp_e2e_fixed","object":"response","status":"completed","model":"e2e-model","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":content}]}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}})
     def log_message(self, *_): pass
 
-server = HTTPServer(("0.0.0.0", 8080), Handler)
-server.requests = []
-server.serve_forever()
+requests = []
+
+def serve(port, tls=False):
+    server = HTTPServer(("0.0.0.0", port), Handler)
+    server.requests = requests
+    if tls:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain("certs/provider-stub-cert.pem", "certs/provider-stub-key.pem")
+        server.socket = context.wrap_socket(server.socket, server_side=True)
+    server.serve_forever()
+
+# Keep health/request inspection on HTTP, but require the production client to
+# use the TLS endpoint so provider URL SSRF validation remains unchanged.
+threading.Thread(target=serve, args=(8080,), daemon=True).start()
+serve(8443, tls=True)

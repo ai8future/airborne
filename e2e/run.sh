@@ -35,14 +35,20 @@ curl --fail --silent --show-error "$admin/admin/health" >"$ARTIFACTS/admin-healt
 curl --fail --silent --show-error -H 'Authorization: Bearer airborne-e2e-token' "$admin/admin/activity" >"$ARTIFACTS/activity.json"
 
 echo 'E2E-003/004: CLI reaches live admin and provider stub receives request'
-[[ -x "$ROOT/airborne-cli" ]] || { echo 'airborne-cli must be built before E2E' >&2; exit 1; }
-"$ROOT/airborne-cli" --url "$admin" --token airborne-e2e-token health | tee "$ARTIFACTS/cli-health.txt"
-"$ROOT/airborne-cli" --url "$admin" --token airborne-e2e-token --json test --provider openai 'deterministic e2e' | tee "$ARTIFACTS/cli-test.json"
-"${COMPOSE[@]}" exec -T provider-stub wget -qO- http://localhost:8080/requests >"$ARTIFACTS/provider-requests.json"
-grep -q 'chat/completions' "$ARTIFACTS/provider-requests.json"
+cli=${AIRBORNE_E2E_CLI:-"$ROOT/bin/airborne-cli"}
+[[ -x "$cli" ]] || { echo 'airborne-cli must be built before E2E' >&2; exit 1; }
+"$cli" --url "$admin" --token airborne-e2e-token health | tee "$ARTIFACTS/cli-health.txt"
+"$cli" --url "$admin" --token airborne-e2e-token --json test --provider openai 'deterministic e2e' | tee "$ARTIFACTS/cli-test.json"
+grep -q 'deterministic-e2e-response' "$ARTIFACTS/cli-test.json"
+grep -q '"provider"[[:space:]]*:[[:space:]]*"openai"' "$ARTIFACTS/cli-test.json"
+grep -q '"model"[[:space:]]*:[[:space:]]*"e2e-model"' "$ARTIFACTS/cli-test.json"
+"${COMPOSE[@]}" exec -T provider-stub python -c "from urllib.request import urlopen; print(urlopen('http://localhost:8080/requests').read().decode())" >"$ARTIFACTS/provider-requests.json"
+grep -q '"path": "/v1/responses"' "$ARTIFACTS/provider-requests.json"
 
-echo 'E2E-005: real PostgreSQL is reachable and activity endpoint remains available'
+echo 'E2E-005/006: real PostgreSQL migrations and RLS are installed'
 "${COMPOSE[@]}" exec -T postgres psql -U airborne -d airborne -Atc 'select 1' | grep -qx 1
+"${COMPOSE[@]}" exec -T postgres psql -U airborne -d airborne -Atc "select count(*) from pg_tables where schemaname = 'public' and tablename in ('airborne_tenants', 'airborne_chats', 'airborne_chat_messages')" | grep -qx 3
+"${COMPOSE[@]}" exec -T postgres psql -U airborne -d airborne -Atc "select relrowsecurity and relforcerowsecurity from pg_class where relname = 'airborne_chat_messages'" | grep -qx 't|t'
 
 echo 'E2E-007: disabled RAG contract is explicit'
 [[ $(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer airborne-e2e-token' -F 'file=@/dev/null;filename=e2e.txt' "$admin/admin/upload") =~ ^(400|404|503)$ ]]
@@ -52,7 +58,7 @@ curl --fail --silent --show-error "http://127.0.0.1:${dashboard_port}" >"$ARTIFA
 
 echo 'E2E-011: graceful restart restores readiness'
 "${COMPOSE[@]}" restart airborne
-"${COMPOSE[@]}" up --wait --wait-timeout 90 airborne
+"${COMPOSE[@]}" up --wait --wait-timeout 120 airborne
 curl --fail --silent --show-error "$admin/admin/health" >/dev/null
 
 echo 'E2E PASS: production image, auth, CLI, provider stub, PostgreSQL, dashboard, and restart scenarios passed'

@@ -12,3 +12,10 @@ func TestNewClient(t *testing.T) {
 		t.Fatal("NewClient returned nil")
 	}
 }
+
+func TestNewClientOptionsAndCapabilities(t *testing.T) {
+	c := NewClient(nil, WithDebugLogging(true))
+	if c.Name() != "mistral" || !c.SupportsStreaming() || c.SupportsWebSearch() || c.SupportsFileSearch() || c.SupportsNativeContinuity() {
+		t.Fatal("unexpected mistral capabilities")
+	}
+}

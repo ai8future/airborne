@@ -23,6 +23,7 @@ type OllamaEmbedder struct {
 }
 
 const maxOllamaErrorBodyBytes = 64 * 1024
+const defaultOllamaTimeout = 120 * time.Second
 
 // OllamaConfig configures the Ollama embedder.
 type OllamaConfig struct {
@@ -32,7 +33,7 @@ type OllamaConfig struct {
 	// Model is the embedding model to use (default: nomic-embed-text).
 	Model string
 
-	// Timeout is the HTTP request timeout (default: 30s).
+	// Timeout is the HTTP request timeout (default: 120s).
 	Timeout time.Duration
 }
 
@@ -59,7 +60,7 @@ func NewOllamaEmbedder(cfg OllamaConfig) *OllamaEmbedder {
 		cfg.Model = "nomic-embed-text"
 	}
 	if cfg.Timeout == 0 {
-		cfg.Timeout = 30 * time.Second
+		cfg.Timeout = defaultOllamaTimeout
 	}
 
 	dimensions := 768 // default

@@ -13,6 +13,8 @@ services:
       timeout: 2s
       retries: 30
     tmpfs: [/var/lib/postgresql/data]
+    volumes:
+      - ../migrations/001_baseline.sql:/docker-entrypoint-initdb.d/001_baseline.sql:ro
     labels: ["com.ai8future.airborne.e2e=true"]
 
   provider-stub:
@@ -20,7 +22,7 @@ services:
     environment:
       STUB_SEED: "e2e-fixed-seed"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://localhost:8080/healthz')"]
       interval: 2s
       timeout: 2s
       retries: 15
@@ -38,9 +40,12 @@ services:
       AIRBORNE_STARTUP_MODE: development
       AIRBORNE_CONFIGS_DIR: /e2e/configs
       OPENAI_API_KEY: deterministic-e2e-key
+      SSL_CERT_FILE: /e2e/provider-stub-ca.pem
+      AIRBORNE_E2E_ALLOW_PROVIDER_STUB: "true"
     volumes:
       - ./fixtures/airborne.yaml:/e2e/airborne.yaml:ro
       - ./fixtures/configs:/e2e/configs:ro
+      - ./stub/certs/provider-stub-cert.pem:/e2e/provider-stub-ca.pem:ro
     depends_on:
       postgres: { condition: service_healthy }
       provider-stub: { condition: service_healthy }

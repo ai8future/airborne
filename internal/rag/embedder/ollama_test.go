@@ -11,6 +11,9 @@ import (
 )
 
 func TestNewOllamaEmbedder_Defaults(t *testing.T) {
+	if defaultOllamaTimeout != 120*time.Second {
+		t.Fatalf("default timeout = %s, want 120s", defaultOllamaTimeout)
+	}
 	emb := NewOllamaEmbedder(OllamaConfig{})
 
 	if emb.baseURL != "http://localhost:11434" {

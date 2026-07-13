@@ -193,3 +193,27 @@ func captureStdout(t *testing.T, fn func()) string {
 	}
 	return string(output)
 }
+
+func TestAllOutputPrinters(t *testing.T) {
+	capture := func(fn func()) string {
+		old := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+		fn()
+		w.Close()
+		os.Stdout = old
+		b, _ := io.ReadAll(r)
+		return string(b)
+	}
+	a := Activity{ID: "id", ThreadID: "thread", Tenant: "tenant", Model: "very-long-model-name-for-output", Provider: "p", InputTokens: 1200, OutputTokens: 2, CostUSD: 1, GroundingCostUSD: .2, ProcessingTimeMs: 1500, Status: "success", Timestamp: "2026-01-01T00:00:00Z", FullContent: "body"}
+	d := DebugResponse{MessageID: "m", ThreadID: "t", TenantID: "tenant", Timestamp: "bad", Status: "failed", ResponseModel: "model", RequestProvider: "p", TokensIn: 1, TokensOut: 2, CostUSD: 1, GroundingQueries: 1, GroundingCostUSD: .1, DurationMs: 2, SystemPrompt: "system", UserInput: "input", ResponseText: "output"}
+	if out := capture(func() {
+		PrintActivityTable([]Activity{a})
+		PrintActivityDetail(a)
+		PrintDebugInfo(&d)
+		PrintThreadMessages([]ThreadMessage{{Role: "user", Timestamp: "bad", Content: "x"}, {Role: "assistant", Timestamp: "bad", Content: "y", Model: "m"}})
+		PrintTestResult(&TestResponse{Model: "m", Provider: "p", Reply: "r", ProcessingMs: 1})
+	}); !strings.Contains(out, "tenant") {
+		t.Fatalf("missing output: %q", out)
+	}
+}
