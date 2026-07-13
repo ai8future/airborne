@@ -660,11 +660,7 @@ func (s *Server) handleTest(w http.ResponseWriter, r *http.Request) {
 	resp, err := client.GenerateReply(ctx, grpcReq)
 	if err != nil {
 		slog.Error("test gRPC call failed", "error", err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK) // Return 200 with error in body
-		json.NewEncoder(w).Encode(TestResponse{
-			Error: err.Error(),
-		})
+		httpkit.JSONError(w, r, http.StatusBadGateway, "provider test failed: "+err.Error())
 		return
 	}
 

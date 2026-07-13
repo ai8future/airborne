@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -653,6 +654,18 @@ type recordingAirborneClient struct {
 func (c *recordingAirborneClient) GenerateReply(_ context.Context, req *pb.GenerateReplyRequest, _ ...grpc.CallOption) (*pb.GenerateReplyResponse, error) {
 	c.requests = append(c.requests, req)
 	return c.response, c.err
+}
+
+func TestHandleTestReturnsBadGatewayForProviderFailure(t *testing.T) {
+	s := &Server{grpcClient: &recordingAirborneClient{err: errors.New("provider unavailable")}}
+	recorder := httptest.NewRecorder()
+	s.handleTest(recorder, httptest.NewRequest(http.MethodPost, "/admin/test", strings.NewReader(`{"prompt":"test prompt"}`)))
+	if recorder.Code != http.StatusBadGateway {
+		t.Fatalf("provider failure status = %d, want %d: %s", recorder.Code, http.StatusBadGateway, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "provider test failed") || !strings.Contains(recorder.Body.String(), "provider unavailable") {
+		t.Fatalf("provider failure body = %s", recorder.Body.String())
+	}
 }
 
 func TestHandleTestAndChatSuccessUseRecordedGRPCRequest(t *testing.T) {
