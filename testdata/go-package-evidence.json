@@ -203,9 +203,9 @@
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "contract",
+      "test_evidence": "direct",
       "evidence_files": [
-        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+        "client_test.go"
       ]
     },
     {
@@ -213,9 +213,9 @@
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "contract",
+      "test_evidence": "direct",
       "evidence_files": [
-        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+        "client_test.go"
       ]
     },
     {
@@ -233,9 +233,9 @@
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "contract",
+      "test_evidence": "direct",
       "evidence_files": [
-        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+        "client_test.go"
       ]
     },
     {
@@ -243,9 +243,9 @@
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "contract",
+      "test_evidence": "direct",
       "evidence_files": [
-        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+        "client_test.go"
       ]
     },
     {
@@ -253,9 +253,9 @@
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "contract",
+      "test_evidence": "direct",
       "evidence_files": [
-        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+        "client_test.go"
       ]
     },
     {
@@ -276,9 +276,9 @@
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "contract",
+      "test_evidence": "direct",
       "evidence_files": [
-        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+        "client_test.go"
       ]
     },
     {
@@ -296,9 +296,9 @@
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "contract",
+      "test_evidence": "direct",
       "evidence_files": [
-        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+        "client_test.go"
       ]
     },
     {
@@ -316,9 +316,9 @@
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "contract",
+      "test_evidence": "direct",
       "evidence_files": [
-        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+        "client_test.go"
       ]
     },
     {
@@ -337,9 +337,9 @@
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "contract",
+      "test_evidence": "direct",
       "evidence_files": [
-        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+        "client_test.go"
       ]
     },
     {
@@ -347,9 +347,9 @@
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "contract",
+      "test_evidence": "direct",
       "evidence_files": [
-        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+        "client_test.go"
       ]
     },
     {
@@ -357,9 +357,9 @@
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "contract",
+      "test_evidence": "direct",
       "evidence_files": [
-        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+        "client_test.go"
       ]
     },
     {
@@ -367,9 +367,9 @@
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "contract",
+      "test_evidence": "direct",
       "evidence_files": [
-        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+        "client_test.go"
       ]
     },
     {
@@ -486,6 +486,7 @@
         "chat_test.go",
         "files_test.go",
         "idempotency_test.go",
+        "int32_test.go",
         "model_registry_test.go"
       ]
     },

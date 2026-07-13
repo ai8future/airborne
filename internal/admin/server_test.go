@@ -355,6 +355,13 @@ func TestHandleThreadValidationAndNoDatabase(t *testing.T) {
 	}
 }
 
+func TestGetGRPCClientRequiresAddress(t *testing.T) {
+	s := &Server{}
+	if client, err := s.getGRPCClient(); err == nil || client != nil {
+		t.Fatalf("getGRPCClient() = %#v, %v; want nil and configuration error", client, err)
+	}
+}
+
 func TestAdminHTTPAuthMiddleware_PublicHealthNoToken(t *testing.T) {
 	s := &Server{authToken: "secret-token"}
 	handler := s.requireHTTPAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
