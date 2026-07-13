@@ -464,3 +464,19 @@ func TestWaitForCompletionPollsCompletedFixture(t *testing.T) {
 		t.Fatalf("poll result = %#v, %v", got, err)
 	}
 }
+
+func TestWaitForFileProcessingCompletedFixture(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/vector_stores/store_1/files/file_1" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"file_1","status":"completed"}`)
+	}))
+	defer s.Close()
+	api := openai.NewClient(option.WithAPIKey("test"), option.WithBaseURL(s.URL))
+	got, err := waitForFileProcessing(context.Background(), api, "store_1", "file_1")
+	if err != nil || got != "completed" {
+		t.Fatalf("processing = %q, %v", got, err)
+	}
+}
