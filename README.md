@@ -313,7 +313,7 @@ bin/airborne-cli --url http://localhost:8473 --token "$AIRBORNE_ADMIN_TOKEN" act
 ## Security
 
 - gRPC interceptor chain: panic recovery, tracing, metrics, logging, tenant resolution, auth
-- HTTP admin: explicit bearer/API-key auth on protected routes, explicit-origin CORS, request timeouts (30s), body size limits (2MB JSON / 100MB upload), JSON security validation (rejects dangerous keys, excessive nesting)
+- HTTP admin: explicit bearer/API-key auth on protected routes, explicit-origin CORS, request timeouts (120s default; 4m for chat/test and 2m for upload), body size limits (2MB JSON / 100MB upload), JSON security validation (rejects dangerous keys, excessive nesting)
 - Dashboard API proxy: bearer/API-key/cookie auth, same-origin CSRF guard for cookie writes, no raw AI-rendered HTML injection, and safe `http`/`https` citation links only
 - API key secrets stored as bcrypt hashes
 - Rate limiting via atomic Redis Lua scripts
