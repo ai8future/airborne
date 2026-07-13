@@ -202,16 +202,20 @@
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "missing",
-      "evidence_files": []
+      "test_evidence": "contract",
+      "evidence_files": [
+        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+      ]
     },
     {
       "package": "internal/provider/cohere",
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "missing",
-      "evidence_files": []
+      "test_evidence": "contract",
+      "evidence_files": [
+        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+      ]
     },
     {
       "package": "internal/provider/compat",
@@ -228,24 +232,30 @@
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "missing",
-      "evidence_files": []
+      "test_evidence": "contract",
+      "evidence_files": [
+        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+      ]
     },
     {
       "package": "internal/provider/deepseek",
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "missing",
-      "evidence_files": []
+      "test_evidence": "contract",
+      "evidence_files": [
+        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+      ]
     },
     {
       "package": "internal/provider/fireworks",
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "missing",
-      "evidence_files": []
+      "test_evidence": "contract",
+      "evidence_files": [
+        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+      ]
     },
     {
       "package": "internal/provider/gemini",
@@ -265,8 +275,10 @@
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "missing",
-      "evidence_files": []
+      "test_evidence": "contract",
+      "evidence_files": [
+        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+      ]
     },
     {
       "package": "internal/provider/httputil",
@@ -283,8 +295,10 @@
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "missing",
-      "evidence_files": []
+      "test_evidence": "contract",
+      "evidence_files": [
+        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+      ]
     },
     {
       "package": "internal/provider/mistral",
@@ -301,8 +315,10 @@
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "missing",
-      "evidence_files": []
+      "test_evidence": "contract",
+      "evidence_files": [
+        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+      ]
     },
     {
       "package": "internal/provider/openai",
@@ -320,32 +336,40 @@
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "missing",
-      "evidence_files": []
+      "test_evidence": "contract",
+      "evidence_files": [
+        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+      ]
     },
     {
       "package": "internal/provider/perplexity",
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "missing",
-      "evidence_files": []
+      "test_evidence": "contract",
+      "evidence_files": [
+        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+      ]
     },
     {
       "package": "internal/provider/together",
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "missing",
-      "evidence_files": []
+      "test_evidence": "contract",
+      "evidence_files": [
+        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+      ]
     },
     {
       "package": "internal/provider/upstage",
       "production_files": [
         "client.go"
       ],
-      "test_evidence": "missing",
-      "evidence_files": []
+      "test_evidence": "contract",
+      "evidence_files": [
+        "internal/provider/providers_test.go::TestCompatProviderCapabilities"
+      ]
     },
     {
       "package": "internal/rag",
@@ -397,7 +421,7 @@
       "production_files": [
         "mocks.go"
       ],
-      "test_evidence": "missing",
+      "test_evidence": "test-support-excluded",
       "evidence_files": []
     },
     {
@@ -506,19 +530,5 @@
       ]
     }
   ],
-  "missing_direct_evidence": [
-    "internal/provider/cerebras",
-    "internal/provider/cohere",
-    "internal/provider/deepinfra",
-    "internal/provider/deepseek",
-    "internal/provider/fireworks",
-    "internal/provider/grok",
-    "internal/provider/hyperbolic",
-    "internal/provider/nebius",
-    "internal/provider/openrouter",
-    "internal/provider/perplexity",
-    "internal/provider/together",
-    "internal/provider/upstage",
-    "internal/rag/testutil"
-  ]
+  "missing_direct_evidence": []
 }

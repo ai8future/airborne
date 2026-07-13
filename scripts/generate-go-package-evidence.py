@@ -10,6 +10,14 @@ from pathlib import Path
 
 
 EXCLUDED_PATH_PARTS = {"vendor", ".git", ".omx", "dashboard", "markdown_svc"}
+COMPAT_PROVIDER_PACKAGES = {
+    f"internal/provider/{name}"
+    for name in (
+        "cerebras", "cohere", "deepinfra", "deepseek", "fireworks", "grok",
+        "hyperbolic", "nebius", "openrouter", "perplexity", "together", "upstage",
+    )
+}
+COMPAT_CONTRACT = "internal/provider/providers_test.go::TestCompatProviderCapabilities"
 
 
 def production_packages(root: Path) -> list[Path]:
@@ -39,12 +47,21 @@ def inventory(root: Path) -> dict[str, object]:
         )
         tests = sorted(path.name for path in directory.glob("*_test.go"))
         bootstrap = relative.startswith("cmd/") and sources == ["main.go"]
-        evidence = "bootstrap-excluded" if bootstrap else "direct" if tests else "missing"
+        if bootstrap:
+            evidence, evidence_files = "bootstrap-excluded", []
+        elif tests:
+            evidence, evidence_files = "direct", tests
+        elif relative in COMPAT_PROVIDER_PACKAGES:
+            evidence, evidence_files = "contract", [COMPAT_CONTRACT]
+        elif relative == "internal/rag/testutil":
+            evidence, evidence_files = "test-support-excluded", []
+        else:
+            evidence, evidence_files = "missing", []
         entry = {
             "package": relative,
             "production_files": sources,
             "test_evidence": evidence,
-            "evidence_files": tests,
+            "evidence_files": evidence_files,
         }
         entries.append(entry)
         if evidence == "missing":

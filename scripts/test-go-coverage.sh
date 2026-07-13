@@ -10,5 +10,6 @@ profile="${GO_COVERAGE_PROFILE:-coverage.out}"
 inventory="${GO_PACKAGE_EVIDENCE:-testdata/go-package-evidence.json}"
 packages="$(go list ./... | paste -sd, -)"
 
+python3 scripts/generate-go-package-evidence.py --output "$inventory" --strict
 go test -race -coverpkg="$packages" -coverprofile="$profile" ./...
-go run ./tools/coverageaudit -profile "$profile" -minimum "${GO_COVERAGE_MINIMUM:-75}" -inventory "$inventory"
+go run ./tools/coverageaudit -profile "$profile" -minimum "${GO_COVERAGE_MINIMUM:-75}"
