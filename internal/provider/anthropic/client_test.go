@@ -3,6 +3,8 @@ package anthropic
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
@@ -163,5 +165,27 @@ func TestGenerateReplyStream_MissingAPIKey(t *testing.T) {
 	}
 	if err.Error() != "Anthropic API key is required" {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestGenerateReply_HTTPSuccessFixture(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/messages" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		if r.Header.Get("x-api-key") != "test-key" {
+			t.Errorf("missing API key header")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"msg_1","type":"message","role":"assistant","model":"claude-test","content":[{"type":"text","text":"hello"}],"usage":{"input_tokens":2,"output_tokens":3}}`))
+	}))
+	defer srv.Close()
+	client := NewClient()
+	resp, err := client.GenerateReply(context.Background(), provider.GenerateParams{UserInput: "hi", Instructions: "be brief", Config: provider.ProviderConfig{APIKey: "test-key", BaseURL: srv.URL}})
+	if err != nil {
+		t.Fatalf("GenerateReply: %v", err)
+	}
+	if resp.Text != "hello" || resp.ResponseID != "msg_1" || resp.Usage.TotalTokens != 5 {
+		t.Fatalf("response = %#v", resp)
 	}
 }
