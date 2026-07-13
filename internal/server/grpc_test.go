@@ -157,3 +157,28 @@ type mockServerStream struct {
 func (m *mockServerStream) Context() context.Context {
 	return m.ctx
 }
+
+func TestServerComponentsCloseAndHealthLogging(t *testing.T) {
+	// Nil components are a valid lifecycle state when optional dependencies are disabled.
+	(&ServerComponents{}).Close()
+
+	called := false
+	inner := func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		called = true
+		return handler(ctx, req)
+	}
+	wrapped := skipHealthLogging(inner)
+	for _, tc := range []struct {
+		method    string
+		wantInner bool
+	}{
+		{"/grpc.health.v1.Health/Check", false},
+		{"/airborne.v1.Airborne/GenerateReply", true},
+	} {
+		called = false
+		_, err := wrapped(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: tc.method}, func(context.Context, any) (any, error) { return "ok", nil })
+		if err != nil || called != tc.wantInner {
+			t.Fatalf("wrapped %s = called=%v err=%v", tc.method, called, err)
+		}
+	}
+}
