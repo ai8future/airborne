@@ -1289,6 +1289,21 @@ func TestResponseConversionHelpers(t *testing.T) {
 	if unknownCitation.Type != pb.Citation_TYPE_UNSPECIFIED {
 		t.Fatalf("unknown citation = %#v", unknownCitation)
 	}
+	toolCall := convertToolCall(provider.ToolCall{ID: "call", Name: "search", Arguments: `{}`})
+	if toolCall.Id != "call" || toolCall.Name != "search" {
+		t.Fatalf("tool call = %#v", toolCall)
+	}
+	code := convertCodeExecution(provider.CodeExecutionResult{Code: "print(1)", Language: "python", ExitCode: -1, Files: []provider.GeneratedFile{{Name: "out.txt", MIMEType: "text/plain", Content: []byte("out")}}})
+	if code.ExitCode != -1 || len(code.Files) != 1 || code.Files[0].Name != "out.txt" {
+		t.Fatalf("code execution = %#v", code)
+	}
+	if convertStructuredMetadata(nil) != nil {
+		t.Fatal("nil metadata must remain nil")
+	}
+	metadata := convertStructuredMetadata(&provider.StructuredMetadata{Intent: "task", RequiresUserAction: true, Topics: []string{"go"}, Entities: []provider.StructuredEntity{{Name: "Airborne", Type: "product"}}, Scheduling: &provider.SchedulingIntent{Detected: true, DatetimeMentioned: "tomorrow"}})
+	if metadata.Intent != "task" || len(metadata.Entities) != 1 || metadata.Scheduling == nil || !metadata.Scheduling.Detected {
+		t.Fatalf("metadata = %#v", metadata)
+	}
 }
 
 func TestSelectProviderProtocol(t *testing.T) {
