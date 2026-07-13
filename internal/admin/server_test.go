@@ -134,6 +134,37 @@ func TestBuildCompressedHistory_Empty(t *testing.T) {
 	}
 }
 
+func TestCapHistoryKeepsMostRecentMessages(t *testing.T) {
+	branch := []db.ChatMessage{{Role: "one"}, {Role: "two"}, {Role: "three"}}
+	got := capHistory(branch, 2)
+	if len(got) != 2 || got[0].Role != "two" || got[1].Role != "three" {
+		t.Fatalf("capHistory = %#v, want the two newest messages", got)
+	}
+	if got := capHistory(branch, len(branch)); len(got) != len(branch) {
+		t.Fatalf("equal cap returned %d messages, want %d", len(got), len(branch))
+	}
+}
+
+func TestMessageContentText(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		raw  json.RawMessage
+		want string
+	}{
+		{"empty", nil, ""},
+		{"text object", json.RawMessage(` { "text": "hello" } `), "hello"},
+		{"bare string", json.RawMessage(`"hello"`), "hello"},
+		{"object without text", json.RawMessage(`{"kind":"other"}`), `{"kind":"other"}`},
+		{"invalid json", json.RawMessage(`not-json`), "not-json"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := messageContentText(test.raw); got != test.want {
+				t.Fatalf("messageContentText(%s) = %q, want %q", test.raw, got, test.want)
+			}
+		})
+	}
+}
+
 func TestBuildCompressedHistory_BasicMessages(t *testing.T) {
 	messages := []db.ChatMessage{
 		{Role: "user", Content: db.TextContent("Hello"), CreatedAt: time.Now()},
