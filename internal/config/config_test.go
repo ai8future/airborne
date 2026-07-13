@@ -527,7 +527,7 @@ func TestLoad_GRPCPortEnvOverride_InvalidValue(t *testing.T) {
 func TestLoadFrozen(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "frozen.json")
-	if err := os.WriteFile(path, []byte(`{"global_config":{"server":{"grpc_port":9123,"host":"127.0.0.1"},"tls":{"enabled":false},"admin":{"enabled":false,"port":8473},"auth":{},"logging":{}},"frozen_at":"2026-01-01T00:00:00Z"}`), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"global_config":{"server":{"GRPCPort":9123,"Host":"127.0.0.1"},"tls":{"enabled":false},"admin":{"enabled":false,"port":8473},"auth":{},"logging":{}},"frozen_at":"2026-01-01T00:00:00Z"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := LoadFrozen(path)
