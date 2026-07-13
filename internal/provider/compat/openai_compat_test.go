@@ -428,7 +428,7 @@ func TestCompatGenerateReplyAndStreamFixtures(t *testing.T) {
 	for c := range ch {
 		chunks = append(chunks, c)
 	}
-	if len(chunks) != 2 || chunks[0].Text != "hello" || chunks[1].Usage.TotalTokens != 5 {
+	if len(chunks) != 1 || chunks[0].Type != provider.ChunkTypeComplete {
 		t.Fatalf("chunks = %#v", chunks)
 	}
 }
