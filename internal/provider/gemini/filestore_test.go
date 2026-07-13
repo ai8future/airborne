@@ -159,3 +159,34 @@ func TestFileStoreHelperContracts(t *testing.T) {
 		t.Fatal("body")
 	}
 }
+func TestFileSearchStoreHTTPLifecycle(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("key") != "k" {
+			t.Error("key")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/fileSearchStores" && r.Method == http.MethodGet {
+			io.WriteString(w, `{"fileSearchStores":[{"name":"fileSearchStores/id","displayName":"n","createTime":"2026-01-01T00:00:00Z","totalDocumentCount":1}]}`)
+			return
+		}
+		if r.Method == http.MethodDelete {
+			w.WriteHeader(200)
+			return
+		}
+		io.WriteString(w, `{"name":"fileSearchStores/id","displayName":"n","createTime":"2026-01-01T00:00:00Z","totalDocumentCount":1}`)
+	}))
+	defer s.Close()
+	cfg := FileStoreConfig{APIKey: "k", BaseURL: s.URL}
+	if _, e := CreateFileSearchStore(context.Background(), cfg, "n"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := GetFileSearchStore(context.Background(), cfg, "id"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := ListFileSearchStores(context.Background(), cfg, 1); e != nil {
+		t.Fatal(e)
+	}
+	if e := DeleteFileSearchStore(context.Background(), cfg, "id", true); e != nil {
+		t.Fatal(e)
+	}
+}
