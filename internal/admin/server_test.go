@@ -58,6 +58,44 @@ func TestDetectMIMEType(t *testing.T) {
 	}
 }
 
+func TestAdminRequestTimeoutPolicy(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want time.Duration
+	}{
+		{name: "ordinary admin route", path: "/admin/activity", want: defaultAdminRequestTimeout},
+		{name: "unknown admin route", path: "/admin/future", want: defaultAdminRequestTimeout},
+		{name: "chat route", path: "/admin/chat", want: adminLLMRequestTimeout},
+		{name: "test route", path: "/admin/test", want: adminLLMRequestTimeout},
+		{name: "upload route", path: "/admin/upload", want: adminUploadRequestTimeout},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got time.Duration
+			handler := adminRequestTimeout(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				deadline, ok := r.Context().Deadline()
+				if !ok {
+					t.Fatal("request context has no deadline")
+				}
+				got = time.Until(deadline)
+			}))
+
+			handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, tt.path, nil))
+			if delta := got - tt.want; delta < -time.Second || delta > time.Second {
+				t.Fatalf("request timeout = %s, want approximately %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAdminRequestTimeoutPolicyFitsWriteTimeout(t *testing.T) {
+	if adminLLMRequestTimeout >= adminServerWriteTimeout {
+		t.Fatalf("maximum request timeout %s must be less than write timeout %s", adminLLMRequestTimeout, adminServerWriteTimeout)
+	}
+}
+
 func TestBuildCompressedHistory_Empty(t *testing.T) {
 	var prev string
 	result := buildCompressedHistory(nil, &prev)
