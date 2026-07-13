@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	openai "github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/responses"
 	"github.com/openai/openai-go/shared"
 
@@ -445,5 +446,21 @@ func TestResponseExtractionNilAndEmptyBoundaries(t *testing.T) {
 		if got := extractCitations(response, map[string]string{}); len(got) != 0 {
 			t.Fatalf("citations = %#v", got)
 		}
+	}
+}
+
+func TestWaitForCompletionPollsCompletedFixture(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/responses/resp_poll" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"resp_poll","status":"completed"}`)
+	}))
+	defer s.Close()
+	api := openai.NewClient(option.WithAPIKey("test"), option.WithBaseURL(s.URL))
+	got, err := waitForCompletion(context.Background(), api, &responses.Response{ID: "resp_poll", Status: responses.ResponseStatusInProgress})
+	if err != nil || got.Status != responses.ResponseStatusCompleted {
+		t.Fatalf("poll result = %#v, %v", got, err)
 	}
 }
