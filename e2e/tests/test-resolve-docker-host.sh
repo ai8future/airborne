@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd "$(dirname "$0")/../.." && pwd)
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+socket="$tmp/docker.sock"; : >"$socket"
+# Bash's test -S needs a real socket; start a short-lived UNIX listener.
+python3 - "$socket" <<'PY' &
+import socket, sys, time
+s=socket.socket(socket.AF_UNIX); s.bind(sys.argv[1]); time.sleep(10)
+PY
+pid=$!; sleep .1
+mkdir "$tmp/bin"
+cat >"$tmp/bin/docker" <<EOF2
+#!/usr/bin/env bash
+case "\$1" in
+  context) if [[ "\$2" == show ]]; then echo orbstack; else echo 'unix://$socket'; fi ;;
+  --host) exit 0 ;;
+esac
+EOF2
+chmod +x "$tmp/bin/docker"
+PATH="$tmp/bin:$PATH" "$root/scripts/resolve-docker-host.sh" | grep -qx "unix://$socket"
+DOCKER_HOST="tcp://docker.example:2376" PATH="$tmp/bin:$PATH" "$root/scripts/resolve-docker-host.sh" | grep -qx 'tcp://docker.example:2376'
+if DOCKER_HOST="unix://$tmp/missing.sock" PATH="$tmp/bin:$PATH" "$root/scripts/resolve-docker-host.sh" >/dev/null 2>&1; then exit 1; fi
+kill "$pid" 2>/dev/null || true
+echo 'PASS: explicit host precedence, active context, and missing socket failure'

@@ -36,9 +36,11 @@ services:
       DATABASE_ENABLED: "true"
       DATABASE_URL: postgres://airborne:airborne-e2e@postgres:5432/airborne?sslmode=disable
       AIRBORNE_STARTUP_MODE: development
+      AIRBORNE_CONFIGS_DIR: /e2e/configs
       OPENAI_API_KEY: deterministic-e2e-key
     volumes:
       - ./fixtures/airborne.yaml:/e2e/airborne.yaml:ro
+      - ./fixtures/configs:/e2e/configs:ro
     depends_on:
       postgres: { condition: service_healthy }
       provider-stub: { condition: service_healthy }
@@ -59,5 +61,5 @@ services:
     depends_on:
       airborne: { condition: service_healthy }
     ports:
-      - "127.0.0.1::3000"
+      - "127.0.0.1::4848"
     labels: ["com.ai8future.airborne.e2e=true"]
