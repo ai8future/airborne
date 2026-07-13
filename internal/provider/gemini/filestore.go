@@ -174,9 +174,13 @@ type filesAPIResponse struct {
 
 // uploadToFilesAPI uploads a file to the Gemini Files API.
 // This is the first step of the Office file workaround.
-func uploadToFilesAPI(ctx context.Context, apiKey string, filename string, mimeType string, content []byte) (string, error) {
-	// Create the upload URL
-	uploadURL := geminiURLWithKey(filesUploadBaseURL, apiKey, "files", nil)
+func uploadToFilesAPI(ctx context.Context, cfg FileStoreConfig, filename string, mimeType string, content []byte) (string, error) {
+	// Honor the configured endpoint so file uploads share the testable provider transport.
+	baseURL := filesUploadBaseURL
+	if cfg.BaseURL != "" {
+		baseURL = cfg.getBaseURL()
+	}
+	uploadURL := geminiURLWithKey(baseURL, cfg.APIKey, "files", nil)
 
 	// Create metadata JSON
 	metadata := map[string]interface{}{
@@ -332,8 +336,12 @@ func importFileToFileSearchStore(ctx context.Context, cfg FileStoreConfig, store
 
 // deleteFromFilesAPI deletes a file from the Gemini Files API.
 // This is used for cleanup after the Office file workaround.
-func deleteFromFilesAPI(ctx context.Context, apiKey string, fileName string) error {
-	url := geminiURLWithKey(fileSearchBaseURL, apiKey, escapedResourcePath(fileName), nil)
+func deleteFromFilesAPI(ctx context.Context, cfg FileStoreConfig, fileName string) error {
+	baseURL := fileSearchBaseURL
+	if cfg.BaseURL != "" {
+		baseURL = cfg.getBaseURL()
+	}
+	url := geminiURLWithKey(baseURL, cfg.APIKey, escapedResourcePath(fileName), nil)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
 	if err != nil {
@@ -466,7 +474,7 @@ func UploadFileToFileSearchStore(ctx context.Context, cfg FileStoreConfig, store
 // uploadOfficeFileToFileSearchStore implements the two-step workaround for Office files.
 func uploadOfficeFileToFileSearchStore(ctx context.Context, cfg FileStoreConfig, storeID string, filename string, mimeType string, fileContent []byte) (*UploadedFile, error) {
 	// Step 1: Upload to Files API
-	filesAPIName, err := uploadToFilesAPI(ctx, cfg.APIKey, filename, mimeType, fileContent)
+	filesAPIName, err := uploadToFilesAPI(ctx, cfg, filename, mimeType, fileContent)
 	if err != nil {
 		return nil, fmt.Errorf("upload to Files API: %w", err)
 	}
@@ -475,7 +483,7 @@ func uploadOfficeFileToFileSearchStore(ctx context.Context, cfg FileStoreConfig,
 	defer func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
-		if cleanupErr := deleteFromFilesAPI(cleanupCtx, cfg.APIKey, filesAPIName); cleanupErr != nil {
+		if cleanupErr := deleteFromFilesAPI(cleanupCtx, cfg, filesAPIName); cleanupErr != nil {
 			slog.Warn("failed to cleanup file from Files API",
 				"file_name", filesAPIName,
 				"error", cleanupErr,

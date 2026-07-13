@@ -3,6 +3,10 @@ package gemini
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"google.golang.org/genai"
@@ -353,5 +357,80 @@ func TestGeminiConversionBoundaries(t *testing.T) {
 	}
 	if len(extractFunctionCalls(nil)) != 0 || len(extractCodeExecutionResults(nil)) != 0 {
 		t.Fatal("nil")
+	}
+}
+func TestGeminiPureResponseConversions(t *testing.T) {
+	if positiveInt32OrDefault(nil, 7) != 7 || positiveInt32OrDefault(intPtr(0), 7) != 7 || positiveInt32OrDefault(intPtr(2), 7) != 2 {
+		t.Fatal("positive defaults")
+	}
+	if schema := structuredOutputSchema(); schema == nil || schema.Properties["reply"] == nil || len(schema.Required) != 2 {
+		t.Fatal("structured schema")
+	}
+	for _, reason := range []genai.FinishReason{genai.FinishReasonSafety, genai.FinishReasonRecitation, genai.FinishReasonBlocklist, genai.FinishReasonProhibitedContent, genai.FinishReasonSPII} {
+		if getBlockReason(&genai.GenerateContentResponse{Candidates: []*genai.Candidate{{FinishReason: reason}}}) == "" {
+			t.Fatalf("missing reason for %v", reason)
+		}
+	}
+
+	parts := []*genai.Part{
+		{Text: `{"reply":"done","intent":"request","requires_user_action":true,"entities":[{"name":"Ada","type":"person"}],"topics":["code"],"scheduling_intent":{"detected":true,"datetime_mentioned":"tomorrow"}}`},
+		{FunctionCall: &genai.FunctionCall{ID: "call-1", Name: "lookup", Args: map[string]any{"q": "gemini"}}},
+		{ExecutableCode: &genai.ExecutableCode{Code: "print(1)", Language: genai.LanguagePython}},
+		{CodeExecutionResult: &genai.CodeExecutionResult{Outcome: genai.OutcomeOK, Output: "1\n"}},
+	}
+	response := &genai.GenerateContentResponse{Candidates: []*genai.Candidate{{Content: &genai.Content{Parts: parts}}}}
+	text, metadata := extractStructuredResponse(response)
+	if text != "done" || metadata == nil || metadata.Intent != "request" || len(metadata.Entities) != 1 || metadata.Scheduling == nil {
+		t.Fatalf("structured conversion = %#v %#v", text, metadata)
+	}
+	if calls := extractFunctionCalls(response); len(calls) != 1 || calls[0].Name != "lookup" || calls[0].Arguments != `{"q":"gemini"}` {
+		t.Fatalf("function calls = %#v", calls)
+	}
+	if executions := extractCodeExecutionResults(response); len(executions) != 1 || executions[0].ExitCode != 0 || executions[0].Stdout != "1\n" {
+		t.Fatalf("executions = %#v", executions)
+	}
+	bad := &genai.GenerateContentResponse{Candidates: []*genai.Candidate{{Content: &genai.Content{Parts: []*genai.Part{{Text: "not-json"}}}}}}
+	if raw, metadata := extractStructuredResponse(bad); raw != "not-json" || metadata != nil {
+		t.Fatalf("malformed structured response = %q %#v", raw, metadata)
+	}
+}
+
+func intPtr(v int) *int { return &v }
+
+func TestGenerateReplyHTTPProtocol(t *testing.T) {
+	var requests int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s", r.Method)
+		}
+		body, _ := io.ReadAll(r.Body)
+		if !strings.Contains(string(body), `"temperature"`) || !strings.Contains(string(body), `"functionDeclarations"`) {
+			t.Errorf("request body missing config: %s", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"candidates":[{"content":{"role":"model","parts":[{"text":"fixture reply"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":2,"totalTokenCount":5}}`)
+	}))
+	defer srv.Close()
+	temp := 0.25
+	result, err := NewClient().GenerateReply(context.Background(), provider.GenerateParams{
+		UserInput: "hello", EnableCodeExecution: true, EnableWebSearch: true,
+		Tools:  []provider.Tool{{Name: "lookup", Description: "lookup", ParametersSchema: `{"type":"object"}`}},
+		Config: provider.ProviderConfig{APIKey: "test-key", BaseURL: srv.URL, Model: "gemini-2.5-pro", Temperature: &temp, ExtraOptions: map[string]string{"thinking_level": "LOW", "safety_threshold": "BLOCK_NONE"}},
+	})
+	if err != nil {
+		t.Fatalf("GenerateReply() error = %v", err)
+	}
+	if result.Text != "fixture reply" || result.Usage.TotalTokens != 5 || result.Model != "gemini-2.5-pro" || requests != 1 {
+		t.Fatalf("result = %#v requests=%d", result, requests)
+	}
+}
+
+func TestGenerateReplyHTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "bad fixture", http.StatusBadRequest) }))
+	defer srv.Close()
+	_, err := NewClient().GenerateReply(context.Background(), provider.GenerateParams{UserInput: "hello", Config: provider.ProviderConfig{APIKey: "key", BaseURL: srv.URL}})
+	if err == nil || !strings.Contains(err.Error(), "400") {
+		t.Fatalf("error = %v", err)
 	}
 }
