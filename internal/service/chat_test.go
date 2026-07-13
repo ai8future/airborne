@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -14,6 +15,17 @@ import (
 	"github.com/ai8future/airborne/internal/tenant"
 	"github.com/ai8future/airborne/internal/validation"
 )
+
+type recordingPublisher struct {
+	subject string
+	data    any
+	err     error
+}
+
+func (p *recordingPublisher) Publish(_ context.Context, subject string, data any) error {
+	p.subject, p.data = subject, data
+	return p.err
+}
 
 // mockProvider implements provider.Provider for testing.
 type mockProvider struct {
@@ -1227,4 +1239,25 @@ func TestMapProviderToProto(t *testing.T) {
 			t.Errorf("mapProviderToProto(%q) = %v, expected %v", tc.input, result, tc.expected)
 		}
 	}
+}
+
+func TestPublishInferenceCompleted(t *testing.T) {
+	svc := &ChatService{}
+	// Nil publishers are intentionally no-ops.
+	svc.publishInferenceCompleted(context.Background(), "openai", "model", 12, 34)
+
+	publisher := &recordingPublisher{}
+	svc.SetEventPublisher(publisher)
+	svc.publishInferenceCompleted(context.Background(), "openai", "model", 12, 34)
+	if publisher.subject != "ai8.ai.airborne.inference.completed" {
+		t.Fatalf("subject = %q", publisher.subject)
+	}
+	payload, ok := publisher.data.(map[string]any)
+	if !ok || payload["provider"] != "openai" || payload["total_tokens"] != int64(34) {
+		t.Fatalf("payload = %#v", publisher.data)
+	}
+
+	// Publishing is additive; failures must not affect the request path.
+	publisher.err = errors.New("broker unavailable")
+	svc.publishInferenceCompleted(context.Background(), "openai", "model", 12, 34)
 }
