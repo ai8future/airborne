@@ -269,6 +269,38 @@ func TestHandleHealth_NoDB(t *testing.T) {
 	}
 }
 
+func TestHealthAndVersionRejectNonGET(t *testing.T) {
+	s := &Server{version: VersionInfo{Version: "test"}}
+	for name, handler := range map[string]http.HandlerFunc{
+		"health":  s.handleHealth,
+		"version": s.handleVersion,
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			handler(w, httptest.NewRequest(http.MethodPost, "/admin/"+name, nil))
+			if w.Code != http.StatusMethodNotAllowed {
+				t.Fatalf("status = %d, want %d", w.Code, http.StatusMethodNotAllowed)
+			}
+		})
+	}
+}
+
+func TestHandleVersionResponseContract(t *testing.T) {
+	s := &Server{version: VersionInfo{Version: "1.2.3", GitCommit: "abc", BuildTime: "now"}}
+	w := httptest.NewRecorder()
+	s.handleVersion(w, httptest.NewRequest(http.MethodGet, "/admin/version", nil))
+	if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "application/json" {
+		t.Fatalf("status/content-type = %d/%q", w.Code, w.Header().Get("Content-Type"))
+	}
+	var got VersionInfo
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != s.version {
+		t.Fatalf("version = %#v, want %#v", got, s.version)
+	}
+}
+
 func TestAdminHTTPAuthMiddleware_PublicHealthNoToken(t *testing.T) {
 	s := &Server{authToken: "secret-token"}
 	handler := s.requireHTTPAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
