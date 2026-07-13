@@ -56,4 +56,16 @@ describe("full dashboard surface", () => {
     expect(close).toHaveBeenCalledOnce();
     vi.unstubAllGlobals();
   });
+
+  it("sends a new conversation message and renders the assistant reply", async () => {
+    const fetch = vi.fn().mockResolvedValue({ json: async () => ({ id: "reply", content: "generated reply", provider: "gemini", model: "m" }) });
+    vi.stubGlobal("fetch", fetch);
+    render(<TenantProvider><ConversationPanel activity={[]} selectedThreadId={null} onSelectThread={vi.fn()} /></TenantProvider>);
+    const input = screen.getByPlaceholderText("Start a new conversation...");
+    fireEvent.change(input, { target: { value: "draft message" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(await screen.findByText("generated reply")).toBeVisible();
+    expect(fetch).toHaveBeenCalledWith("/api/chat", expect.objectContaining({ method: "POST" }));
+    vi.unstubAllGlobals();
+  });
 });
