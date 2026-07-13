@@ -523,3 +523,27 @@ func TestLoad_GRPCPortEnvOverride_InvalidValue(t *testing.T) {
 		t.Errorf("expected default port DefaultGRPCPort for invalid env, got %d", cfg.Server.GRPCPort)
 	}
 }
+
+func TestLoadFrozen(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "frozen.json")
+	if err := os.WriteFile(path, []byte(`{"global_config":{"server":{"grpc_port":9123,"host":"127.0.0.1"},"tls":{"enabled":false},"admin":{"enabled":false,"port":8473},"auth":{},"logging":{}},"frozen_at":"2026-01-01T00:00:00Z"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadFrozen(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Server.GRPCPort != 9123 {
+		t.Fatalf("grpc port = %d", cfg.Server.GRPCPort)
+	}
+	if _, err := LoadFrozen(filepath.Join(dir, "missing.json")); err == nil {
+		t.Fatal("missing frozen config should fail")
+	}
+	if err := os.WriteFile(path, []byte(`not-json`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadFrozen(path); err == nil {
+		t.Fatal("invalid frozen config should fail")
+	}
+}

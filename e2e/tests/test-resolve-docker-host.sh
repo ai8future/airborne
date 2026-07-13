@@ -2,7 +2,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
-socket="$tmp/docker.sock"; : >"$socket"
+socket="$tmp/docker.sock"
 # Bash's test -S needs a real socket; start a short-lived UNIX listener.
 python3 - "$socket" <<'PY' &
 import socket, sys, time
@@ -22,4 +22,5 @@ PATH="$tmp/bin:$PATH" "$root/scripts/resolve-docker-host.sh" | grep -qx "unix://
 DOCKER_HOST="tcp://docker.example:2376" PATH="$tmp/bin:$PATH" "$root/scripts/resolve-docker-host.sh" | grep -qx 'tcp://docker.example:2376'
 if DOCKER_HOST="unix://$tmp/missing.sock" PATH="$tmp/bin:$PATH" "$root/scripts/resolve-docker-host.sh" >/dev/null 2>&1; then exit 1; fi
 kill "$pid" 2>/dev/null || true
+wait "$pid" 2>/dev/null || true
 echo 'PASS: explicit host precedence, active context, and missing socket failure'
