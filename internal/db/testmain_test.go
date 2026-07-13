@@ -52,6 +52,10 @@ func TestMain(m *testing.M) {
 			fmt.Fprintf(os.Stderr, "db test setup failed (container start; docker daemon IS reachable, not skipping): %v\n", err)
 			os.Exit(1)
 		} else {
+			if integrationRequired() {
+				fmt.Fprintf(os.Stderr, "db integration is required but Docker is unavailable: %v (daemon health: %v)\n", err, herr)
+				os.Exit(1)
+			}
 			// Docker unavailable: skip the package's DB tests (do not fail).
 			fmt.Fprintf(os.Stderr, "skipping db tests, docker unavailable: %v (daemon health: %v)\n", err, herr)
 			os.Exit(0)
@@ -76,6 +80,13 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	_ = container.Terminate(ctx)
 	os.Exit(code)
+}
+
+// integrationRequired is intentionally opt-in so fast unit suites remain
+// runnable without Docker. The integration/E2E gate must set it, converting a
+// Testcontainers environment skip into a visible failure.
+func integrationRequired() bool {
+	return os.Getenv("AIRBORNE_REQUIRE_INTEGRATION") == "1"
 }
 
 // dockerDaemonHealth reports whether the Docker daemon is reachable, so a
