@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -93,6 +94,28 @@ func TestAdminRequestTimeoutPolicy(t *testing.T) {
 func TestAdminRequestTimeoutPolicyFitsWriteTimeout(t *testing.T) {
 	if adminLLMRequestTimeout >= adminServerWriteTimeout {
 		t.Fatalf("maximum request timeout %s must be less than write timeout %s", adminLLMRequestTimeout, adminServerWriteTimeout)
+	}
+}
+
+func TestNewServerInstallsAdminRequestTimeout(t *testing.T) {
+	var got time.Duration
+	s := NewServer(nil, Config{
+		HealthChecks: map[string]func(context.Context) error{
+			"deadline": func(ctx context.Context) error {
+				deadline, ok := ctx.Deadline()
+				if !ok {
+					t.Error("health check context has no deadline")
+					return nil
+				}
+				got = time.Until(deadline)
+				return nil
+			},
+		},
+	})
+
+	s.server.Handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/admin/healthz", nil))
+	if delta := got - defaultAdminRequestTimeout; delta < -time.Second || delta > time.Second {
+		t.Fatalf("installed request timeout = %s, want approximately %s", got, defaultAdminRequestTimeout)
 	}
 }
 
