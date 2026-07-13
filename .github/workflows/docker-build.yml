@@ -9,6 +9,9 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ai8future/airborne
+  PRICING_DB_REF: b7cf0ec4e2f5ccae0ee5bb7545a137777e4b2c24
+  CHASSIS_GO_REF: 8601951558c28bb23081af0d5207af7567f607b8
+  CHASSIS_GO_ADDONS_REF: 9bdb354cb37cd4935609444bbec532f5db25e48e
 
 jobs:
   build:
@@ -25,7 +28,24 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ai8future/pricing_db
+          ref: ${{ env.PRICING_DB_REF }}
           path: pricing_db
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout chassis-go
+        uses: actions/checkout@v4
+        with:
+          repository: ai8future/chassis-go
+          ref: ${{ env.CHASSIS_GO_REF }}
+          path: chassis_suite/chassis-go
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout chassis-go-addons
+        uses: actions/checkout@v4
+        with:
+          repository: ai8future/chassis-go-addons
+          ref: ${{ env.CHASSIS_GO_ADDONS_REF }}
+          path: chassis_suite/chassis-go-addons
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Read VERSION file
@@ -36,6 +56,10 @@ jobs:
           else
             echo "version=latest" >> $GITHUB_OUTPUT
           fi
+
+      - name: Set build time
+        id: build_time
+        run: echo "build_time=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -66,4 +90,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            GIT_COMMIT=${{ github.sha }}
+            BUILD_TIME=${{ steps.build_time.outputs.build_time }}
           no-cache: true

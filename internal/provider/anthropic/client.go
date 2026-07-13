@@ -371,8 +371,8 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 		for stream.Next() {
 			event := stream.Current()
 			if err := message.Accumulate(event); err != nil {
-			slog.Warn("failed to accumulate stream event", "error", err)
-		}
+				slog.Warn("failed to accumulate stream event", "error", err)
+			}
 
 			switch eventVariant := event.AsAny().(type) {
 			case anthropic.ContentBlockDeltaEvent:
@@ -519,4 +519,3 @@ func extractText(resp *anthropic.Message) string {
 	}
 	return strings.TrimSpace(text.String())
 }
-

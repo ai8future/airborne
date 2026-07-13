@@ -61,3 +61,4 @@ tmp/
 
 # Docker build artifacts (copied from sibling directory during docker-build)
 pricing_db/
+chassis_suite/

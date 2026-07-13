@@ -47,9 +47,9 @@ return current
 
 // RateLimiter implements Redis-backed rate limiting
 type RateLimiter struct {
-	redis          *redis.Client
-	defaultLimits  RateLimits
-	enabled        bool
+	redis         *redis.Client
+	defaultLimits RateLimits
+	enabled       bool
 }
 
 // NewRateLimiter creates a new rate limiter

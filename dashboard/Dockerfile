@@ -9,11 +9,15 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install --frozen-lockfile 2>/dev/null || npm install
+# Install dependencies from the lockfile for reproducible builds
+RUN npm ci
 
 # Copy source
 COPY . .
+
+# Keep the runner-stage public asset copy valid even when the dashboard has no
+# committed public assets.
+RUN mkdir -p public
 
 # Build the Next.js app
 RUN npm run build

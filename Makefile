@@ -6,6 +6,10 @@ GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS := -ldflags="-w -s -X main.version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.BuildTime=$(BUILD_TIME)"
 
+PRICING_DB_REF ?= b7cf0ec4e2f5ccae0ee5bb7545a137777e4b2c24
+CHASSIS_GO_REF ?= 8601951558c28bb23081af0d5207af7567f607b8
+CHASSIS_GO_ADDONS_REF ?= 9bdb354cb37cd4935609444bbec532f5db25e48e
+
 # Go settings
 GOCMD := go
 GOBUILD := $(GOCMD) build
@@ -113,12 +117,27 @@ proto-lint:
 # Docker build
 docker-build:
 	@echo "Building Docker image..."
-	@echo "Copying pricing_db into build context..."
-	@rm -rf pricing_db
-	@cp -r ../pricing_db pricing_db
-	docker build -t airborne:$(VERSION) .
-	@rm -rf pricing_db
-	@echo "Cleaned up pricing_db from build context"
+	@echo "Staging pinned local replace targets into build context..."
+	@set -e; \
+		rm -rf pricing_db chassis_suite; \
+		cleanup() { rm -rf pricing_db chassis_suite; }; \
+		trap cleanup EXIT; \
+		stage_dep() { \
+			repo="$$1"; ref="$$2"; dest="$$3"; \
+			git -C "$$repo" cat-file -e "$$ref^{commit}"; \
+			mkdir -p "$$dest"; \
+			git -C "$$repo" archive --format=tar "$$ref" | tar -x -C "$$dest"; \
+		}; \
+		stage_dep ../pricing_db "$(PRICING_DB_REF)" pricing_db; \
+		stage_dep ../../chassis_suite/chassis-go "$(CHASSIS_GO_REF)" chassis_suite/chassis-go; \
+		stage_dep ../../chassis_suite/chassis-go-addons "$(CHASSIS_GO_ADDONS_REF)" chassis_suite/chassis-go-addons; \
+		docker build \
+			--build-arg VERSION="$(VERSION)" \
+			--build-arg GIT_COMMIT="$(GIT_COMMIT)" \
+			--build-arg BUILD_TIME="$(BUILD_TIME)" \
+			-t airborne:$(VERSION) \
+			-t airborne:latest .
+	@echo "Cleaned up pinned local replace targets from build context"
 
 # Help
 help:

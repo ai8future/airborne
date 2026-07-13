@@ -1,9 +1,9 @@
 package config
 
 import (
+	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/provider"
 	"github.com/ai8future/airborne/internal/tenant"
-	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 )
 
 // Builder builds provider configurations by merging tenant defaults with request overrides.

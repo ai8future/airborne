@@ -2,7 +2,7 @@
 # Multi-stage build for minimal production image
 
 # Build stage
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26.5-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata
@@ -12,9 +12,11 @@ WORKDIR /build
 # Copy go mod files and local replace targets for layer caching
 COPY go.mod go.sum ./
 COPY markdown_svc/ ./markdown_svc/
-# pricing_db is expected at ../pricing_db per go.mod replace directive
-# Copy to /pricing_db so ../pricing_db resolves correctly from /build
+# Local replace targets are staged into the Docker build context by Makefile/CI
+# and copied to the absolute paths that resolve from /build/../../...
 COPY pricing_db/ /pricing_db/
+COPY chassis_suite/chassis-go/ /chassis_suite/chassis-go/
+COPY chassis_suite/chassis-go-addons/ /chassis_suite/chassis-go-addons/
 RUN go mod download
 
 # Copy source code
@@ -27,7 +29,7 @@ ARG BUILD_TIME=unknown
 
 # Build the binary
 RUN CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags "-X main.Version=${VERSION} -X main.GitCommit=${GIT_COMMIT} -X main.BuildTime=${BUILD_TIME}" \
+    -ldflags "-X main.version=${VERSION} -X main.GitCommit=${GIT_COMMIT} -X main.BuildTime=${BUILD_TIME}" \
     -o airborne ./cmd/airborne
 
 # Production stage
@@ -47,7 +49,8 @@ COPY configs/ /app/configs/
 # Create non-root user and data directory
 RUN adduser -D -H -s /sbin/nologin airborne && \
     mkdir -p /app/data && \
-    chown airborne:airborne /app/data
+    chown -R airborne:airborne /app/data /app/configs && \
+    chmod -R u=rwX,go= /app/configs
 
 USER airborne
 

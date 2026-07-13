@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.10.3] - 2026-07-13
+
+### Fixed — Build, Docker, and verification hardening
+- Raised the Go toolchain and Docker builder to 1.26.5 after `govulncheck` found a reachable standard-library TLS vulnerability in the older patch level.
+- Made server Docker builds repeatable by staging pinned snapshots for every local `replace` target and passing version/commit/build-time metadata into the image.
+- Hardened Docker contexts against local secret leakage, fixed non-root config readability, and aligned Compose to use the pinned Makefile-built image.
+- Restored dashboard verification under Next 16 with deterministic `npm ci`, TypeScript linting, secret-safe Docker context handling, and a Dockerfile path that works without committed `public/` assets.
+- Updated Buf linting to the current `STANDARD` category while preserving Airborne's intentional shared request contract.
+
+Agent: Codex:gpt-5.5-high
+
 ## [1.10.2] - 2026-07-06
 
 ### Security — Admin/dashboard hardening audit

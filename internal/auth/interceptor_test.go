@@ -77,11 +77,11 @@ func TestExtractAPIKey(t *testing.T) {
 
 func TestRequirePermission(t *testing.T) {
 	tests := []struct {
-		name       string
-		ctx        context.Context
-		perm       Permission
-		wantCode   codes.Code
-		wantErr    bool
+		name     string
+		ctx      context.Context
+		perm     Permission
+		wantCode codes.Code
+		wantErr  bool
 	}{
 		{
 			name:     "no client in context",

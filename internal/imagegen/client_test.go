@@ -88,9 +88,9 @@ func TestDetectImageRequest(t *testing.T) {
 			wantPrompt: "a robot playing chess",
 		},
 		{
-			name:    "empty trigger phrase in config",
-			text:    "@image sunset",
-			cfg:     &Config{Enabled: true, TriggerPhrases: []string{"", "@image"}},
+			name:       "empty trigger phrase in config",
+			text:       "@image sunset",
+			cfg:        &Config{Enabled: true, TriggerPhrases: []string{"", "@image"}},
 			wantPrompt: "sunset",
 		},
 	}

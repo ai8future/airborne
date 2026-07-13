@@ -75,8 +75,8 @@ func ReplaceSecretsWithReferences(cfg *TenantConfig) {
 	for name, pCfg := range cfg.Providers {
 		// If the API key doesn't already have a reference pattern, create one
 		if !strings.HasPrefix(pCfg.APIKey, "ENV=") &&
-		   !strings.HasPrefix(pCfg.APIKey, "FILE=") &&
-		   !strings.HasPrefix(pCfg.APIKey, "${") {
+			!strings.HasPrefix(pCfg.APIKey, "FILE=") &&
+			!strings.HasPrefix(pCfg.APIKey, "${") {
 			// Replace with ENV= reference
 			envVarName := strings.ToUpper(name) + "_API_KEY"
 			pCfg.APIKey = "ENV=" + envVarName

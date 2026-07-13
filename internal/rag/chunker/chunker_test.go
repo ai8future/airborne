@@ -275,12 +275,12 @@ func TestChunkText_StartEndPositions(t *testing.T) {
 // Table-driven test for various scenarios
 func TestChunkText_TableDriven(t *testing.T) {
 	tests := []struct {
-		name        string
-		input       string
-		opts        Options
-		wantMinLen  int
-		wantMaxLen  int
-		validateFn  func(t *testing.T, chunks []Chunk)
+		name       string
+		input      string
+		opts       Options
+		wantMinLen int
+		wantMaxLen int
+		validateFn func(t *testing.T, chunks []Chunk)
 	}{
 		{
 			name:       "empty",

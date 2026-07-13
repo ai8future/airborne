@@ -126,7 +126,7 @@ Two modes controlled by `AIRBORNE_AUTH_MODE`:
 
 ### Prerequisites
 
-- Go 1.26+
+- Go 1.26.5+
 - At least one provider API key (e.g. `OPENAI_API_KEY`)
 - [buf](https://buf.build) (for proto generation, optional)
 
@@ -155,6 +155,7 @@ The gRPC server starts on port **50612** by default.
 ```bash
 # Set env vars in your shell or .env file
 make docker-build
+# Uses the pinned, Makefile-built airborne:latest image.
 docker compose up
 ```
 
@@ -247,11 +248,11 @@ go test -mod=mod -count=1 ./internal/db/
 This is currently the **only** verification that tenant data is actually isolated by
 Row-Level Security — treat a failure here as a release blocker.
 
-**CI/build caveat:** the checked-in Docker workflow must provide every local `replace` target from
-`go.mod`. It currently checks out `pricing_db`, while `chassis-go` and the chassis-go addons still
-resolve to sibling paths outside the checkout. To make CI builds self-contained, either vendor the
-dependency tree (`go mod vendor` + build with `-mod=vendor`) or check out chassis-go and its addons
-as sibling repos in the workflow using org-scoped tokens.
+**CI/build note:** the Docker workflow and `make docker-build` stage pinned snapshots of every
+local `replace` target (`pricing_db`, `chassis-go`, and `chassis-go-addons`) into the Docker build
+context before image builds, then copy them to the absolute paths that satisfy the `go.mod`
+replacements inside the builder image. Keep those context-staging refs aligned with any future
+`replace` directive or dependency release.
 
 ## Admin Dashboard
 
@@ -356,7 +357,7 @@ deploy/               Chassis deploy metadata
 
 | Component | Technology |
 |-----------|-----------|
-| Language | Go 1.26 |
+| Language | Go 1.26.5 |
 | API | gRPC + Protocol Buffers |
 | Dashboard | Next.js 16.3 canary / React 19 / TypeScript |
 | Database | PostgreSQL (via pgx) |
