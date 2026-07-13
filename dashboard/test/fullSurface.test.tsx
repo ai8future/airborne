@@ -38,9 +38,12 @@ describe("full dashboard surface", () => {
   });
 
   it("renders conversation data and lets the user send an interactive message", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ json: async () => ({ messages: [] }) }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ json: async () => ({ messages: [
+      { id: "00000000-0000-4000-8000-000000000001", role: "user", content: "question", timestamp: new Date().toISOString() },
+      { id: "00000000-0000-4000-8000-000000000002", role: "assistant", content: "answer", timestamp: new Date().toISOString(), provider: "gemini", model: "gemini-2.0", tokens_in: 2, tokens_out: 3, cost_usd: 0.01 },
+    ] }) }));
     render(<TenantProvider><ConversationPanel activity={[{ id: "a", thread_id: "thread", tenant: "ai8", user_id: "u", content: "hello", provider: "gemini", model: "gemini", input_tokens: 1, output_tokens: 1, tokens_used: 2, cost_usd: 0, thread_cost_usd: 0, processing_time_ms: 1, status: "success", timestamp: new Date().toISOString() }]} selectedThreadId="thread" onSelectThread={vi.fn()} /></TenantProvider>);
-    expect(await screen.findByText(/Conversation/)).toBeVisible();
+    expect(await screen.findByText("answer")).toBeVisible();
     vi.unstubAllGlobals();
   });
 
