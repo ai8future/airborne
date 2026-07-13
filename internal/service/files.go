@@ -40,8 +40,10 @@ func generateFileID() (string, error) {
 type FileService struct {
 	pb.UnimplementedFileServiceServer
 
-	ragService  *rag.Service
-	rateLimiter *auth.RateLimiter
+	ragService   *rag.Service
+	rateLimiter  *auth.RateLimiter
+	openAIUpload func(context.Context, openai.FileStoreConfig, string, string, io.Reader) (*openai.UploadedFile, error)
+	geminiUpload func(context.Context, gemini.FileStoreConfig, string, string, string, io.Reader) (*gemini.UploadedFile, error)
 }
 
 // NewFileService creates a new file service.
@@ -335,7 +337,11 @@ func (s *FileService) uploadToOpenAI(ctx context.Context, stream pb.FileService_
 		return status.Error(codes.InvalidArgument, "OpenAI API key is required")
 	}
 
-	result, err := openai.UploadFileToVectorStore(ctx, cfg, metadata.StoreId, metadata.Filename, content)
+	upload := s.openAIUpload
+	if upload == nil {
+		upload = openai.UploadFileToVectorStore
+	}
+	result, err := upload(ctx, cfg, metadata.StoreId, metadata.Filename, content)
 	if err != nil {
 		slog.Error("failed to upload to OpenAI vector store",
 			"store_id", metadata.StoreId,
@@ -378,7 +384,11 @@ func (s *FileService) uploadToGemini(ctx context.Context, stream pb.FileService_
 		return status.Error(codes.InvalidArgument, "Gemini API key is required")
 	}
 
-	result, err := gemini.UploadFileToFileSearchStore(ctx, cfg, metadata.StoreId, metadata.Filename, metadata.MimeType, content)
+	upload := s.geminiUpload
+	if upload == nil {
+		upload = gemini.UploadFileToFileSearchStore
+	}
+	result, err := upload(ctx, cfg, metadata.StoreId, metadata.Filename, metadata.MimeType, content)
 	if err != nil {
 		slog.Error("failed to upload to Gemini file search store",
 			"store_id", metadata.StoreId,
