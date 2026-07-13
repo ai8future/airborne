@@ -13,6 +13,8 @@ services:
       timeout: 2s
       retries: 30
     tmpfs: [/var/lib/postgresql/data]
+    volumes:
+      - ../migrations/001_baseline.sql:/docker-entrypoint-initdb.d/001_baseline.sql:ro
     labels: ["com.ai8future.airborne.e2e=true"]
 
   provider-stub:

@@ -41,8 +41,10 @@ echo 'E2E-003/004: CLI reaches live admin and provider stub receives request'
 "${COMPOSE[@]}" exec -T provider-stub wget -qO- http://localhost:8080/requests >"$ARTIFACTS/provider-requests.json"
 grep -q 'chat/completions' "$ARTIFACTS/provider-requests.json"
 
-echo 'E2E-005: real PostgreSQL is reachable and activity endpoint remains available'
+echo 'E2E-005/006: real PostgreSQL migrations and RLS are installed'
 "${COMPOSE[@]}" exec -T postgres psql -U airborne -d airborne -Atc 'select 1' | grep -qx 1
+"${COMPOSE[@]}" exec -T postgres psql -U airborne -d airborne -Atc "select count(*) from pg_tables where schemaname = 'public' and tablename in ('airborne_tenants', 'airborne_chats', 'airborne_chat_messages')" | grep -qx 3
+"${COMPOSE[@]}" exec -T postgres psql -U airborne -d airborne -Atc "select relrowsecurity and relforcerowsecurity from pg_class where relname = 'airborne_chat_messages'" | grep -qx 't|t'
 
 echo 'E2E-007: disabled RAG contract is explicit'
 [[ $(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer airborne-e2e-token' -F 'file=@/dev/null;filename=e2e.txt' "$admin/admin/upload") =~ ^(400|404|503)$ ]]
