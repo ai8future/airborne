@@ -400,3 +400,17 @@ func TestWaitForFileProcessingCanceledContext(t *testing.T) {
 		t.Fatalf("status=%q err=%v", status, err)
 	}
 }
+
+func TestUploadFileToVectorStoreUploadFailureFixture(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/files" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		http.Error(w, "upload rejected", http.StatusBadGateway)
+	}))
+	defer s.Close()
+	_, err := UploadFileToVectorStore(context.Background(), FileStoreConfig{APIKey: "test", BaseURL: s.URL}, "store_1", "note.txt", strings.NewReader("hello"))
+	if err == nil || !strings.Contains(err.Error(), "upload file") {
+		t.Fatalf("upload error = %v", err)
+	}
+}
