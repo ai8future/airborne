@@ -51,8 +51,8 @@ type Server struct {
 }
 
 const (
-	maxAdminUploadBytes       int64 = 100 << 20
-	maxAdminUploadMemoryBytes int64 = 8 << 20
+	maxAdminUploadBytes        int64 = 100 << 20
+	maxAdminUploadMemoryBytes  int64 = 8 << 20
 	defaultAdminRequestTimeout       = 120 * time.Second
 	adminLLMRequestTimeout           = 4 * time.Minute
 	adminUploadRequestTimeout        = 2 * time.Minute
