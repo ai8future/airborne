@@ -3,6 +3,9 @@ package openai
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	openai "github.com/openai/openai-go"
@@ -258,5 +261,42 @@ func TestNewClientWithDebugLogging(t *testing.T) {
 	client2 := NewClient(WithDebugLogging(false))
 	if client2.debug {
 		t.Error("expected debug to be false")
+	}
+}
+
+func TestGenerateReplyInvalidBaseURL(t *testing.T) {
+	_, err := NewClient().GenerateReply(context.Background(), provider.GenerateParams{Config: provider.ProviderConfig{APIKey: "key", BaseURL: "ftp://invalid"}})
+	if err == nil {
+		t.Fatal("invalid base URL must fail before network")
+	}
+	_, err = NewClient().GenerateReplyStream(context.Background(), provider.GenerateParams{Config: provider.ProviderConfig{APIKey: "key", BaseURL: "ftp://invalid"}})
+	if err == nil {
+		t.Fatal("invalid stream base URL must fail before network")
+	}
+}
+
+func TestGenerateReplyHTTPTSuccess(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/responses" {
+			t.Errorf("path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"id":"resp_1","status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"fixture reply"}]}],"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3}}`)
+	}))
+	defer s.Close()
+	got, err := NewClient().GenerateReply(context.Background(), provider.GenerateParams{UserInput: "hi", Config: provider.ProviderConfig{APIKey: "test", BaseURL: s.URL}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Text != "fixture reply" {
+		t.Fatalf("%+v", got)
+	}
+}
+func TestGenerateReplyHTTPError(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "bad", http.StatusBadRequest) }))
+	defer s.Close()
+	_, err := NewClient().GenerateReply(context.Background(), provider.GenerateParams{Config: provider.ProviderConfig{APIKey: "x", BaseURL: s.URL}})
+	if err == nil {
+		t.Fatal("error expected")
 	}
 }
