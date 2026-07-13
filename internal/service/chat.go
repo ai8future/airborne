@@ -55,6 +55,8 @@ type ChatService struct {
 	configBuilder     *config.Builder
 	eventPublisher    EventPublisher    // Optional: event bus publisher
 	idem              *idempotencyStore // Optional: idempotent GenerateReply replay (A10)
+	validateTenant    func(context.Context, string) (bool, error)
+	persistenceRepo   func(string) (turnPersister, error)
 }
 
 // NewChatService creates a new chat service.
@@ -1237,7 +1239,11 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 
 	// Validate tenant ID against the registry (source of truth for which
 	// tenants exist). dbClient is guaranteed non-nil here (callers guard on it).
-	valid, err := s.dbClient.IsValidTenant(ctx, tenantID)
+	validate := s.validateTenant
+	if validate == nil {
+		validate = s.dbClient.IsValidTenant
+	}
+	valid, err := validate(ctx, tenantID)
 	if err != nil {
 		slog.Warn("tenant validation failed, skipping persistence", "error", err, "tenant_id", tenantID)
 		return
@@ -1339,7 +1345,11 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 		defer cancel()
 
 		// Get tenant-specific repository
-		repo, err := s.dbClient.TenantRepository(tenantID)
+		getRepo := s.persistenceRepo
+		if getRepo == nil {
+			getRepo = func(id string) (turnPersister, error) { return s.dbClient.TenantRepository(id) }
+		}
+		repo, err := getRepo(tenantID)
 		if err != nil {
 			slog.Error("failed to get tenant repository",
 				"error", err,
