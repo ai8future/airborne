@@ -534,3 +534,14 @@ func TestExtractToolAndCodeExecutionStructuredOutputs(t *testing.T) {
 		t.Fatalf("executions = %#v", execs)
 	}
 }
+
+func TestExtractCitationsStructuredOutputs(t *testing.T) {
+	var response responses.Response
+	if err := json.Unmarshal([]byte(`{"output":[{"type":"message","id":"msg_1","content":[{"type":"output_text","text":"answer","annotations":[{"type":"url_citation","url":"https://example.com","title":"Example","start_index":1,"end_index":3},{"type":"file_citation","file_id":"file_1","filename":"upstream.txt","index":4}]}]}]}`), &response); err != nil {
+		t.Fatal(err)
+	}
+	got := extractCitations(&response, map[string]string{"file_1": "mapped.txt"})
+	if len(got) != 2 || got[0].URL != "https://example.com" || got[1].Filename != "mapped.txt" {
+		t.Fatalf("citations = %#v", got)
+	}
+}
