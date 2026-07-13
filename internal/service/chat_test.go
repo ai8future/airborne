@@ -1261,3 +1261,32 @@ func TestPublishInferenceCompleted(t *testing.T) {
 	publisher.err = errors.New("broker unavailable")
 	svc.publishInferenceCompleted(context.Background(), "openai", "model", 12, 34)
 }
+
+func TestResponseConversionHelpers(t *testing.T) {
+	if got := truncateString("short", 10); got != "short" {
+		t.Fatalf("short truncation = %q", got)
+	}
+	if got := truncateString("abcdef", 3); got != "abc..." {
+		t.Fatalf("long truncation = %q", got)
+	}
+	if got := convertGeneratedImages(nil); got != nil {
+		t.Fatalf("nil images = %#v", got)
+	}
+	images := convertGeneratedImages([]provider.GeneratedImage{{Data: []byte("image"), MIMEType: "image/png", Prompt: "draw", Width: -1, Height: 3, ContentID: "cid"}})
+	if len(images) != 1 || images[0].Width != 0 || images[0].Height != 3 || images[0].ContentId != "cid" {
+		t.Fatalf("images = %#v", images)
+	}
+
+	fileCitation := convertCitation(provider.Citation{Type: provider.CitationTypeFile, Provider: "provider", FileID: "f1", StartIndex: -1, EndIndex: 4})
+	if fileCitation.Type != pb.Citation_TYPE_FILE || fileCitation.StartIndex != 0 || fileCitation.EndIndex != 4 {
+		t.Fatalf("file citation = %#v", fileCitation)
+	}
+	urlCitation := convertCitation(provider.Citation{Type: provider.CitationTypeURL, URL: "https://example.test"})
+	if urlCitation.Type != pb.Citation_TYPE_URL {
+		t.Fatalf("url citation = %#v", urlCitation)
+	}
+	unknownCitation := convertCitation(provider.Citation{})
+	if unknownCitation.Type != pb.Citation_TYPE_UNSPECIFIED {
+		t.Fatalf("unknown citation = %#v", unknownCitation)
+	}
+}
