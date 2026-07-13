@@ -480,3 +480,24 @@ func TestWaitForFileProcessingCompletedFixture(t *testing.T) {
 		t.Fatalf("processing = %q, %v", got, err)
 	}
 }
+
+func TestUploadFileToVectorStoreCompletedFixture(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/files":
+			_, _ = io.WriteString(w, `{"id":"file_1","filename":"note.txt"}`)
+		case "/vector_stores/store_1/files":
+			_, _ = io.WriteString(w, `{"id":"vsfile_1","status":"in_progress"}`)
+		case "/vector_stores/store_1/files/vsfile_1":
+			_, _ = io.WriteString(w, `{"id":"vsfile_1","status":"completed"}`)
+		default:
+			t.Errorf("path = %s", r.URL.Path)
+		}
+	}))
+	defer s.Close()
+	got, err := UploadFileToVectorStore(context.Background(), FileStoreConfig{APIKey: "test", BaseURL: s.URL}, "store_1", "note.txt", strings.NewReader("hello"))
+	if err != nil || got.Status != "completed" || got.FileID != "file_1" {
+		t.Fatalf("upload = %#v, %v", got, err)
+	}
+}
