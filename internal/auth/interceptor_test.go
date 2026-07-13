@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"google.golang.org/grpc"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -208,4 +210,17 @@ func TestClientFromContext(t *testing.T) {
 			t.Errorf("ClientFromContext() = %v, want nil for wrong type", client)
 		}
 	})
+}
+
+func TestAuthenticatorInterceptorBoundaries(t *testing.T) {
+	a := NewAuthenticator(nil, nil)
+	called := false
+	_, err := a.UnaryInterceptor()(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: "/airborne.v1.AdminService/Health"}, func(ctx context.Context, req any) (any, error) { called = true; return "ok", nil })
+	if err != nil || !called {
+		t.Fatalf("health must bypass auth: %v", err)
+	}
+	_, err = a.UnaryInterceptor()(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: "/private"}, func(context.Context, any) (any, error) { return nil, nil })
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("private missing metadata code = %v", status.Code(err))
+	}
 }

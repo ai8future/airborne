@@ -1,6 +1,7 @@
 name: Build and Push Docker Image
 
 on:
+  pull_request:
   push:
     branches: [main, master]
     tags: ['v*']
@@ -14,7 +15,50 @@ env:
   CHASSIS_GO_ADDONS_REF: 9bdb354cb37cd4935609444bbec532f5db25e48e
 
 jobs:
+  verify-go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod}
+      - name: Run race-safe Go verification
+        run: |
+          go mod vendor
+          go test -short -race ./...
+          go vet ./...
+
+  verify-dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm, cache-dependency-path: dashboard/package-lock.json}
+      - name: Verify dashboard
+        working-directory: dashboard
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+
+  verify-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Docker resolver contract
+        run: e2e/tests/test-resolve-docker-host.sh
+      - name: Run deterministic E2E gate
+        run: make e2e
+      - name: Upload E2E logs and artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts-${{ github.sha }}
+          path: e2e/artifacts/
+          if-no-files-found: ignore
+
   build:
+    if: github.event_name != 'pull_request'
+    needs: [verify-go, verify-dashboard, verify-e2e]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -81,6 +125,9 @@ jobs:
             type=raw,value=${{ steps.version.outputs.version }},enable={{is_default_branch}}
             type=sha,prefix=
             type=ref,event=tag
+
+      - name: Confirm the checkout is the tested SHA
+        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6

@@ -134,6 +134,37 @@ func TestBuildCompressedHistory_Empty(t *testing.T) {
 	}
 }
 
+func TestCapHistoryKeepsMostRecentMessages(t *testing.T) {
+	branch := []db.ChatMessage{{Role: "one"}, {Role: "two"}, {Role: "three"}}
+	got := capHistory(branch, 2)
+	if len(got) != 2 || got[0].Role != "two" || got[1].Role != "three" {
+		t.Fatalf("capHistory = %#v, want the two newest messages", got)
+	}
+	if got := capHistory(branch, len(branch)); len(got) != len(branch) {
+		t.Fatalf("equal cap returned %d messages, want %d", len(got), len(branch))
+	}
+}
+
+func TestMessageContentText(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		raw  json.RawMessage
+		want string
+	}{
+		{"empty", nil, ""},
+		{"text object", json.RawMessage(` { "text": "hello" } `), "hello"},
+		{"bare string", json.RawMessage(`"hello"`), "hello"},
+		{"object without text", json.RawMessage(`{"kind":"other"}`), `{"kind":"other"}`},
+		{"invalid json", json.RawMessage(`not-json`), "not-json"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := messageContentText(test.raw); got != test.want {
+				t.Fatalf("messageContentText(%s) = %q, want %q", test.raw, got, test.want)
+			}
+		})
+	}
+}
+
 func TestBuildCompressedHistory_BasicMessages(t *testing.T) {
 	messages := []db.ChatMessage{
 		{Role: "user", Content: db.TextContent("Hello"), CreatedAt: time.Now()},
@@ -235,6 +266,99 @@ func TestHandleHealth_NoDB(t *testing.T) {
 	}
 	if resp["database"] != "not_configured" {
 		t.Errorf("database = %q, want %q", resp["database"], "not_configured")
+	}
+}
+
+func TestHealthAndVersionRejectNonGET(t *testing.T) {
+	s := &Server{version: VersionInfo{Version: "test"}}
+	for name, handler := range map[string]http.HandlerFunc{
+		"health":  s.handleHealth,
+		"version": s.handleVersion,
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			handler(w, httptest.NewRequest(http.MethodPost, "/admin/"+name, nil))
+			if w.Code != http.StatusMethodNotAllowed {
+				t.Fatalf("status = %d, want %d", w.Code, http.StatusMethodNotAllowed)
+			}
+		})
+	}
+}
+
+func TestHandleVersionResponseContract(t *testing.T) {
+	s := &Server{version: VersionInfo{Version: "1.2.3", GitCommit: "abc", BuildTime: "now"}}
+	w := httptest.NewRecorder()
+	s.handleVersion(w, httptest.NewRequest(http.MethodGet, "/admin/version", nil))
+	if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "application/json" {
+		t.Fatalf("status/content-type = %d/%q", w.Code, w.Header().Get("Content-Type"))
+	}
+	var got VersionInfo
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != s.version {
+		t.Fatalf("version = %#v, want %#v", got, s.version)
+	}
+}
+
+func TestHandleDebugValidationAndNoDatabase(t *testing.T) {
+	s := &Server{}
+	for _, test := range []struct {
+		name   string
+		method string
+		path   string
+		status int
+		error  string
+	}{
+		{"method", http.MethodPost, "/admin/debug/id", http.StatusMethodNotAllowed, ""},
+		{"missing id", http.MethodGet, "/admin/debug/", http.StatusBadRequest, "message_id required"},
+		{"invalid id", http.MethodGet, "/admin/debug/nope", http.StatusBadRequest, "invalid message_id format"},
+		{"no database", http.MethodGet, "/admin/debug/8e67ec2c-3f3a-4b1a-9f21-8ad9bd298c3a", http.StatusServiceUnavailable, "database not configured"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			s.handleDebug(w, httptest.NewRequest(test.method, test.path, nil))
+			if w.Code != test.status {
+				t.Fatalf("status = %d, want %d; body=%s", w.Code, test.status, w.Body.String())
+			}
+			if test.error != "" && !strings.Contains(w.Body.String(), test.error) {
+				t.Fatalf("body %q lacks %q", w.Body.String(), test.error)
+			}
+		})
+	}
+}
+
+func TestHandleThreadValidationAndNoDatabase(t *testing.T) {
+	s := &Server{}
+	for _, test := range []struct {
+		name   string
+		method string
+		path   string
+		status int
+		error  string
+	}{
+		{"method", http.MethodPost, "/admin/thread/id", http.StatusMethodNotAllowed, ""},
+		{"missing id", http.MethodGet, "/admin/thread/", http.StatusBadRequest, "thread_id required"},
+		{"invalid id", http.MethodGet, "/admin/thread/nope", http.StatusBadRequest, "invalid thread_id format"},
+		{"no database", http.MethodGet, "/admin/thread/8e67ec2c-3f3a-4b1a-9f21-8ad9bd298c3a", http.StatusServiceUnavailable, "database not configured"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			s.handleThread(w, httptest.NewRequest(test.method, test.path, nil))
+			if w.Code != test.status {
+				t.Fatalf("status = %d, want %d; body=%s", w.Code, test.status, w.Body.String())
+			}
+			if test.error != "" && !strings.Contains(w.Body.String(), test.error) {
+				t.Fatalf("body %q lacks %q", w.Body.String(), test.error)
+			}
+		})
+	}
+}
+
+func TestGetGRPCClientRequiresAddress(t *testing.T) {
+	s := &Server{}
+	if client, err := s.getGRPCClient(); err == nil || client != nil {
+		t.Fatalf("getGRPCClient() = %#v, %v; want nil and configuration error", client, err)
 	}
 }
 

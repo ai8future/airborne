@@ -1,0 +1,7 @@
+tenant_id: ai8
+providers:
+  openai:
+    enabled: true
+    api_key: "deterministic-e2e-key"
+    model: "e2e-model"
+failover: { enabled: false, order: [openai] }

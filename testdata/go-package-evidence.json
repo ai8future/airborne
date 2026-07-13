@@ -1,0 +1,536 @@
+{
+  "schema_version": 1,
+  "scope": "cmd and internal production packages; generated protobuf and vendored modules excluded",
+  "packages": [
+    {
+      "package": "cmd/airborne",
+      "production_files": [
+        "main.go"
+      ],
+      "test_evidence": "bootstrap-excluded",
+      "evidence_files": []
+    },
+    {
+      "package": "cmd/airborne-cli",
+      "production_files": [
+        "main.go"
+      ],
+      "test_evidence": "bootstrap-excluded",
+      "evidence_files": []
+    },
+    {
+      "package": "cmd/airborne-freeze",
+      "production_files": [
+        "main.go"
+      ],
+      "test_evidence": "bootstrap-excluded",
+      "evidence_files": []
+    },
+    {
+      "package": "internal/admin",
+      "production_files": [
+        "server.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "server_test.go",
+        "testmain_test.go"
+      ]
+    },
+    {
+      "package": "internal/auth",
+      "production_files": [
+        "errors.go",
+        "interceptor.go",
+        "keys.go",
+        "ratelimit.go",
+        "static.go",
+        "tenant_interceptor.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "interceptor_test.go",
+        "keys_test.go",
+        "ratelimit_test.go",
+        "static_test.go",
+        "tenant_interceptor_test.go"
+      ]
+    },
+    {
+      "package": "internal/cli",
+      "production_files": [
+        "client.go",
+        "commands.go",
+        "output.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "client_test.go",
+        "output_test.go"
+      ]
+    },
+    {
+      "package": "internal/commands",
+      "production_files": [
+        "parser.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "parser_test.go"
+      ]
+    },
+    {
+      "package": "internal/config",
+      "production_files": [
+        "config.go",
+        "startup_mode.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "config_test.go",
+        "startup_mode_test.go"
+      ]
+    },
+    {
+      "package": "internal/config/envutil",
+      "production_files": [
+        "helpers.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "helpers_test.go"
+      ]
+    },
+    {
+      "package": "internal/db",
+      "production_files": [
+        "models.go",
+        "postgres.go",
+        "repository.go",
+        "tenantcache.go",
+        "tenanttx.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "admin_queries_test.go",
+        "integration_mode_test.go",
+        "models_test.go",
+        "repository_test.go",
+        "rls_test.go",
+        "tenantcache_test.go",
+        "testmain_test.go"
+      ]
+    },
+    {
+      "package": "internal/errors",
+      "production_files": [
+        "sanitize.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "sanitize_test.go"
+      ]
+    },
+    {
+      "package": "internal/httpcapture",
+      "production_files": [
+        "transport.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "transport_test.go"
+      ]
+    },
+    {
+      "package": "internal/imagegen",
+      "production_files": [
+        "client.go",
+        "config.go",
+        "gemini.go",
+        "openai.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "client_test.go",
+        "testmain_test.go"
+      ]
+    },
+    {
+      "package": "internal/markdownsvc",
+      "production_files": [
+        "client.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "package": "internal/pricing",
+      "production_files": [
+        "pricing.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "pricing_test.go"
+      ]
+    },
+    {
+      "package": "internal/provider",
+      "production_files": [
+        "model.go",
+        "names.go",
+        "provider.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "model_test.go",
+        "providers_test.go"
+      ]
+    },
+    {
+      "package": "internal/provider/anthropic",
+      "production_files": [
+        "client.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "package": "internal/provider/cerebras",
+      "production_files": [
+        "client.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "package": "internal/provider/cohere",
+      "production_files": [
+        "client.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "package": "internal/provider/compat",
+      "production_files": [
+        "openai_compat.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "openai_compat_test.go"
+      ]
+    },
+    {
+      "package": "internal/provider/deepinfra",
+      "production_files": [
+        "client.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "package": "internal/provider/deepseek",
+      "production_files": [
+        "client.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "package": "internal/provider/fireworks",
+      "production_files": [
+        "client.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "package": "internal/provider/gemini",
+      "production_files": [
+        "client.go",
+        "filestore.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "client_test.go",
+        "filestore_test.go",
+        "testmain_test.go"
+      ]
+    },
+    {
+      "package": "internal/provider/grok",
+      "production_files": [
+        "client.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "package": "internal/provider/httputil",
+      "production_files": [
+        "client.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "package": "internal/provider/hyperbolic",
+      "production_files": [
+        "client.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "package": "internal/provider/mistral",
+      "production_files": [
+        "client.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "package": "internal/provider/nebius",
+      "production_files": [
+        "client.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "package": "internal/provider/openai",
+      "production_files": [
+        "client.go",
+        "filestore.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "package": "internal/provider/openrouter",
+      "production_files": [
+        "client.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "package": "internal/provider/perplexity",
+      "production_files": [
+        "client.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "package": "internal/provider/together",
+      "production_files": [
+        "client.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "package": "internal/provider/upstage",
+      "production_files": [
+        "client.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "package": "internal/rag",
+      "production_files": [
+        "service.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "service_test.go",
+        "service_validation_test.go"
+      ]
+    },
+    {
+      "package": "internal/rag/chunker",
+      "production_files": [
+        "chunker.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "chunker_test.go"
+      ]
+    },
+    {
+      "package": "internal/rag/embedder",
+      "production_files": [
+        "embedder.go",
+        "ollama.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "ollama_test.go",
+        "testmain_test.go"
+      ]
+    },
+    {
+      "package": "internal/rag/extractor",
+      "production_files": [
+        "docbox.go",
+        "extractor.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "docbox_test.go",
+        "testmain_test.go"
+      ]
+    },
+    {
+      "package": "internal/rag/testutil",
+      "production_files": [
+        "mocks.go"
+      ],
+      "test_evidence": "test-support-excluded",
+      "evidence_files": []
+    },
+    {
+      "package": "internal/rag/vectorstore",
+      "production_files": [
+        "qdrant.go",
+        "store.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "qdrant_test.go",
+        "testmain_test.go"
+      ]
+    },
+    {
+      "package": "internal/redis",
+      "production_files": [
+        "client.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "client_test.go"
+      ]
+    },
+    {
+      "package": "internal/retry",
+      "production_files": [
+        "backoff.go",
+        "context.go",
+        "defaults.go",
+        "retryable.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "retry_test.go"
+      ]
+    },
+    {
+      "package": "internal/server",
+      "production_files": [
+        "grpc.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "grpc_test.go",
+        "testmain_test.go"
+      ]
+    },
+    {
+      "package": "internal/service",
+      "production_files": [
+        "admin.go",
+        "chat.go",
+        "files.go",
+        "idempotency.go",
+        "int32.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "admin_test.go",
+        "chat_test.go",
+        "files_test.go",
+        "idempotency_test.go",
+        "int32_test.go",
+        "model_registry_test.go"
+      ]
+    },
+    {
+      "package": "internal/service/config",
+      "production_files": [
+        "builder.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "builder_test.go"
+      ]
+    },
+    {
+      "package": "internal/tenant",
+      "production_files": [
+        "config.go",
+        "doppler.go",
+        "env.go",
+        "loader.go",
+        "manager.go",
+        "secrets.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "config_test.go",
+        "env_test.go",
+        "loader_test.go",
+        "manager_test.go",
+        "secrets_test.go"
+      ]
+    },
+    {
+      "package": "internal/validation",
+      "production_files": [
+        "limits.go",
+        "url.go"
+      ],
+      "test_evidence": "direct",
+      "evidence_files": [
+        "limits_test.go",
+        "url_test.go"
+      ]
+    }
+  ],
+  "missing_direct_evidence": []
+}

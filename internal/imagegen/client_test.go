@@ -1,6 +1,14 @@
 package imagegen
 
 import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"image"
+	"image/png"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -200,5 +208,62 @@ func TestConfigGetModel(t *testing.T) {
 				t.Errorf("GetModel() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestGenerateValidationAndProviderSelection(t *testing.T) {
+	client := NewClient()
+	if _, err := client.Generate(context.Background(), nil); err == nil {
+		t.Fatal("nil request should fail")
+	}
+	if _, err := client.Generate(context.Background(), &ImageRequest{Config: &Config{Provider: "unknown"}}); err == nil {
+		t.Fatal("unsupported provider should fail")
+	}
+	if _, err := client.Generate(context.Background(), &ImageRequest{Config: &Config{Provider: "gemini"}}); err == nil {
+		t.Fatal("gemini without a key should fail before network access")
+	}
+	if _, err := client.Generate(context.Background(), &ImageRequest{Config: &Config{Provider: "openai"}}); err == nil {
+		t.Fatal("openai without a key should fail before network access")
+	}
+}
+
+func TestImageEncodingHelpers(t *testing.T) {
+	var pngData bytes.Buffer
+	if err := png.Encode(&pngData, image.NewRGBA(image.Rect(0, 0, 2, 3))); err != nil {
+		t.Fatal(err)
+	}
+	jpegData, width, height := convertToJPEG(pngData.Bytes())
+	if len(jpegData) == 0 || width != 2 || height != 3 {
+		t.Fatalf("convertToJPEG dimensions = %d x %d", width, height)
+	}
+	if width, height := getImageDimensions(pngData.Bytes()); width != 2 || height != 3 {
+		t.Fatalf("getImageDimensions = %d x %d", width, height)
+	}
+	if got, width, height := convertToJPEG([]byte("not-an-image")); string(got) != "not-an-image" || width != 0 || height != 0 {
+		t.Fatal("invalid image should be returned unchanged")
+	}
+}
+
+func TestGenerateGeminiWithDeterministicServer(t *testing.T) {
+	var pngData bytes.Buffer
+	if err := png.Encode(&pngData, image.NewRGBA(image.Rect(0, 0, 1, 1))); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.Header.Get("x-goog-api-key") != "test-key" {
+			t.Errorf("unexpected request")
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"candidates": []any{map[string]any{"content": map[string]any{"parts": []any{map[string]any{"inlineData": map[string]string{"mimeType": "image/png", "data": base64.StdEncoding.EncodeToString(pngData.Bytes())}}}}}}})
+	}))
+	defer server.Close()
+	old := geminiImageEndpoint
+	geminiImageEndpoint = server.URL + "/%s"
+	defer func() { geminiImageEndpoint = old }()
+	got, err := NewClient().Generate(context.Background(), &ImageRequest{Prompt: "cat", Config: &Config{Provider: "gemini"}, GeminiAPIKey: "test-key"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.MIMEType != "image/jpeg" || got.Width != 1 || got.Height != 1 {
+		t.Fatalf("unexpected generated image: %+v", got)
 	}
 }
