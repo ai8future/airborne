@@ -12,6 +12,8 @@ import (
 
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/auth"
+	"github.com/ai8future/airborne/internal/provider/gemini"
+	"github.com/ai8future/airborne/internal/provider/openai"
 	"github.com/ai8future/airborne/internal/rag"
 	"github.com/ai8future/airborne/internal/rag/extractor"
 	"github.com/ai8future/airborne/internal/rag/testutil"
@@ -366,6 +368,37 @@ func (m *mockUploadFileServer) Recv() (*pb.UploadFileRequest, error) {
 func (m *mockUploadFileServer) SendAndClose(resp *pb.UploadFileResponse) error {
 	m.response = resp
 	return nil
+}
+
+func TestExternalUploadAdaptersUseInjectedClients(t *testing.T) {
+	ctx := ctxWithAdminFilePermission("tenant1")
+	for _, tc := range []struct {
+		name string
+		run  func(*FileService, *mockUploadFileServer) error
+	}{
+		{"openai success", func(s *FileService, stream *mockUploadFileServer) error {
+			s.openAIUpload = func(_ context.Context, _ openai.FileStoreConfig, store, name string, _ io.Reader) (*openai.UploadedFile, error) {
+				return &openai.UploadedFile{FileID: "oa-file", StoreID: store, Filename: name, Status: "completed"}, nil
+			}
+			return s.uploadToOpenAI(ctx, stream, &pb.UploadFileMetadata{StoreId: "store", Filename: "a.txt", Config: &pb.ProviderConfig{ApiKey: "key"}}, strings.NewReader("data"))
+		}},
+		{"gemini success", func(s *FileService, stream *mockUploadFileServer) error {
+			s.geminiUpload = func(_ context.Context, _ gemini.FileStoreConfig, store, name, _ string, _ io.Reader) (*gemini.UploadedFile, error) {
+				return &gemini.UploadedFile{FileID: "gm-file", StoreID: store, Filename: name, Status: "active"}, nil
+			}
+			return s.uploadToGemini(ctx, stream, &pb.UploadFileMetadata{StoreId: "store", Filename: "b.txt", MimeType: "text/plain", Config: &pb.ProviderConfig{ApiKey: "key"}}, strings.NewReader("data"))
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stream := &mockUploadFileServer{ctx: ctx}
+			if err := tc.run(NewFileService(nil, nil), stream); err != nil {
+				t.Fatal(err)
+			}
+			if stream.response == nil || stream.response.FileId == "" || stream.response.Status == "" {
+				t.Fatalf("response = %#v", stream.response)
+			}
+		})
+	}
 }
 
 func TestFileService_UploadFile_Success(t *testing.T) {
