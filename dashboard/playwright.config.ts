@@ -5,7 +5,9 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL || `http://127.0.0.1:${port}`;
 
 export default defineConfig({
   testDir: "./e2e",
-  timeout: 30_000,
+  // Browser operations can include a cold Next.js start and OAuth redirects;
+  // keep their default aligned with the release-wide 120-second operation floor.
+  timeout: 120_000,
   expect: { timeout: 10_000 },
   reporter: [["list"], ["html", { open: "never" }]],
   use: {

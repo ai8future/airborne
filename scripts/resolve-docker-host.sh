@@ -33,6 +33,12 @@ else
   context=$(docker context show 2>/dev/null || true)
   [[ -n "$context" && "$context" != "default" ]] || context=default
   endpoint=$(docker context inspect "$context" --format '{{.Endpoints.docker.Host}}' 2>/dev/null || true)
+  if [[ "$context" == default && ( -z "$endpoint" || "$endpoint" == "<no value>" ) ]]; then
+    default_socket=${DOCKER_DEFAULT_SOCKET:-/var/run/docker.sock}
+    if [[ -S "$default_socket" ]]; then
+      endpoint="unix://$default_socket"
+    fi
+  fi
   [[ -n "$endpoint" && "$endpoint" != "<no value>" ]] || {
     echo "Unable to resolve Docker endpoint from active context $context" >&2
     exit 1

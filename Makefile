@@ -10,6 +10,8 @@ PRICING_DB_REF ?= b7cf0ec4e2f5ccae0ee5bb7545a137777e4b2c24
 POSTGRES_E2E_IMAGE ?= postgres:16@sha256:be01cf82fc7dbba824acf0a82e150b4b360f3ff93c6631d7844af431e841a95c
 E2E_IMAGE ?= airborne:e2e-$(GIT_COMMIT)
 E2E_CLI = $(BIN_DIR)/airborne-cli
+E2E_PROBE = $(BIN_DIR)/airborne-e2e-probe
+E2E_FREEZER = $(BIN_DIR)/airborne-freeze
 PRICING_DB_DIR ?= ../pricing_db
 CHASSIS_GO_DIR ?= ../../chassis_suite/chassis-go
 CHASSIS_GO_ADDONS_DIR ?= ../../chassis_suite/chassis-go-addons
@@ -28,7 +30,7 @@ BIN_DIR := bin
 CMD_DIR := cmd/airborne
 BINARY := $(BIN_DIR)/airborne
 
-.PHONY: all build build-linux build-darwin build-all clean preflight test test-fast test-integration test-coverage e2e e2e-cli verify lint fmt proto deps help run
+.PHONY: all build build-linux build-darwin build-all clean preflight test test-fast test-integration test-coverage e2e e2e-tools verify verify-source verify-clean lint fmt proto deps help run
 .DEFAULT_GOAL := build
 
 # Default target
@@ -79,12 +81,17 @@ test: test-fast
 test-fast: preflight
 	@echo "Running fast Go verification..."
 	./e2e/tests/test-resolve-docker-host.sh
+	./e2e/tests/test-frozen-config-permissions.sh
+	./scripts/test-verification-clean.sh
 	$(GOTEST) -short -race ./...
+	cd markdown_svc/clients/go && $(GOTEST) -short -race ./...
 
 # Required Docker-backed database integration checks; skips are converted to failures.
 test-integration: preflight
 	@echo "Running required database integration tests..."
-	AIRBORNE_REQUIRE_INTEGRATION=1 $(GOTEST) -race ./internal/db
+	@set -eu; \
+		docker_host="$$(./scripts/resolve-docker-host.sh --check)"; \
+		DOCKER_HOST="$$docker_host" AIRBORNE_REQUIRE_INTEGRATION=1 $(GOTEST) -count=1 -race ./internal/db
 
 # Atomic all-package coverage with the repository's enforced floor.
 test-coverage: preflight
@@ -92,26 +99,42 @@ test-coverage: preflight
 	./scripts/test-go-coverage.sh
 
 # Build the exact current production image, then exercise it against the isolated stack.
-e2e: preflight docker-build e2e-cli
+e2e: preflight docker-build e2e-tools
 	@echo "Running deterministic production-image E2E..."
-	POSTGRES_E2E_IMAGE='$(POSTGRES_E2E_IMAGE)' AIRBORNE_E2E_IMAGE='$(E2E_IMAGE)' ./e2e/run.sh
+	POSTGRES_E2E_IMAGE='$(POSTGRES_E2E_IMAGE)' AIRBORNE_E2E_IMAGE='$(E2E_IMAGE)' AIRBORNE_E2E_CLI='$(abspath $(E2E_CLI))' AIRBORNE_E2E_PROBE='$(abspath $(E2E_PROBE))' AIRBORNE_E2E_FREEZER='$(abspath $(E2E_FREEZER))' ./e2e/run.sh
 
 # Build the exact current CLI used by the black-box E2E runner.
-e2e-cli:
+e2e-tools:
 	@mkdir -p $(BIN_DIR)
 	CGO_ENABLED=0 $(GOBUILD) $(LDFLAGS) -o $(E2E_CLI) ./cmd/airborne-cli
+	CGO_ENABLED=0 $(GOBUILD) -o $(E2E_PROBE) ./e2e/cmd/probe
+	CGO_ENABLED=0 $(GOBUILD) -o $(E2E_FREEZER) ./cmd/airborne-freeze
 	@$(E2E_CLI) --help | grep -q '^  health'
 
 # Fail-closed release verification across Go, dashboard, Docker integration, and cleanup.
-verify: test-fast test-integration test-coverage
+verify: verify-source test-fast test-integration test-coverage
 	@echo "Verifying dashboard test, coverage, lint, build, and browser gates..."
 	@if [ ! -d dashboard/node_modules ]; then cd dashboard && npm ci; fi
-	cd dashboard && CI=1 npm test && npm run test:coverage && npm run lint && npm run build && npm run test:e2e
+	./scripts/verify-dashboard.sh
 	$(GOCMD) vet ./...
 	$(MAKE) e2e
 	$(MAKE) clean
 	@rm -rf dashboard/playwright-report dashboard/test-results dashboard/coverage e2e/artifacts
 	@docker image rm -f $(E2E_IMAGE) >/dev/null 2>&1 || true
+	$(MAKE) verify-clean
+
+verify-source:
+	@unformatted="$$(git ls-files -z -- '*.go' | xargs -0 gofmt -l)"; \
+		if [ -n "$$unformatted" ]; then \
+			echo "Go files require formatting:" >&2; \
+			printf '%s\n' "$$unformatted" >&2; \
+			exit 1; \
+		fi
+	git diff --check
+	git diff --cached --check
+
+verify-clean:
+	./scripts/assert-verification-clean.sh
 
 
 # Format code
@@ -138,7 +161,7 @@ deps:
 clean:
 	@echo "Cleaning..."
 	@rm -rf $(BIN_DIR)
-	@rm -f coverage.out coverage.html $(E2E_CLI)
+	@rm -f coverage.out coverage.html markdown_svc/clients/go/coverage.out $(E2E_CLI) $(E2E_PROBE) $(E2E_FREEZER)
 
 # Install buf (protobuf tooling)
 install-buf:
@@ -195,7 +218,7 @@ help:
 	@echo "  test-fast      - Run fast Go and resolver tests"
 	@echo "  test-integration - Run required Docker-backed DB tests"
 	@echo "  test-coverage  - Run enforced Go coverage gate"
-	@echo "  e2e            - Build exact production image and CLI, then run deterministic E2E"
+	@echo "  e2e            - Build exact production image and E2E tools, then run deterministic E2E"
 	@echo "  verify         - Run all release gates and clean generated artifacts"
 	@echo "  fmt            - Format Go code"
 	@echo "  lint           - Lint Go code (requires golangci-lint)"

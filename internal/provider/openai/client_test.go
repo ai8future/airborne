@@ -322,6 +322,38 @@ func TestFileStoreValidationFailures(t *testing.T) {
 		}
 	}
 }
+
+func TestFileStoreRejectsMissingStoreIDAndInvalidBaseURL(t *testing.T) {
+	ctx := context.Background()
+	valid := FileStoreConfig{APIKey: "test"}
+	for _, fn := range []func() error{
+		func() error { return DeleteVectorStore(ctx, valid, " ") },
+		func() error { _, err := GetVectorStore(ctx, valid, " "); return err },
+		func() error {
+			_, err := UploadFileToVectorStore(ctx, valid, " ", "file.txt", strings.NewReader("contents"))
+			return err
+		},
+		func() error {
+			_, err := CreateVectorStore(ctx, FileStoreConfig{APIKey: "test", BaseURL: "ftp://invalid"}, "x")
+			return err
+		},
+		func() error {
+			_, err := ListVectorStores(ctx, FileStoreConfig{APIKey: "test", BaseURL: "ftp://invalid"}, 1)
+			return err
+		},
+		func() error {
+			return DeleteVectorStore(ctx, FileStoreConfig{APIKey: "test", BaseURL: "ftp://invalid"}, "vs")
+		},
+		func() error {
+			_, err := GetVectorStore(ctx, FileStoreConfig{APIKey: "test", BaseURL: "ftp://invalid"}, "vs")
+			return err
+		},
+	} {
+		if err := fn(); err == nil {
+			t.Fatal("expected preflight validation error")
+		}
+	}
+}
 func TestVectorStoreHTTPLifecycle(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

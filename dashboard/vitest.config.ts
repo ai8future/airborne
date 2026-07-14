@@ -10,13 +10,11 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary", "html"],
-      include: [
-        "src/app/api/**/*.ts",
-        "src/lib/**/*.ts",
-        "src/components/ActivityPanel.tsx",
-        "src/components/TestPanel.tsx",
-        "src/components/TenantSelector.tsx",
-      ],
+      // Instrument every executable dashboard source file. CSS, SVG assets,
+      // framework declarations, and build/config files are outside `src/**/*`
+      // or do not match the TypeScript extension, so no production behavior is
+      // hidden behind a hand-maintained coverage allowlist.
+      include: ["src/**/*.{ts,tsx}"],
       thresholds: { statements: 70, lines: 70, branches: 60, functions: 70 },
     },
   },

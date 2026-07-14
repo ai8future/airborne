@@ -212,6 +212,14 @@ func TestClientFromContext(t *testing.T) {
 	})
 }
 
+func TestAuthenticatedStreamContext(t *testing.T) {
+	ctx := context.WithValue(context.Background(), ClientContextKey, &ClientKey{ClientID: "stream"})
+	stream := &authenticatedStream{ServerStream: &mockServerStream{ctx: context.Background()}, ctx: ctx}
+	if got := ClientFromContext(stream.Context()); got == nil || got.ClientID != "stream" {
+		t.Fatalf("stream context client = %#v", got)
+	}
+}
+
 func TestAuthenticatorInterceptorBoundaries(t *testing.T) {
 	a := NewAuthenticator(nil, nil)
 	called := false

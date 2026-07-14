@@ -22,8 +22,8 @@ describe("dashboard proxy routes", () => {
     vi.resetModules();
   });
 
-  async function load<T>(path: string): Promise<T> {
-    process.env = { ...originalEnv, DASHBOARD_ADMIN_TOKEN: token, AIRBORNE_ADMIN_TOKEN: "backend-token", AIRBORNE_ADMIN_URL: "http://admin.test" };
+  async function load<T>(path: string, env: Record<string, string> = {}): Promise<T> {
+    process.env = { ...originalEnv, DASHBOARD_ADMIN_TOKEN: token, AIRBORNE_ADMIN_TOKEN: "backend-token", AIRBORNE_ADMIN_URL: "http://admin.test", ...env };
     return import(path) as Promise<T>;
   }
 
@@ -58,7 +58,16 @@ describe("dashboard proxy routes", () => {
     expect(response.status).toBe(200); expect(await response.json()).toMatchObject({ content: "fallback", provider: "gemini" });
     expect(fetch.mock.calls[0][0]).toBe("http://admin.test/admin/chat");
     expect(fetch.mock.calls[0][1]).toMatchObject({ headers: { "Content-Type": "application/json", Authorization: "Bearer backend-token" } });
-    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ thread_id: "thread", message: "hello", tenant_id: "ai8" });
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ thread_id: "thread", message: "hello", tenant_id: "ai8", provider: "gemini" });
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toMatchObject({ prompt: "hello", tenant_id: "ai8", provider: "gemini" });
+  });
+
+  it("uses the runtime default provider for chat requests without an explicit provider", async () => {
+    const fetch = vi.fn().mockResolvedValue(jsonResponse({ content: "configured" })); vi.stubGlobal("fetch", fetch);
+    const { POST } = await load<typeof import("@/app/api/chat/route")>("@/app/api/chat/route", { AIRBORNE_DEFAULT_PROVIDER: "openai" });
+    const response = await POST(request("/api/chat", { method: "POST", body: JSON.stringify({ thread_id: "thread", message: "hello" }) }));
+    expect(response.status).toBe(200);
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ provider: "openai" });
   });
 
   it("validates chat requests and propagates non-retryable server status", async () => {

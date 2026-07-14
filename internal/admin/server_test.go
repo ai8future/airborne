@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -793,6 +794,31 @@ func TestServerShutdownHandlesUnstartedHTTPServer(t *testing.T) {
 	}
 }
 
+func TestShutdownComponentsAttemptsBothAndJoinsErrors(t *testing.T) {
+	grpcErr := errors.New("gRPC close failed")
+	httpErr := errors.New("HTTP shutdown failed")
+	var calls []string
+
+	err := shutdownComponents(
+		func() error {
+			calls = append(calls, "grpc")
+			return grpcErr
+		},
+		func(context.Context) error {
+			calls = append(calls, "http")
+			return httpErr
+		},
+		context.Background(),
+	)
+
+	if got := strings.Join(calls, ","); got != "grpc,http" {
+		t.Fatalf("shutdown calls = %q, want both gRPC and HTTP", got)
+	}
+	if !errors.Is(err, grpcErr) || !errors.Is(err, httpErr) {
+		t.Fatalf("shutdown error = %v, want both %v and %v", err, grpcErr, httpErr)
+	}
+}
+
 func TestAdminReadHandlersValidationAndNoDatabase(t *testing.T) {
 	s := NewServer(nil, Config{Version: VersionInfo{Version: "v1"}})
 	for _, tc := range []struct {
@@ -890,9 +916,13 @@ func TestAdminProxyProviderBranchesAndClientLifecycle(t *testing.T) {
 }
 
 func TestGeminiKeyResolution(t *testing.T) {
+	if _, err := (&Server{}).getGeminiAPIKey("tenant"); err == nil {
+		t.Fatal("missing tenant manager should fail")
+	}
 	manager := &tenant.Manager{Tenants: map[string]tenant.TenantConfig{
 		"configured": {TenantID: "configured", Providers: map[string]tenant.ProviderConfig{"gemini": {Enabled: true, APIKey: "test-key"}}},
 		"empty-key":  {TenantID: "empty-key", Providers: map[string]tenant.ProviderConfig{"gemini": {Enabled: true}}},
+		"no-gemini":  {TenantID: "no-gemini", Providers: map[string]tenant.ProviderConfig{"openai": {Enabled: true}}},
 	}}
 	s := &Server{tenantMgr: manager}
 	if _, err := s.getGeminiAPIKey("missing"); err == nil {
@@ -900,6 +930,9 @@ func TestGeminiKeyResolution(t *testing.T) {
 	}
 	if _, err := s.getGeminiAPIKey("empty-key"); err == nil {
 		t.Fatal("empty Gemini key should fail")
+	}
+	if _, err := s.getGeminiAPIKey("no-gemini"); err == nil {
+		t.Fatal("disabled Gemini provider should fail")
 	}
 	if got, err := s.getGeminiAPIKey("configured"); err != nil || got != "test-key" {
 		t.Fatalf("getGeminiAPIKey() = %q, %v", got, err)
@@ -970,5 +1003,73 @@ func TestUploadAndFileChatUseDeterministicProviderSeams(t *testing.T) {
 	}
 	if generated.RequestID != threadID || generated.FileIDToFilename["gemini://files/123"] != "notes.txt" || len(generated.InlineImages) != 1 {
 		t.Fatalf("generated params = %#v", generated)
+	}
+}
+
+func TestUploadAndFileChatProviderErrors(t *testing.T) {
+	manager := &tenant.Manager{Tenants: map[string]tenant.TenantConfig{"tenant-a": {TenantID: "tenant-a", Providers: map[string]tenant.ProviderConfig{"gemini": {Enabled: true, APIKey: "key"}}}}}
+	s := &Server{tenantMgr: manager, uploadGeminiFile: func(context.Context, string, multipart.File, string, string) (string, error) {
+		return "", errors.New("upload failed")
+	}, generateFileChat: func(context.Context, provider.GenerateParams) (provider.GenerateResult, error) {
+		return provider.GenerateResult{}, errors.New("generate failed")
+	}}
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	_ = w.WriteField("tenant_id", "tenant-a")
+	f, _ := w.CreateFormFile("file", "x.txt")
+	_, _ = f.Write([]byte("x"))
+	_ = w.Close()
+	r := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/admin/upload", &body)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	s.handleUpload(r, req)
+	if r.Code < 400 {
+		t.Fatalf("upload status = %d", r.Code)
+	}
+	chat := httptest.NewRecorder()
+	s.handleChatWithFile(chat, httptest.NewRequest(http.MethodPost, "/admin/chat", nil), ChatWithFileRequest{ThreadID: "a28a7a8c-464c-4ec7-a965-5b7f466608d8", TenantID: "tenant-a", Message: "x", FileURI: "uri"})
+	if !strings.Contains(chat.Body.String(), "generate failed") {
+		t.Fatalf("chat response = %d %s", chat.Code, chat.Body.String())
+	}
+}
+
+func TestServerStartAndShutdownLifecycle(t *testing.T) {
+	s := &Server{port: 0, server: &http.Server{Addr: "127.0.0.1:0", Handler: http.NewServeMux()}}
+	done := make(chan error, 1)
+	go func() { done <- s.Start() }()
+	time.Sleep(10 * time.Millisecond)
+	if err := s.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; !errors.Is(err, http.ErrServerClosed) {
+		t.Fatalf("Start() = %v", err)
+	}
+}
+
+func TestReadHandlersMethodAndNoDatabaseBoundaries(t *testing.T) {
+	s := &Server{}
+	for _, tc := range []struct {
+		name, path string
+		handler    http.HandlerFunc
+	}{
+		{"activity", "/admin/activity?limit=bad&tenant_id=t", s.handleActivity},
+		{"health", "/admin/health", s.handleHealth},
+		{"debug", "/admin/debug?id=not-a-uuid", s.handleDebug},
+		{"thread", "/admin/thread?id=not-a-uuid", s.handleThread},
+	} {
+		t.Run(tc.name+"-method", func(t *testing.T) {
+			r := httptest.NewRecorder()
+			tc.handler(r, httptest.NewRequest(http.MethodPost, tc.path, nil))
+			if r.Code != http.StatusMethodNotAllowed {
+				t.Fatalf("status=%d", r.Code)
+			}
+		})
+		t.Run(tc.name+"-nodatabase", func(t *testing.T) {
+			r := httptest.NewRecorder()
+			tc.handler(r, httptest.NewRequest(http.MethodGet, tc.path, nil))
+			if r.Code >= 500 {
+				t.Fatalf("status=%d body=%s", r.Code, r.Body.String())
+			}
+		})
 	}
 }

@@ -15,11 +15,13 @@ type Client struct {
 	httpClient *call.Client
 }
 
+const defaultImageGenerationTimeout = 120 * time.Second
+
 // NewClient creates a new image generation client.
 func NewClient() *Client {
 	return &Client{
 		httpClient: call.New(
-			call.WithTimeout(90*time.Second),
+			call.WithTimeout(defaultImageGenerationTimeout),
 			call.WithRetry(2, 1*time.Second),
 			call.WithCircuitBreaker("gemini-imagegen", 3, 60*time.Second),
 		),

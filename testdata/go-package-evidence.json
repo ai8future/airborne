@@ -518,6 +518,7 @@
       "test_evidence": "direct",
       "evidence_files": [
         "config_test.go",
+        "doppler_test.go",
         "env_test.go",
         "loader_test.go",
         "manager_test.go",

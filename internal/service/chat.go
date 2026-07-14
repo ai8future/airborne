@@ -1454,7 +1454,11 @@ func (s *ChatService) persistFailedRequest(ctx context.Context, req *pb.Generate
 	}
 
 	// Validate tenant ID against the registry (source of truth).
-	valid, err := s.dbClient.IsValidTenant(ctx, tenantID)
+	validate := s.validateTenant
+	if validate == nil {
+		validate = s.dbClient.IsValidTenant
+	}
+	valid, err := validate(ctx, tenantID)
 	if err != nil {
 		slog.Warn("tenant validation failed, skipping failed request persistence", "error", err, "tenant_id", tenantID)
 		return
@@ -1492,7 +1496,11 @@ func (s *ChatService) persistFailedRequest(ctx context.Context, req *pb.Generate
 		persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cancel()
 
-		repo, err := s.dbClient.TenantRepository(tenantID)
+		getRepo := s.persistenceRepo
+		if getRepo == nil {
+			getRepo = func(id string) (turnPersister, error) { return s.dbClient.TenantRepository(id) }
+		}
+		repo, err := getRepo(tenantID)
 		if err != nil {
 			slog.Error("failed to get tenant repository for failed request",
 				"error", err,

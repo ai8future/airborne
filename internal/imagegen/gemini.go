@@ -11,7 +11,6 @@ import (
 	_ "image/png" // Register PNG decoder
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/ai8future/airborne/internal/provider"
 )
@@ -20,7 +19,7 @@ var geminiImageEndpoint = "https://generativelanguage.googleapis.com/v1beta/mode
 
 const (
 	defaultGeminiModel = "gemini-2.5-flash-image"
-	geminiTimeout      = 90 * time.Second
+	geminiTimeout      = defaultImageGenerationTimeout
 	jpegQuality        = 85
 	maxResponseSize    = 50 * 1024 * 1024 // 50MB
 )

@@ -3,6 +3,7 @@ package compat
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -430,5 +431,50 @@ func TestCompatGenerateReplyAndStreamFixtures(t *testing.T) {
 	}
 	if len(chunks) != 1 || chunks[0].Type != provider.ChunkTypeComplete {
 		t.Fatalf("chunks = %#v", chunks)
+	}
+}
+
+func TestCompatGenerateReplyOptionalFields(t *testing.T) {
+	temperature, topP, maxTokens := 0.2, 0.9, 64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{`"temperature":0.2`, `"top_p":0.9`, `"max_tokens":64`} {
+			if !strings.Contains(string(body), want) {
+				t.Errorf("request %s missing %s", body, want)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"model":"compat-model","choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer srv.Close()
+	client := NewClient(ProviderConfig{Name: "compat", DefaultBaseURL: srv.URL, DefaultModel: "compat-model"}, WithDebugLogging(true))
+	_, err := client.GenerateReply(context.Background(), provider.GenerateParams{UserInput: "hi", Config: provider.ProviderConfig{APIKey: "key", Temperature: &temperature, TopP: &topP, MaxOutputTokens: &maxTokens}})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCompatStreamOptionalFields(t *testing.T) {
+	temperature, topP, maxTokens := 0.3, 0.7, 32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		for _, want := range []string{`"temperature":0.3`, `"top_p":0.7`, `"max_tokens":32`} {
+			if !strings.Contains(string(body), want) {
+				t.Errorf("request missing %s: %s", want, body)
+			}
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+	client := NewClient(ProviderConfig{Name: "compat", DefaultBaseURL: srv.URL, DefaultModel: "model", SupportsStreaming: true})
+	ch, err := client.GenerateReplyStream(context.Background(), provider.GenerateParams{Config: provider.ProviderConfig{APIKey: "key", Temperature: &temperature, TopP: &topP, MaxOutputTokens: &maxTokens}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range ch {
 	}
 }

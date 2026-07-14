@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -277,15 +278,30 @@ func (s *Server) Start() error {
 
 // Shutdown gracefully shuts down the server.
 func (s *Server) Shutdown(ctx context.Context) error {
+	var closeGRPC func() error
 	if s.grpcConn != nil {
-		if err := s.grpcConn.Close(); err != nil {
-			return err
+		closeGRPC = s.grpcConn.Close
+	}
+	var shutdownHTTP func(context.Context) error
+	if s.server != nil {
+		shutdownHTTP = s.server.Shutdown
+	}
+	return shutdownComponents(closeGRPC, shutdownHTTP, ctx)
+}
+
+func shutdownComponents(closeGRPC func() error, shutdownHTTP func(context.Context) error, ctx context.Context) error {
+	var grpcErr, httpErr error
+	if closeGRPC != nil {
+		if err := closeGRPC(); err != nil {
+			grpcErr = fmt.Errorf("close gRPC connection: %w", err)
 		}
 	}
-	if s.server == nil {
-		return nil
+	if shutdownHTTP != nil {
+		if err := shutdownHTTP(ctx); err != nil {
+			httpErr = fmt.Errorf("shut down admin HTTP server: %w", err)
+		}
 	}
-	return s.server.Shutdown(ctx)
+	return errors.Join(grpcErr, httpErr)
 }
 
 // handleActivity returns recent activity for the dashboard.

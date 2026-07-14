@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.10.8] - 2026-07-14
+
+### Fixed — Non-root CI frozen-config readability
+- Made the validated, secret-free E2E frozen snapshot explicitly mode `0644` before Compose mounts it, allowing the production container's non-root user to read it on Linux hosted runners.
+- Added a fast regression test that proves the permission transition occurs after freezing and before container startup.
+
+Agent: Codex:gpt-5.5-high
+
+## [1.10.7] - 2026-07-14
+
+### Fixed — CI E2E dependency staging isolation
+- Moved verify-E2E dependency checkouts beneath ignored and Docker-excluded `node_modules/airborne-ci-deps` so source-cleanliness and image-context checks do not collide with CI staging.
+- Repointed the external Go replacement symlinks to the isolated staging area and removed in-worktree Make overrides that bypassed the canonical replacement layout.
+
+Agent: Codex:gpt-5.5-high
+
+## [1.10.6] - 2026-07-14
+
+### Fixed — Release CI private dependency access
+- Authenticated both private dependency checkouts with the repository-scoped read-only `CHASSIS_GO_ADDONS_DEPLOY_KEY` and disabled credential persistence.
+- Made dashboard coverage and Playwright diagnostics upload on success or failure so CI breakage leaves actionable evidence.
+
+Agent: Codex:gpt-5.5-high
+
+## [1.10.5] - 2026-07-14
+
+### Changed — Complete deterministic release verification
+- Added production-stack browser E2E coverage across provider behavior, persistence, RLS, restart, cleanup, and the live dashboard, with fail-closed CI publishing the exact tested image.
+- Enforced root, package, nested-module, and dashboard coverage floors while rejecting stale or generated verification evidence.
+- Standardized request defaults on 120 seconds, repaired markdown operation deadlines and admin shutdown cleanup, and made local dashboard chat reliable on real HTTP origins.
+
+Agent: Codex:gpt-5.5-high
+
 ## [1.10.4] - 2026-07-13
 
 ### Fixed — Admin request timeout policy

@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -19,8 +20,17 @@ import (
 // ownerDSN connects as the container owner/superuser (RLS BYPASSED) — setup/cleanup only.
 var appDSN, ownerDSN string
 
+const integrationPostgresImage = "postgres:16@sha256:be01cf82fc7dbba824acf0a82e150b4b360f3ff93c6631d7844af431e841a95c"
+
 func TestMain(m *testing.M) {
 	chassis.RequireMajor(11)
+	// Package TestMain runs before any individual test can inspect -short. Exit
+	// through m.Run without touching Docker so make test-fast is genuinely
+	// daemon-free; DB helpers already skip when appDSN is empty.
+	flag.Parse()
+	if testing.Short() {
+		os.Exit(m.Run())
+	}
 	ctx := context.Background()
 
 	// Disambiguate "Docker unavailable" (skip) from "our own setup is broken"
@@ -32,7 +42,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	container, err := tcpostgres.Run(ctx, "postgres:16-alpine",
+	container, err := tcpostgres.Run(ctx, integrationPostgresImage,
 		tcpostgres.WithDatabase("airborne"),
 		tcpostgres.WithUsername("owner"), tcpostgres.WithPassword("owner"),
 		tcpostgres.WithInitScripts("../../migrations/001_baseline.sql"),

@@ -19,19 +19,24 @@ import (
 )
 
 const (
-	fileSearchBaseURL         = "https://generativelanguage.googleapis.com/v1beta"
-	filesUploadBaseURL        = "https://generativelanguage.googleapis.com/upload/v1beta"
-	fileSearchPollingInterval = 2 * time.Second
-	fileSearchPollingTimeout  = 5 * time.Minute
-	maxGeminiErrorBodyBytes   = 64 * 1024
+	fileSearchBaseURL              = "https://generativelanguage.googleapis.com/v1beta"
+	filesUploadBaseURL             = "https://generativelanguage.googleapis.com/upload/v1beta"
+	fileSearchPollingInterval      = 2 * time.Second
+	fileSearchPollingTimeout       = 5 * time.Minute
+	defaultFileStoreRequestTimeout = 120 * time.Second
+	maxGeminiErrorBodyBytes        = 64 * 1024
 )
 
-var fileStoreClient = sync.OnceValue(func() *call.Client {
+func newFileStoreClient(timeout time.Duration) *call.Client {
 	return call.New(
-		call.WithTimeout(90*time.Second),
+		call.WithTimeout(timeout),
 		call.WithRetry(2, 1*time.Second),
 		call.WithCircuitBreaker("gemini-filestore", 3, 60*time.Second),
 	)
+}
+
+var fileStoreClient = sync.OnceValue(func() *call.Client {
+	return newFileStoreClient(defaultFileStoreRequestTimeout)
 })
 
 // officeFileMIMETypes contains MIME types that require the Files API workaround.

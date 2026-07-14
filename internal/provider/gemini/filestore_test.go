@@ -3,13 +3,51 @@ package gemini
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
+
+type failingReader struct{ err error }
+
+func (r failingReader) Read([]byte) (int, error) { return 0, r.err }
+
+func TestDefaultFileStoreRequestTimeout(t *testing.T) {
+	if defaultFileStoreRequestTimeout != 120*time.Second {
+		t.Fatalf("default file-store request timeout = %s, want 120s", defaultFileStoreRequestTimeout)
+	}
+
+	const testTimeout = 50 * time.Millisecond
+	requestStarted := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(requestStarted)
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	req, err := http.NewRequest(http.MethodGet, srv.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	startedAt := time.Now()
+	_, err = newFileStoreClient(testTimeout).Do(req)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("request error = %v, want context deadline exceeded", err)
+	}
+	if elapsed := time.Since(startedAt); elapsed < testTimeout/2 || elapsed > time.Second {
+		t.Fatalf("configured timeout elapsed in %s, want approximately %s", elapsed, testTimeout)
+	}
+	select {
+	case <-requestStarted:
+	default:
+		t.Fatal("request never reached the server")
+	}
+}
 
 func TestFileStore_RetriesTransientFailure_GetStore(t *testing.T) {
 	t.Parallel()
@@ -159,6 +197,96 @@ func TestFileStoreHelperContracts(t *testing.T) {
 		t.Fatal("body")
 	}
 }
+
+func TestFileSearchStoreInputValidation(t *testing.T) {
+	ctx := context.Background()
+	invalidURL := FileStoreConfig{APIKey: "key", BaseURL: "file:///tmp/not-an-api"}
+
+	if _, err := CreateFileSearchStore(ctx, FileStoreConfig{}, "store"); err == nil || !strings.Contains(err.Error(), "API key") {
+		t.Errorf("CreateFileSearchStore missing key error = %v", err)
+	}
+	if _, err := CreateFileSearchStore(ctx, invalidURL, "store"); err == nil || !strings.Contains(err.Error(), "invalid base URL") {
+		t.Errorf("CreateFileSearchStore invalid URL error = %v", err)
+	}
+
+	if _, err := UploadFileToFileSearchStore(ctx, FileStoreConfig{}, "store", "file.txt", "text/plain", strings.NewReader("x")); err == nil || !strings.Contains(err.Error(), "API key") {
+		t.Errorf("UploadFileToFileSearchStore missing key error = %v", err)
+	}
+	if _, err := UploadFileToFileSearchStore(ctx, FileStoreConfig{APIKey: "key"}, " ", "file.txt", "text/plain", strings.NewReader("x")); err == nil || !strings.Contains(err.Error(), "store ID") {
+		t.Errorf("UploadFileToFileSearchStore missing store error = %v", err)
+	}
+	if _, err := UploadFileToFileSearchStore(ctx, invalidURL, "store", "file.txt", "text/plain", strings.NewReader("x")); err == nil || !strings.Contains(err.Error(), "invalid base URL") {
+		t.Errorf("UploadFileToFileSearchStore invalid URL error = %v", err)
+	}
+	readErr := errors.New("fixture read failure")
+	if _, err := UploadFileToFileSearchStore(ctx, FileStoreConfig{APIKey: "key"}, "store", "file.txt", "text/plain", failingReader{err: readErr}); !errors.Is(err, readErr) {
+		t.Errorf("UploadFileToFileSearchStore reader error = %v, want wrapped %v", err, readErr)
+	}
+
+	if err := DeleteFileSearchStore(ctx, FileStoreConfig{}, "store", false); err == nil || !strings.Contains(err.Error(), "API key") {
+		t.Errorf("DeleteFileSearchStore missing key error = %v", err)
+	}
+	if err := DeleteFileSearchStore(ctx, FileStoreConfig{APIKey: "key"}, " ", false); err == nil || !strings.Contains(err.Error(), "store ID") {
+		t.Errorf("DeleteFileSearchStore missing store error = %v", err)
+	}
+	if err := DeleteFileSearchStore(ctx, invalidURL, "store", false); err == nil || !strings.Contains(err.Error(), "invalid base URL") {
+		t.Errorf("DeleteFileSearchStore invalid URL error = %v", err)
+	}
+
+	if _, err := GetFileSearchStore(ctx, FileStoreConfig{}, "store"); err == nil || !strings.Contains(err.Error(), "API key") {
+		t.Errorf("GetFileSearchStore missing key error = %v", err)
+	}
+	if _, err := GetFileSearchStore(ctx, FileStoreConfig{APIKey: "key"}, " "); err == nil || !strings.Contains(err.Error(), "store ID") {
+		t.Errorf("GetFileSearchStore missing store error = %v", err)
+	}
+	if _, err := GetFileSearchStore(ctx, invalidURL, "store"); err == nil || !strings.Contains(err.Error(), "invalid base URL") {
+		t.Errorf("GetFileSearchStore invalid URL error = %v", err)
+	}
+
+	if _, err := ListFileSearchStores(ctx, FileStoreConfig{}, 10); err == nil || !strings.Contains(err.Error(), "API key") {
+		t.Errorf("ListFileSearchStores missing key error = %v", err)
+	}
+	if _, err := ListFileSearchStores(ctx, invalidURL, 10); err == nil || !strings.Contains(err.Error(), "invalid base URL") {
+		t.Errorf("ListFileSearchStores invalid URL error = %v", err)
+	}
+}
+
+func TestFileSearchStoreStatusAndListMapping(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/fileSearchStores/processing":
+			_, _ = io.WriteString(w, `{"name":"fileSearchStores/processing","displayName":"Processing","createTime":"2026-01-01T00:00:00Z","totalDocumentCount":3,"processedDocumentCount":1}`)
+		case "/fileSearchStores/partial":
+			_, _ = io.WriteString(w, `{"name":"fileSearchStores/partial","displayName":"Partial","createTime":"bad-time","totalDocumentCount":3,"processedDocumentCount":1,"failedDocumentCount":1}`)
+		case "/fileSearchStores":
+			if got := r.URL.Query().Get("pageSize"); got != "" {
+				t.Errorf("out-of-range limit should be omitted, pageSize=%q", got)
+			}
+			_, _ = io.WriteString(w, `{"fileSearchStores":[{"name":"raw-id","displayName":"Raw","createTime":"bad-time","totalDocumentCount":2},{"name":"fileSearchStores/nested-id","displayName":"Nested","createTime":"2026-01-01T00:00:00Z","totalDocumentCount":4}]}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	cfg := FileStoreConfig{APIKey: "key", BaseURL: srv.URL}
+	processing, err := GetFileSearchStore(context.Background(), cfg, "processing")
+	if err != nil || processing.Status != "processing" {
+		t.Fatalf("processing store = %#v, %v", processing, err)
+	}
+	partial, err := GetFileSearchStore(context.Background(), cfg, "partial")
+	if err != nil || partial.Status != "partial" || !partial.CreatedAt.IsZero() {
+		t.Fatalf("partial store = %#v, %v", partial, err)
+	}
+	stores, err := ListFileSearchStores(context.Background(), cfg, 21)
+	if err != nil || len(stores) != 2 {
+		t.Fatalf("ListFileSearchStores() = %#v, %v", stores, err)
+	}
+	if stores[0].StoreID != "raw-id" || stores[1].StoreID != "nested-id" {
+		t.Fatalf("store IDs = %#v", stores)
+	}
+}
 func TestFileSearchStoreHTTPLifecycle(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("key") != "k" {
@@ -233,6 +361,43 @@ func TestWaitForOperationErrors(t *testing.T) {
 	status, err := waitForOperation(context.Background(), FileStoreConfig{APIKey: "k", BaseURL: srv.URL}, "operations/fail")
 	if status != "failed" || err == nil || !strings.Contains(err.Error(), "fixture failed") {
 		t.Fatalf("wait result = %q, %v", status, err)
+	}
+}
+
+func TestFilesAPIUploadInitiationError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "init rejected", http.StatusBadRequest)
+	}))
+	defer srv.Close()
+	_, err := uploadToFilesAPI(context.Background(), FileStoreConfig{APIKey: "k", BaseURL: srv.URL}, "bad.csv", "text/csv", []byte("x"))
+	if err == nil || !strings.Contains(err.Error(), "init upload failed") || !strings.Contains(err.Error(), "init rejected") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestFilesAPIUploadMissingResumableURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
+	defer srv.Close()
+	_, err := uploadToFilesAPI(context.Background(), FileStoreConfig{APIKey: "k", BaseURL: srv.URL}, "x", "text/plain", []byte("x"))
+	if err == nil || !strings.Contains(err.Error(), "no resumable upload URL") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestFilesAPIUploadFinalizeError(t *testing.T) {
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/files" {
+			w.Header().Set("X-Goog-Upload-URL", srv.URL+"/upload")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		http.Error(w, "finalize rejected", http.StatusBadGateway)
+	}))
+	defer srv.Close()
+	_, err := uploadToFilesAPI(context.Background(), FileStoreConfig{APIKey: "k", BaseURL: srv.URL}, "x", "text/plain", []byte("x"))
+	if err == nil || !strings.Contains(err.Error(), "upload failed") {
+		t.Fatalf("error = %v", err)
 	}
 }
 

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const replace = vi.fn();
 vi.mock("next/navigation", () => ({
@@ -8,41 +8,56 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/",
 }));
 
+import TenantSelector from "@/components/TenantSelector";
 import { TenantProvider, useTenant } from "@/context/TenantContext";
-import ConversationPanel from "@/components/ConversationPanel";
-import DebugModal from "@/components/DebugModal";
 
 function TenantProbe() {
   const { tenant, setTenant } = useTenant();
   return <button onClick={() => setTenant("zztest")}>{tenant}</button>;
 }
 
-describe("full dashboard surface", () => {
-  it("updates the tenant context and URL", async () => {
-    render(<TenantProvider><TenantProbe /></TenantProvider>);
+function InvalidProbe() {
+  useTenant();
+  return null;
+}
+
+describe("tenant dashboard surface", () => {
+  afterEach(() => replace.mockReset());
+
+  it("updates the tenant context and preserves it in the URL", async () => {
+    render(
+      <TenantProvider>
+        <TenantProbe />
+      </TenantProvider>,
+    );
+
     fireEvent.click(screen.getByRole("button", { name: "ai8" }));
+
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/?tenant=zztest"));
   });
 
-  it("renders the conversation empty selection state", () => {
-    render(<TenantProvider><ConversationPanel activity={[]} selectedThreadId={null} onSelectThread={vi.fn()} /></TenantProvider>);
-    expect(screen.getByText("Select a conversation")).toBeVisible();
+  it("selects a tenant from the menu and closes it from the backdrop", async () => {
+    const { container } = render(
+      <TenantProvider>
+        <TenantSelector />
+      </TenantProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Tenant: ai8/ }));
+    fireEvent.click(screen.getByRole("button", { name: "email4ai" }));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/?tenant=email4ai"));
+    expect(screen.queryByRole("button", { name: "zztest" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Tenant: ai8/ }));
+    const backdrop = container.querySelector(".fixed.inset-0.z-40");
+    expect(backdrop).not.toBeNull();
+    fireEvent.click(backdrop!);
+    expect(screen.queryByRole("button", { name: "zztest" })).not.toBeInTheDocument();
   });
 
-  it("renders conversation data and lets the user send an interactive message", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ json: async () => ({ messages: [] }) }));
-    render(<TenantProvider><ConversationPanel activity={[{ id: "a", thread_id: "thread", tenant: "ai8", user_id: "u", content: "hello", provider: "gemini", model: "gemini", input_tokens: 1, output_tokens: 1, tokens_used: 2, cost_usd: 0, thread_cost_usd: 0, processing_time_ms: 1, status: "success", timestamp: new Date().toISOString() }]} selectedThreadId="thread" onSelectThread={vi.fn()} /></TenantProvider>);
-    expect(await screen.findByText(/Conversation/)).toBeVisible();
-    vi.unstubAllGlobals();
-  });
-
-  it("shows debug response data and closes by Escape", async () => {
-    const close = vi.fn();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ raw_request_json: '{"ok":true}', raw_response_json: '{"answer":"yes"}' }) }));
-    render(<DebugModal messageId="message" onClose={close} />);
-    expect(await screen.findByText("AI Request/Response Inspector")).toBeVisible();
-    fireEvent.keyDown(window, { key: "Escape" });
-    expect(close).toHaveBeenCalledOnce();
-    vi.unstubAllGlobals();
+  it("rejects context access outside the provider", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect(() => render(<InvalidProbe />)).toThrow("useTenant must be used within a TenantProvider");
+    consoleError.mockRestore();
   });
 });

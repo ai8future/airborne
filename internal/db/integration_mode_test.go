@@ -1,6 +1,9 @@
 package db
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestIntegrationRequired(t *testing.T) {
 	t.Setenv("AIRBORNE_REQUIRE_INTEGRATION", "")
@@ -16,5 +19,11 @@ func TestIntegrationRequired(t *testing.T) {
 	t.Setenv("AIRBORNE_REQUIRE_INTEGRATION", "true")
 	if integrationRequired() {
 		t.Fatal("only the explicit value 1 enables the required integration gate")
+	}
+}
+
+func TestIntegrationPostgresImageIsDigestPinned(t *testing.T) {
+	if !strings.Contains(integrationPostgresImage, "@sha256:") {
+		t.Fatalf("integration Postgres image must be digest-pinned, got %q", integrationPostgresImage)
 	}
 }

@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/auth"
@@ -25,6 +27,66 @@ type recordingPublisher struct {
 	subject string
 	data    any
 	err     error
+}
+
+type persistedTurn struct {
+	chat      db.Chat
+	user      db.ChatMessage
+	assistant db.ChatMessage
+	debug     *db.TurnDebug
+}
+
+// signalingTurnPersister gives asynchronous persistence tests a real
+// happens-before edge. Production closes completed only after recording the
+// turn, so tests never race by polling a slice that the persistence goroutine
+// is still mutating.
+type signalingTurnPersister struct {
+	mu        sync.Mutex
+	completed chan struct{}
+	once      sync.Once
+	turn      *persistedTurn
+}
+
+func newSignalingTurnPersister() *signalingTurnPersister {
+	return &signalingTurnPersister{completed: make(chan struct{})}
+}
+
+func (p *signalingTurnPersister) GetChatByExternalRef(context.Context, string) (*db.Chat, bool, error) {
+	return nil, false, nil
+}
+
+func (p *signalingTurnPersister) PersistTurn(_ context.Context, chat *db.Chat, user, assistant *db.ChatMessage, debug *db.TurnDebug) error {
+	turn := &persistedTurn{
+		chat:      *chat,
+		user:      *user,
+		assistant: *assistant,
+	}
+	if debug != nil {
+		debugCopy := *debug
+		turn.debug = &debugCopy
+	}
+
+	p.mu.Lock()
+	p.turn = turn
+	p.mu.Unlock()
+	p.once.Do(func() { close(p.completed) })
+	return nil
+}
+
+func (p *signalingTurnPersister) wait(t *testing.T) persistedTurn {
+	t.Helper()
+	select {
+	case <-p.completed:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for asynchronous persistence")
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.turn == nil {
+		t.Fatal("persistence signaled completion without recording a turn")
+	}
+	return *p.turn
 }
 
 func (p *recordingPublisher) Publish(_ context.Context, subject string, data any) error {
@@ -238,6 +300,200 @@ func TestChatServiceRegistryAndPersistenceNoDependencyPaths(t *testing.T) {
 	// the asynchronous lifecycle path from dereferencing optional dependencies.
 	svc.persistConversation(context.Background(), &pb.GenerateReplyRequest{UserInput: "hello"}, provider.GenerateResult{}, "openai", "gpt-test", "", 1, "")
 	svc.persistFailedRequest(context.Background(), &pb.GenerateReplyRequest{UserInput: "hello"}, "openai", "gpt-test", "failed", 1)
+}
+
+func TestPersistConversationUsesDeterministicSeams(t *testing.T) {
+	fake := newSignalingTurnPersister()
+	svc := NewChatService(nil, nil, nil, &db.Client{}, nil)
+	var validatedTenant, repositoryTenant string
+	svc.validateTenant = func(_ context.Context, tenantID string) (bool, error) {
+		validatedTenant = tenantID
+		return true, nil
+	}
+	svc.persistenceRepo = func(tenantID string) (turnPersister, error) {
+		repositoryTenant = tenantID
+		return fake, nil
+	}
+	ctx := ctxWithChatPermissionAndTenant("client-7", &tenant.TenantConfig{TenantID: "tenant-a"})
+	req := &pb.GenerateReplyRequest{
+		RequestId:    "11111111-1111-4111-8111-111111111111",
+		UserInput:    "hello",
+		Instructions: "be concise",
+	}
+	result := provider.GenerateResult{
+		Text:         "reply",
+		ResponseID:   "response-1",
+		Usage:        &provider.Usage{InputTokens: 3, OutputTokens: 5},
+		RequestJSON:  []byte(`{"request":true}`),
+		ResponseJSON: []byte(`{"response":true}`),
+		Citations: []provider.Citation{{
+			Type:  provider.CitationTypeURL,
+			URL:   "https://example.com/source",
+			Title: "source",
+		}},
+	}
+
+	svc.persistConversation(ctx, req, result, "openai", "gpt-test", "<p>reply</p>", 17, "")
+	turn := fake.wait(t)
+
+	if validatedTenant != "tenant-a" || repositoryTenant != "tenant-a" {
+		t.Fatalf("tenant seams = validate:%q repository:%q, want tenant-a", validatedTenant, repositoryTenant)
+	}
+	if turn.chat.ID != req.RequestId || turn.chat.TenantID != "tenant-a" || turn.chat.UserID != "client-7" {
+		t.Fatalf("persisted chat = %#v", turn.chat)
+	}
+	if turn.user.Role != db.RoleUser || string(turn.user.Content) != string(db.TextContent("hello")) {
+		t.Fatalf("persisted user message = %#v", turn.user)
+	}
+	if turn.assistant.Role != db.RoleAssistant || turn.assistant.Status != db.ChatMessageStatusComplete || string(turn.assistant.Content) != string(db.TextContent("reply")) {
+		t.Fatalf("persisted assistant message = %#v", turn.assistant)
+	}
+	if turn.assistant.ResponseID == nil || *turn.assistant.ResponseID != "response-1" {
+		t.Fatalf("response id = %v, want response-1", turn.assistant.ResponseID)
+	}
+	if turn.assistant.InputTokens == nil || *turn.assistant.InputTokens != 3 || turn.assistant.OutputTokens == nil || *turn.assistant.OutputTokens != 5 {
+		t.Fatalf("persisted usage = input:%v output:%v", turn.assistant.InputTokens, turn.assistant.OutputTokens)
+	}
+	if !strings.Contains(string(turn.assistant.Sources), "https://example.com/source") {
+		t.Fatalf("persisted sources = %s", turn.assistant.Sources)
+	}
+	if turn.debug == nil || turn.debug.SystemPrompt != "be concise" || turn.debug.RenderedHTML != "<p>reply</p>" {
+		t.Fatalf("persisted debug = %#v", turn.debug)
+	}
+}
+
+func TestPersistFailedRequestUsesDeterministicSeams(t *testing.T) {
+	fake := newSignalingTurnPersister()
+	svc := NewChatService(nil, nil, nil, &db.Client{}, nil)
+	var repositoryTenant string
+	svc.validateTenant = func(_ context.Context, tenantID string) (bool, error) {
+		return tenantID == "tenant-b", nil
+	}
+	svc.persistenceRepo = func(tenantID string) (turnPersister, error) {
+		repositoryTenant = tenantID
+		return fake, nil
+	}
+	ctx := ctxWithChatPermissionAndTenant("client-8", &tenant.TenantConfig{TenantID: "tenant-b"})
+	req := &pb.GenerateReplyRequest{
+		RequestId:    "22222222-2222-4222-8222-222222222222",
+		UserInput:    "will fail",
+		Instructions: "stay safe",
+	}
+
+	svc.persistFailedRequest(ctx, req, "anthropic", "claude-test", "upstream unavailable", 23)
+	turn := fake.wait(t)
+
+	if repositoryTenant != "tenant-b" {
+		t.Fatalf("repository tenant = %q, want tenant-b", repositoryTenant)
+	}
+	if turn.chat.ID != req.RequestId || turn.chat.TenantID != "tenant-b" || turn.chat.UserID != "client-8" {
+		t.Fatalf("persisted failed chat = %#v", turn.chat)
+	}
+	if turn.user.Status != db.ChatMessageStatusComplete || string(turn.user.Content) != string(db.TextContent("will fail")) {
+		t.Fatalf("persisted failed user message = %#v", turn.user)
+	}
+	if turn.assistant.Status != db.ChatMessageStatusError || string(turn.assistant.Content) != string(db.TextContent("upstream unavailable")) {
+		t.Fatalf("persisted failed assistant message = %#v", turn.assistant)
+	}
+	if turn.assistant.ProcessingTimeMs == nil || *turn.assistant.ProcessingTimeMs != 23 {
+		t.Fatalf("processing time = %v, want 23", turn.assistant.ProcessingTimeMs)
+	}
+	if turn.debug == nil || turn.debug.SystemPrompt != "stay safe" {
+		t.Fatalf("persisted failed debug = %#v", turn.debug)
+	}
+}
+
+func TestPersistenceValidationFailuresDoNotResolveRepository(t *testing.T) {
+	type persistencePath struct {
+		name string
+		run  func(*ChatService, context.Context)
+	}
+	paths := []persistencePath{
+		{
+			name: "conversation",
+			run: func(svc *ChatService, ctx context.Context) {
+				svc.persistConversation(ctx, &pb.GenerateReplyRequest{UserInput: "hello"}, provider.GenerateResult{Text: "reply"}, "openai", "gpt-test", "", 1, "")
+			},
+		},
+		{
+			name: "failed request",
+			run: func(svc *ChatService, ctx context.Context) {
+				svc.persistFailedRequest(ctx, &pb.GenerateReplyRequest{UserInput: "hello"}, "openai", "gpt-test", "failed", 1)
+			},
+		},
+	}
+	validationCases := []struct {
+		name  string
+		valid bool
+		err   error
+	}{
+		{name: "validation error", err: errors.New("registry unavailable")},
+		{name: "invalid tenant", valid: false},
+	}
+
+	for _, path := range paths {
+		for _, validationCase := range validationCases {
+			t.Run(path.name+"/"+validationCase.name, func(t *testing.T) {
+				repositoryCalls := 0
+				svc := NewChatService(nil, nil, nil, &db.Client{}, nil)
+				svc.validateTenant = func(context.Context, string) (bool, error) {
+					return validationCase.valid, validationCase.err
+				}
+				svc.persistenceRepo = func(string) (turnPersister, error) {
+					repositoryCalls++
+					return newSignalingTurnPersister(), nil
+				}
+
+				path.run(svc, ctxWithChatPermissionAndTenant("client", &tenant.TenantConfig{TenantID: "tenant-c"}))
+				if repositoryCalls != 0 {
+					t.Fatalf("repository resolved %d time(s), want zero", repositoryCalls)
+				}
+			})
+		}
+	}
+}
+
+func TestPersistenceRepositoryErrorsAreContained(t *testing.T) {
+	type persistencePath struct {
+		name string
+		run  func(*ChatService, context.Context)
+	}
+	paths := []persistencePath{
+		{
+			name: "conversation",
+			run: func(svc *ChatService, ctx context.Context) {
+				svc.persistConversation(ctx, &pb.GenerateReplyRequest{UserInput: "hello"}, provider.GenerateResult{Text: "reply"}, "openai", "gpt-test", "", 1, "")
+			},
+		},
+		{
+			name: "failed request",
+			run: func(svc *ChatService, ctx context.Context) {
+				svc.persistFailedRequest(ctx, &pb.GenerateReplyRequest{UserInput: "hello"}, "openai", "gpt-test", "failed", 1)
+			},
+		},
+	}
+
+	for _, path := range paths {
+		t.Run(path.name, func(t *testing.T) {
+			repositoryCalled := make(chan string, 1)
+			svc := NewChatService(nil, nil, nil, &db.Client{}, nil)
+			svc.validateTenant = func(context.Context, string) (bool, error) { return true, nil }
+			svc.persistenceRepo = func(tenantID string) (turnPersister, error) {
+				repositoryCalled <- tenantID
+				return nil, errors.New("repository unavailable")
+			}
+
+			path.run(svc, ctxWithChatPermissionAndTenant("client", &tenant.TenantConfig{TenantID: "tenant-d"}))
+			select {
+			case tenantID := <-repositoryCalled:
+				if tenantID != "tenant-d" {
+					t.Fatalf("repository tenant = %q, want tenant-d", tenantID)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("timed out waiting for repository lookup")
+			}
+		})
+	}
 }
 
 func TestFormatRAGContext_SingleChunk(t *testing.T) {

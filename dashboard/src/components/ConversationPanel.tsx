@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, Component, ReactNode } from "
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useTenant } from "@/context/TenantContext";
+import { generateUUID } from "@/lib/uuid";
 import { displayHostname, safeExternalURL } from "@/lib/safeUrl";
 
 // Error boundary to prevent individual message crashes from breaking the whole UI
@@ -618,15 +619,6 @@ function MessageBubble({ message, isPending, sendStartTime }: MessageBubbleProps
   );
 }
 
-// Generate a UUID for new threads
-function generateUUID(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
-}
-
 // Check if a string is a valid UUID
 function isValidUUID(str: string): boolean {
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -839,7 +831,7 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
       }
 
       // Generate unique request ID for idempotency
-      const requestId = crypto.randomUUID();
+      const requestId = generateUUID();
 
       const res = await fetch('/api/chat', {
         method: 'POST',

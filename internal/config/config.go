@@ -21,8 +21,11 @@ import (
 
 // Deterministic ports derived from service name via djb2 hashing.
 var (
-	DefaultGRPCPort  = chassis.Port("airborne", chassis.PortGRPC)
-	DefaultAdminPort = chassis.Port("airborne", chassis.PortHTTP)
+	DefaultGRPCPort      = chassis.Port("airborne", chassis.PortGRPC)
+	DefaultAdminPort     = chassis.Port("airborne", chassis.PortHTTP)
+	dopplerClientFactory = func() *call.Client {
+		return call.New(call.WithTimeout(10*time.Second), call.WithRetry(3, 1*time.Second))
+	}
 )
 
 // Config holds all server configuration
@@ -514,7 +517,7 @@ func fetchDopplerSecret(project, secretName string) string {
 	query.Set("config", config)
 	endpoint.RawQuery = query.Encode()
 
-	client := call.New(call.WithTimeout(10*time.Second), call.WithRetry(3, 1*time.Second))
+	client := dopplerClientFactory()
 	req, err := http.NewRequest(http.MethodGet, endpoint.String(), nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "doppler: request creation failed: %v\n", err)

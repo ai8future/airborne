@@ -13,8 +13,9 @@ import (
 
 // Client wraps the gRPC client with convenient methods.
 type Client struct {
-	conn   *grpc.ClientConn
-	client pb.MarkdownServiceClient
+	conn    *grpc.ClientConn
+	client  pb.MarkdownServiceClient
+	timeout time.Duration
 }
 
 // Option configures the client.
@@ -54,14 +55,22 @@ func NewClient(address string, opts ...Option) (*Client, error) {
 	}
 
 	return &Client{
-		conn:   conn,
-		client: pb.NewMarkdownServiceClient(conn),
+		conn:    conn,
+		client:  pb.NewMarkdownServiceClient(conn),
+		timeout: options.timeout,
 	}, nil
 }
 
 // Close closes the client connection.
 func (c *Client) Close() error {
 	return c.conn.Close()
+}
+
+func (c *Client) operationContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) <= c.timeout {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, c.timeout)
 }
 
 // ParseOptions configures ParseMarkdown behavior.
@@ -175,7 +184,10 @@ func (c *Client) ParseMarkdown(ctx context.Context, content string, opts ...Pars
 		req.Transforms = append(req.Transforms, &pb.Transform{Type: t})
 	}
 
-	resp, err := c.client.ParseMarkdown(ctx, req)
+	rpcCtx, cancel := c.operationContext(ctx)
+	defer cancel()
+
+	resp, err := c.client.ParseMarkdown(rpcCtx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +237,10 @@ func (c *Client) RenderToHTML(ctx context.Context, content string, opts ...Parse
 		})
 	}
 
-	resp, err := c.client.RenderToHTML(ctx, req)
+	rpcCtx, cancel := c.operationContext(ctx)
+	defer cancel()
+
+	resp, err := c.client.RenderToHTML(rpcCtx, req)
 	if err != nil {
 		return "", err
 	}
@@ -314,7 +329,10 @@ func (c *Client) ChunkMarkdown(ctx context.Context, content string, opts ...Chun
 		},
 	}
 
-	resp, err := c.client.ChunkMarkdown(ctx, req)
+	rpcCtx, cancel := c.operationContext(ctx)
+	defer cancel()
+
+	resp, err := c.client.ChunkMarkdown(rpcCtx, req)
 	if err != nil {
 		return nil, err
 	}

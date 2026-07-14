@@ -10,7 +10,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
+
+func TestDefaultImageGenerationTimeout(t *testing.T) {
+	if defaultImageGenerationTimeout != 120*time.Second {
+		t.Fatalf("default image generation timeout = %s, want 120s", defaultImageGenerationTimeout)
+	}
+	if geminiTimeout != defaultImageGenerationTimeout {
+		t.Fatalf("Gemini timeout = %s, want shared default %s", geminiTimeout, defaultImageGenerationTimeout)
+	}
+}
 
 func TestNewClient(t *testing.T) {
 	client := NewClient()

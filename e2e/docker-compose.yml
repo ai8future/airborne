@@ -14,6 +14,7 @@ services:
       retries: 30
     tmpfs: [/var/lib/postgresql/data]
     volumes:
+      - ./fixtures/000_create_app_role.sql:/docker-entrypoint-initdb.d/000_create_app_role.sql:ro
       - ../migrations/001_baseline.sql:/docker-entrypoint-initdb.d/001_baseline.sql:ro
     labels: ["com.ai8future.airborne.e2e=true"]
 
@@ -36,22 +37,22 @@ services:
       AIRBORNE_AUTH_MODE: static
       ADMIN_ENABLED: "true"
       DATABASE_ENABLED: "true"
-      DATABASE_URL: postgres://airborne:airborne-e2e@postgres:5432/airborne?sslmode=disable
+      DATABASE_URL: postgres://airborne_app:airborne-app-e2e@postgres:5432/airborne?sslmode=disable
       AIRBORNE_STARTUP_MODE: development
       AIRBORNE_CONFIGS_DIR: /e2e/configs
       OPENAI_API_KEY: deterministic-e2e-key
       SSL_CERT_FILE: /e2e/provider-stub-ca.pem
       AIRBORNE_E2E_ALLOW_PROVIDER_STUB: "true"
+      AIRBORNE_USE_FROZEN: "true"
+      AIRBORNE_FROZEN_CONFIG_PATH: /e2e/frozen.json
     volumes:
       - ./fixtures/airborne.yaml:/e2e/airborne.yaml:ro
       - ./fixtures/configs:/e2e/configs:ro
       - ./stub/certs/provider-stub-cert.pem:/e2e/provider-stub-ca.pem:ro
+      - ${AIRBORNE_E2E_FROZEN_CONFIG:?set the generated frozen config path}:/e2e/frozen.json:ro
     depends_on:
       postgres: { condition: service_healthy }
       provider-stub: { condition: service_healthy }
-    ports:
-      - "127.0.0.1::50612"
-      - "127.0.0.1::8473"
     healthcheck:
       test: ["CMD", "/app/airborne", "--health-check"]
       interval: 2s
@@ -63,8 +64,27 @@ services:
     build: ../dashboard
     environment:
       AIRBORNE_ADMIN_URL: http://airborne:8473
+      AIRBORNE_ADMIN_TOKEN: airborne-e2e-token
+      AIRBORNE_DEFAULT_PROVIDER: openai
+      DASHBOARD_ADMIN_TOKEN: dashboard-e2e-token
     depends_on:
       airborne: { condition: service_healthy }
-    ports:
-      - "127.0.0.1::4848"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4848').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))",
+        ]
+      interval: 2s
+      timeout: 5s
+      retries: 30
     labels: ["com.ai8future.airborne.e2e=true"]
+
+# The deterministic provider is the only runtime provider available to the
+# stack. The runner reaches bridge addresses directly while this internal
+# network denies containers a route to live provider endpoints.
+networks:
+  default:
+    internal: true
