@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	pb "github.com/ai8future/markdown_svc/clients/go/markdownsvcv1"
+	pb "github.com/ai8future/airborne/markdown_svc/clients/go/markdownsvcv1"
 )
 
 // Client wraps the gRPC client with convenient methods.

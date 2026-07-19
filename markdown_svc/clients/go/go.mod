@@ -1,4 +1,4 @@
-module github.com/ai8future/markdown_svc/clients/go
+module github.com/ai8future/airborne/markdown_svc/clients/go
 
 go 1.24.0
 

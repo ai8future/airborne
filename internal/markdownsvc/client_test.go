@@ -6,7 +6,7 @@ import (
 	"net"
 	"testing"
 
-	pb "github.com/ai8future/markdown_svc/clients/go/markdownsvcv1"
+	pb "github.com/ai8future/airborne/markdown_svc/clients/go/markdownsvcv1"
 	"google.golang.org/grpc"
 )
 

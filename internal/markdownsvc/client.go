@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	markdownsvc "github.com/ai8future/markdown_svc/clients/go"
+	markdownsvc "github.com/ai8future/airborne/markdown_svc/clients/go"
 )
 
 var (

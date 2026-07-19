@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.11] - 2026-07-20
+
+### Fixed — Downstream-consumable Go module graph
+- Published the bundled markdown client under its repository-qualified module identity and pinned the root module to its exact resolvable revision, eliminating the non-transitive replacement that broke fresh downstream module resolution.
+- Added a release regression that imports the public generated API from a clean temporary module and proves module listing, compilation, and tests succeed without replacement directives.
+
+Agent: Codex:gpt-5.6-sol-high
+
 ## [1.10.10] - 2026-07-19
 
 ### Fixed — Deterministic E2E replay identity and verification evidence

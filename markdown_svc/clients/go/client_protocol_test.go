@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/ai8future/markdown_svc/clients/go/markdownsvcv1"
+	pb "github.com/ai8future/airborne/markdown_svc/clients/go/markdownsvcv1"
 )
 
 type protocolServer struct {
