@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.12] - 2026-07-20
+
+### Fixed — Reliable published-module verification cleanup
+- Made the fresh downstream-module verifier restore write permission on Go's read-only module cache before removing its temporary workspace, so a successful graph/build/test proof now exits successfully.
+- Preserved the immutable v1.10.11 graph-fix tag and superseded it with this fully self-verifying release.
+
+Agent: Codex:gpt-5.6-sol-high
+
 ## [1.10.11] - 2026-07-20
 
 ### Fixed — Downstream-consumable Go module graph

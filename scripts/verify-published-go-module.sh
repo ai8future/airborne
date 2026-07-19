@@ -12,7 +12,21 @@ if [[ "$version" != v* ]]; then
 fi
 
 work=$(mktemp -d)
-cleanup() { rm -rf "$work"; }
+cleanup() {
+  status=$?
+  set +e
+  chmod -R u+w "$work" 2>/dev/null
+  chmod_status=$?
+  rm -rf "$work"
+  rm_status=$?
+  if (( status != 0 )); then
+    return "$status"
+  fi
+  if (( chmod_status != 0 || rm_status != 0 )); then
+    echo "failed to clean temporary downstream module: $work" >&2
+    return 1
+  fi
+}
 trap cleanup EXIT
 mkdir -p "$work/consumer" "$work/modcache" "$work/buildcache"
 
