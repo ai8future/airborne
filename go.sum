@@ -14,8 +14,8 @@ github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c/go.mod h1:xomTg6
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
-github.com/ai8future/airborne/markdown_svc/clients/go v0.0.0-20260714021411-96527b95b8b4 h1:jzba/ZeoJ7FyF3HqO8wMWIzbn4cuHGd+D/3OGHdY7EQ=
-github.com/ai8future/airborne/markdown_svc/clients/go v0.0.0-20260714021411-96527b95b8b4/go.mod h1:T21yQQ9l+/9GxyRd9luzVkDx+VWuSgdzFHRn3uKham8=
+github.com/ai8future/airborne/markdown_svc/clients/go v0.0.0-20260719215450-94bf7bfe3044 h1:oMKAYrtD7lg0FW37Tc2g9EfwtptXfgqFhh5REmFfD6w=
+github.com/ai8future/airborne/markdown_svc/clients/go v0.0.0-20260719215450-94bf7bfe3044/go.mod h1:NWkAO5Zd++i+tC3BBfGfx5noC4J28nD3yFd9ETGTdSg=
 github.com/ai8future/chassis-go-addons/pgkit v1.2.10 h1:Scijed/UAZJiK0jjKguzBCOCgzSoUJ7Hx5phNo5drRo=
 github.com/ai8future/chassis-go-addons/pgkit v1.2.10/go.mod h1:lJJJPfffv6NGq1BnfKsFJGVaMzEPx8JmCk6OI8mNe54=
 github.com/ai8future/chassis-go-addons/rediskit v1.2.10 h1:VXxAMAy19IO0Lheamj37XCKAIqXwO34Fhjy0B9seftE=

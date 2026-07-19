@@ -3,11 +3,11 @@ module github.com/ai8future/airborne
 go 1.26.5
 
 require (
+	github.com/ai8future/airborne/markdown_svc/clients/go v0.0.0-20260719215450-94bf7bfe3044
 	github.com/ai8future/chassis-go-addons/pgkit v1.2.10
 	github.com/ai8future/chassis-go-addons/rediskit v1.2.10
 	github.com/ai8future/chassis-go-addons/ssrfcheck v1.2.10
 	github.com/ai8future/chassis-go/v11 v11.3.24
-	github.com/ai8future/markdown_svc/clients/go v0.0.0
 	github.com/ai8future/pricing_db v0.0.0-20260703044902-275688ca5718
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/anthropics/anthropic-sdk-go v1.19.0
@@ -113,5 +113,3 @@ require (
 	golang.org/x/text v0.38.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260128011058-8636f8732409 // indirect
 )
-
-replace github.com/ai8future/markdown_svc/clients/go => github.com/ai8future/airborne/markdown_svc/clients/go v0.0.0-20260714021411-96527b95b8b4

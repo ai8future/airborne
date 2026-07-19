@@ -25,7 +25,7 @@ BIN_DIR := bin
 CMD_DIR := cmd/airborne
 BINARY := $(BIN_DIR)/airborne
 
-.PHONY: all build build-linux build-darwin build-all clean preflight test test-fast test-integration test-coverage e2e e2e-tools verify verify-source verify-clean lint fmt proto deps docker-build help run
+.PHONY: all build build-linux build-darwin build-all clean preflight test test-fast test-integration test-coverage e2e e2e-tools verify verify-source verify-clean verify-published-module lint fmt proto deps docker-build help run
 .DEFAULT_GOAL := build
 
 # Default target
@@ -119,6 +119,10 @@ verify: verify-source test-fast test-integration test-coverage
 	@rm -rf dashboard/playwright-report dashboard/test-results dashboard/coverage e2e/artifacts
 	@docker image rm -f $(E2E_IMAGE) >/dev/null 2>&1 || true
 	$(MAKE) verify-clean
+
+# Validate a tagged release exactly as an external Go module consumer sees it.
+verify-published-module:
+	./scripts/verify-published-go-module.sh "$(AIRBORNE_MODULE_VERSION)"
 
 verify-source:
 	@unformatted="$$(git ls-files -z -- '*.go' | xargs -0 gofmt -l)"; \
