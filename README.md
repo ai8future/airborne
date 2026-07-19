@@ -2,6 +2,8 @@
 
 A multi-provider AI gateway that exposes a unified gRPC API for chat generation, provider selection, admin health checks, and RAG file-store operations. The runtime chat path currently routes generation requests to OpenAI, Gemini, and Anthropic; the repo also contains OpenAI-compatible provider client packages and proto enum values for planned expansion. Airborne handles multi-tenancy, authentication, rate limiting, RAG, image generation, conversation persistence, and automatic failover for the providers wired into the runtime path.
 
+Current release: **v1.10.10**.
+
 ## Provider Status
 
 | Status | Providers | Current behavior |

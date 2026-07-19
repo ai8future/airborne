@@ -492,7 +492,8 @@
         "files_test.go",
         "idempotency_test.go",
         "int32_test.go",
-        "model_registry_test.go"
+        "model_registry_test.go",
+        "proto_contract_test.go"
       ]
     },
     {

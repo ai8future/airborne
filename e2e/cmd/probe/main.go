@@ -17,36 +17,65 @@ import (
 
 const operationTimeout = 120 * time.Second
 
-func main() {
-	addr := flag.String("addr", "127.0.0.1:50612", "Airborne gRPC address")
-	token := flag.String("token", "", "static bearer token")
-	tenantID := flag.String("tenant", "ai8", "tenant ID")
-	prompt := flag.String("prompt", "deterministic e2e", "user input")
-	requestID := flag.String("request-id", "11111111-1111-4111-8111-111111111111", "stable request UUID")
-	flag.Parse()
+type probeOptions struct {
+	addr           string
+	token          string
+	tenantID       string
+	prompt         string
+	requestID      string
+	idempotencyKey string
+}
 
-	if *token == "" {
-		fatalf("token is required")
+func parseOptions(args []string) (probeOptions, error) {
+	var options probeOptions
+	flags := flag.NewFlagSet("airborne-e2e-probe", flag.ContinueOnError)
+	flags.StringVar(&options.addr, "addr", "127.0.0.1:50612", "Airborne gRPC address")
+	flags.StringVar(&options.token, "token", "", "static bearer token")
+	flags.StringVar(&options.tenantID, "tenant", "ai8", "tenant ID")
+	flags.StringVar(&options.prompt, "prompt", "deterministic e2e", "user input")
+	flags.StringVar(&options.requestID, "request-id", "11111111-1111-4111-8111-111111111111", "stable request UUID")
+	flags.StringVar(&options.idempotencyKey, "idempotency-key", "", "stable replay idempotency key")
+	if err := flags.Parse(args); err != nil {
+		return probeOptions{}, err
+	}
+	if options.token == "" {
+		return probeOptions{}, fmt.Errorf("token is required")
+	}
+	if options.idempotencyKey == "" {
+		return probeOptions{}, fmt.Errorf("idempotency-key is required")
+	}
+	return options, nil
+}
+
+func newGenerateReplyRequest(options probeOptions) *pb.GenerateReplyRequest {
+	return &pb.GenerateReplyRequest{
+		TenantId:          options.tenantID,
+		Instructions:      "Reply with the deterministic fixture response.",
+		UserInput:         options.prompt,
+		PreferredProvider: pb.Provider_PROVIDER_OPENAI,
+		ClientId:          "e2e-grpc-probe",
+		RequestId:         options.requestID,
+		IdempotencyKey:    options.idempotencyKey,
+		ExternalRef:       "e2e-grpc-chat",
+	}
+}
+
+func main() {
+	options, err := parseOptions(os.Args[1:])
+	if err != nil {
+		fatalf("%v", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), operationTimeout)
 	defer cancel()
-	conn, err := grpc.NewClient(*addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(options.addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		fatalf("dial: %v", err)
 	}
 	defer conn.Close()
 
-	ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+*token)
-	response, err := pb.NewAirborneServiceClient(conn).GenerateReply(ctx, &pb.GenerateReplyRequest{
-		TenantId:          *tenantID,
-		Instructions:      "Reply with the deterministic fixture response.",
-		UserInput:         *prompt,
-		PreferredProvider: pb.Provider_PROVIDER_OPENAI,
-		ClientId:          "e2e-grpc-probe",
-		RequestId:         *requestID,
-		ExternalRef:       "e2e-grpc-chat",
-	})
+	ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+options.token)
+	response, err := pb.NewAirborneServiceClient(conn).GenerateReply(ctx, newGenerateReplyRequest(options))
 	if err != nil {
 		fatalf("GenerateReply: %v", err)
 	}

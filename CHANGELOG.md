@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.10.10] - 2026-07-19
+
+### Fixed — Deterministic E2E replay identity and verification evidence
+- Required the E2E gRPC probe to receive an explicit idempotency key and propagated it independently from the request ID.
+- Reused one deterministic key across both replay calls so the production-image E2E proves replay without a second provider dispatch.
+- Regenerated the checked-in Go package evidence to include the existing service protobuf contract test.
+
+Agent: Codex:gpt-5.6-sol-high
+
 ## [1.10.9] - 2026-07-19
 
 ### Fixed — Fail-closed email_ai_svc idempotency/auth prerequisites

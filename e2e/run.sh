@@ -113,13 +113,14 @@ provider_request_count() {
   "${COMPOSE[@]}" exec -T provider-stub python -c \
     "import json; from urllib.request import urlopen; print(len(json.load(urlopen('http://localhost:8080/requests'))['requests']))"
 }
+grpc_idempotency_key=airborne-e2e-grpc-replay-v1
 provider_count_before=$(provider_request_count)
-"$probe" --addr "$grpc_addr" --token "$ADMIN_TOKEN" --tenant ai8 --prompt 'deterministic grpc e2e' >"$ARTIFACTS/grpc-chat.json"
+"$probe" --addr "$grpc_addr" --token "$ADMIN_TOKEN" --tenant ai8 --prompt 'deterministic grpc e2e' --idempotency-key "$grpc_idempotency_key" >"$ARTIFACTS/grpc-chat.json"
 grep -q 'deterministic-e2e-response' "$ARTIFACTS/grpc-chat.json"
 grep -q 'PROVIDER_OPENAI' "$ARTIFACTS/grpc-chat.json"
 provider_count_after_first=$(provider_request_count)
 [[ "$provider_count_after_first" -eq $((provider_count_before + 1)) ]]
-"$probe" --addr "$grpc_addr" --token "$ADMIN_TOKEN" --tenant ai8 --prompt 'deterministic grpc e2e' >"$ARTIFACTS/grpc-chat-replay.json"
+"$probe" --addr "$grpc_addr" --token "$ADMIN_TOKEN" --tenant ai8 --prompt 'deterministic grpc e2e' --idempotency-key "$grpc_idempotency_key" >"$ARTIFACTS/grpc-chat-replay.json"
 cmp "$ARTIFACTS/grpc-chat.json" "$ARTIFACTS/grpc-chat-replay.json"
 provider_count_after_replay=$(provider_request_count)
 [[ "$provider_count_after_replay" -eq "$provider_count_after_first" ]]
