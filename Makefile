@@ -6,17 +6,12 @@ GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS := -ldflags="-w -s -X main.version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.BuildTime=$(BUILD_TIME)"
 
-PRICING_DB_REF ?= b7cf0ec4e2f5ccae0ee5bb7545a137777e4b2c24
 POSTGRES_E2E_IMAGE ?= postgres:16@sha256:be01cf82fc7dbba824acf0a82e150b4b360f3ff93c6631d7844af431e841a95c
+REDIS_E2E_IMAGE ?= redis:7.4.5-alpine@sha256:bb186d083732f669da90be8b0f975a37812b15e913465bb14d845db72a4e3e08
 E2E_IMAGE ?= airborne:e2e-$(GIT_COMMIT)
 E2E_CLI = $(BIN_DIR)/airborne-cli
 E2E_PROBE = $(BIN_DIR)/airborne-e2e-probe
 E2E_FREEZER = $(BIN_DIR)/airborne-freeze
-PRICING_DB_DIR ?= ../pricing_db
-CHASSIS_GO_DIR ?= ../../chassis_suite/chassis-go
-CHASSIS_GO_ADDONS_DIR ?= ../../chassis_suite/chassis-go-addons
-CHASSIS_GO_REF ?= 8601951558c28bb23081af0d5207af7567f607b8
-CHASSIS_GO_ADDONS_REF ?= 9bdb354cb37cd4935609444bbec532f5db25e48e
 
 # Go settings
 GOCMD := go
@@ -30,7 +25,7 @@ BIN_DIR := bin
 CMD_DIR := cmd/airborne
 BINARY := $(BIN_DIR)/airborne
 
-.PHONY: all build build-linux build-darwin build-all clean preflight test test-fast test-integration test-coverage e2e e2e-tools verify verify-source verify-clean lint fmt proto deps help run
+.PHONY: all build build-linux build-darwin build-all clean preflight test test-fast test-integration test-coverage e2e e2e-tools verify verify-source verify-clean lint fmt proto deps docker-build help run
 .DEFAULT_GOAL := build
 
 # Default target
@@ -38,8 +33,9 @@ all: proto build
 
 # Build the binary
 preflight:
-	@echo "Refreshing vendor for local replace directives..."
-	$(GOMOD) vendor
+	@echo "Vendoring exact remote pins: chassis-go/v11 v11.3.24; chassis-go-addons v1.2.10; pricing_db v0.0.0-20260703044902-275688ca5718"
+	GOWORK=off $(GOMOD) verify
+	GOWORK=off $(GOMOD) vendor
 
 build: preflight
 	@rm -f $(BINARY)
@@ -80,6 +76,7 @@ test: test-fast
 # Fast unit and contract tests that do not require a Docker daemon.
 test-fast: preflight
 	@echo "Running fast Go verification..."
+	./scripts/test-private-module-cache-prime.sh
 	./e2e/tests/test-resolve-docker-host.sh
 	./e2e/tests/test-frozen-config-permissions.sh
 	./scripts/test-verification-clean.sh
@@ -101,7 +98,7 @@ test-coverage: preflight
 # Build the exact current production image, then exercise it against the isolated stack.
 e2e: preflight docker-build e2e-tools
 	@echo "Running deterministic production-image E2E..."
-	POSTGRES_E2E_IMAGE='$(POSTGRES_E2E_IMAGE)' AIRBORNE_E2E_IMAGE='$(E2E_IMAGE)' AIRBORNE_E2E_CLI='$(abspath $(E2E_CLI))' AIRBORNE_E2E_PROBE='$(abspath $(E2E_PROBE))' AIRBORNE_E2E_FREEZER='$(abspath $(E2E_FREEZER))' ./e2e/run.sh
+	POSTGRES_E2E_IMAGE='$(POSTGRES_E2E_IMAGE)' REDIS_E2E_IMAGE='$(REDIS_E2E_IMAGE)' AIRBORNE_E2E_IMAGE='$(E2E_IMAGE)' AIRBORNE_E2E_CLI='$(abspath $(E2E_CLI))' AIRBORNE_E2E_PROBE='$(abspath $(E2E_PROBE))' AIRBORNE_E2E_FREEZER='$(abspath $(E2E_FREEZER))' ./e2e/run.sh
 
 # Build the exact current CLI used by the black-box E2E runner.
 e2e-tools:
@@ -178,30 +175,15 @@ proto-lint:
 	buf lint
 
 # Docker build
-docker-build:
+docker-build: preflight
 	@echo "Building Docker image..."
-	@echo "Staging pinned local replace targets into build context..."
-	@set -e; \
-		rm -rf pricing_db chassis_suite; \
-		cleanup() { rm -rf pricing_db chassis_suite; }; \
-		trap cleanup EXIT; \
-		stage_dep() { \
-			repo="$$1"; ref="$$2"; dest="$$3"; \
-			git -C "$$repo" cat-file -e "$$ref^{commit}"; \
-			mkdir -p "$$dest"; \
-			git -C "$$repo" archive --format=tar "$$ref" | tar -x -C "$$dest"; \
-		}; \
-		stage_dep "$(PRICING_DB_DIR)" "$(PRICING_DB_REF)" pricing_db; \
-		stage_dep "$(CHASSIS_GO_DIR)" "$(CHASSIS_GO_REF)" chassis_suite/chassis-go; \
-		stage_dep "$(CHASSIS_GO_ADDONS_DIR)" "$(CHASSIS_GO_ADDONS_REF)" chassis_suite/chassis-go-addons; \
-		docker build \
+	docker build \
 			--build-arg VERSION="$(VERSION)" \
 			--build-arg GIT_COMMIT="$(GIT_COMMIT)" \
 			--build-arg BUILD_TIME="$(BUILD_TIME)" \
 			-t airborne:$(VERSION) \
 			-t airborne:latest \
 			-t $(E2E_IMAGE) .
-	@echo "Cleaned up pinned local replace targets from build context"
 
 # Help
 help:

@@ -61,22 +61,51 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, *Serv
 		)
 	}
 
-	// Initialize auth based on mode
+	// Redis-backed idempotency is independent of the authentication mode. Static
+	// auth may deliberately start without Redis for unkeyed requests, but Redis
+	// auth cannot operate without it.
 	var redisClient *redis.Client
 	var keyStore *auth.KeyStore
 	var rateLimiter *auth.RateLimiter
 	var tenantInterceptor *auth.TenantInterceptor
+	var dbClient *db.Client
+	initialized := false
+	defer func() {
+		if initialized {
+			return
+		}
+		if dbClient != nil {
+			dbClient.Close()
+		}
+		if redisClient != nil {
+			_ = redisClient.Close()
+		}
+	}()
 
-	if cfg.Auth.AuthMode == "redis" {
-		// Redis-based auth (existing behavior)
+	if cfg.Auth.AuthMode != "redis" && cfg.Auth.AdminToken == "" {
+		return nil, nil, fmt.Errorf("AIRBORNE_ADMIN_TOKEN required for static auth mode")
+	}
+
+	if cfg.Redis.Addr != "" {
 		redisClient, err = redis.NewClient(redis.Config{
 			Addr:     cfg.Redis.Addr,
 			Password: cfg.Redis.Password,
 			DB:       cfg.Redis.DB,
 		})
 		if err != nil {
-			return nil, nil, fmt.Errorf("redis required for auth_mode=redis: %w", err)
+			redisClient = nil
+			if cfg.Auth.AuthMode == "redis" {
+				return nil, nil, fmt.Errorf("redis required for auth_mode=redis: %w", err)
+			}
+			slog.Warn("configured Redis unavailable - continuing static auth for unkeyed requests; keyed requests remain fail-closed", "error", err)
+		} else {
+			slog.Info("Redis connection established for keyed idempotency")
 		}
+	} else if cfg.Auth.AuthMode == "redis" {
+		return nil, nil, fmt.Errorf("redis required for auth_mode=redis: address is empty")
+	}
+
+	if cfg.Auth.AuthMode == "redis" {
 		keyStore = auth.NewKeyStore(redisClient)
 		rateLimiter = auth.NewRateLimiter(redisClient, auth.RateLimits{
 			RequestsPerMinute: cfg.RateLimits.DefaultRPM,
@@ -85,16 +114,15 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, *Serv
 		}, true)
 		slog.Info("using Redis-based authentication")
 	} else {
-		// Static token auth (default)
-		if cfg.Auth.AdminToken == "" {
-			return nil, nil, fmt.Errorf("AIRBORNE_ADMIN_TOKEN required for static auth mode")
+		if redisClient != nil {
+			slog.Info("using static token authentication with Redis-backed keyed idempotency")
+		} else {
+			slog.Info("using static token authentication without Redis; only unkeyed requests are available")
 		}
-		slog.Info("using static token authentication (no Redis)")
 	}
 
 	// Initialize database if enabled (before the tenant interceptor so it can
 	// validate tenant IDs against the airborne_tenants registry).
-	var dbClient *db.Client
 	if cfg.Database.Enabled {
 		var dbErr error
 		dbClient, dbErr = db.NewClient(context.Background(), db.Config{
@@ -220,9 +248,16 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, *Serv
 	imageGenClient := imagegen.NewClient()
 
 	// Register services
-	// redisClient may be nil (auth_mode != "redis"): idempotent GenerateReply
-	// replay is then disabled and every request regenerates.
-	chatService := service.NewChatService(rateLimiter, ragService, imageGenClient, dbClient, redisClient)
+	// redisClient may be nil (auth_mode != "redis"): unkeyed requests remain
+	// available, while keyed GenerateReply requests fail closed before dispatch.
+	chatService := service.NewChatService(
+		rateLimiter,
+		ragService,
+		imageGenClient,
+		dbClient,
+		redisClient,
+		cfg.Idempotency.CompletedResponseRetention,
+	)
 	pb.RegisterAirborneServiceServer(server, chatService)
 
 	adminService := service.NewAdminService(redisClient, service.AdminServiceConfig{
@@ -241,10 +276,7 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, *Serv
 
 	// Register standard gRPC health service via chassis-go
 	grpckit.RegisterHealth(server, func(ctx context.Context) error {
-		if dbClient != nil {
-			return dbClient.Ping(ctx)
-		}
-		return nil
+		return checkServerDependencies(ctx, dbClient, redisClient)
 	})
 
 	tenantCount := 0
@@ -276,13 +308,31 @@ func NewGRPCServer(cfg *config.Config, version VersionInfo) (*grpc.Server, *Serv
 		ChatService:  chatService,
 	}
 
+	initialized = true
 	return server, components, nil
+}
+
+func checkServerDependencies(ctx context.Context, dbClient *db.Client, redisClient *redis.Client) error {
+	if dbClient != nil {
+		if err := dbClient.Ping(ctx); err != nil {
+			return fmt.Errorf("database readiness: %w", err)
+		}
+	}
+	if redisClient != nil {
+		if err := redisClient.Ping(ctx); err != nil {
+			return fmt.Errorf("redis readiness: %w", err)
+		}
+	}
+	return nil
 }
 
 // Close closes all server components that need cleanup.
 func (c *ServerComponents) Close() {
 	if c.DBClient != nil {
 		c.DBClient.Close()
+	}
+	if c.RedisClient != nil {
+		_ = c.RedisClient.Close()
 	}
 }
 

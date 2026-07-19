@@ -20,7 +20,9 @@ import (
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/db"
 	"github.com/ai8future/airborne/internal/provider"
+	airborneredis "github.com/ai8future/airborne/internal/redis"
 	"github.com/ai8future/airborne/internal/tenant"
+	"github.com/alicebob/miniredis/v2"
 	"google.golang.org/grpc"
 )
 
@@ -275,6 +277,36 @@ func TestHandleHealth_NoDB(t *testing.T) {
 	if resp["database"] != "not_configured" {
 		t.Errorf("database = %q, want %q", resp["database"], "not_configured")
 	}
+	if resp["redis"] != "not_configured" {
+		t.Errorf("redis = %q, want %q", resp["redis"], "not_configured")
+	}
+}
+
+func TestHandleHealth_ReportsInitializedRedis(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client, err := airborneredis.NewClient(airborneredis.Config{Addr: mr.Addr()})
+	if err != nil {
+		t.Fatalf("redis.NewClient() error = %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	s := &Server{redisClient: client}
+
+	check := func(wantStatus, wantRedis string) {
+		t.Helper()
+		w := httptest.NewRecorder()
+		s.handleHealth(w, httptest.NewRequest(http.MethodGet, "/admin/health", nil))
+		var response map[string]interface{}
+		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+			t.Fatalf("decode health response: %v", err)
+		}
+		if response["status"] != wantStatus || response["redis"] != wantRedis {
+			t.Fatalf("health = %#v, want status=%q redis=%q", response, wantStatus, wantRedis)
+		}
+	}
+
+	check("healthy", "healthy")
+	mr.SetError("injected Redis health failure")
+	check("degraded", "unhealthy")
 }
 
 func TestHealthAndVersionRejectNonGET(t *testing.T) {

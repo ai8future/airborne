@@ -28,6 +28,8 @@ var (
 	}
 )
 
+const minimumIdempotencyCompletedResponseRetention = 48 * time.Hour
+
 // Config holds all server configuration
 type Config struct {
 	Server          ServerConfig              `yaml:"server"`
@@ -36,6 +38,7 @@ type Config struct {
 	Database        DatabaseConfig            `yaml:"database"`
 	Admin           AdminConfig               `yaml:"admin"`
 	Auth            AuthConfig                `yaml:"auth"`
+	Idempotency     IdempotencyConfig         `yaml:"idempotency"`
 	RateLimits      RateLimitConfig           `yaml:"rate_limits"`
 	Providers       map[string]ProviderConfig `yaml:"providers"`
 	Failover        FailoverConfig            `yaml:"failover"`
@@ -120,6 +123,11 @@ type AuthConfig struct {
 	AuthMode   string `yaml:"auth_mode"` // "static" (default) or "redis"
 }
 
+// IdempotencyConfig controls completed GenerateReply replay retention.
+type IdempotencyConfig struct {
+	CompletedResponseRetention time.Duration `yaml:"completed_response_retention"`
+}
+
 // RateLimitConfig holds default rate limits
 type RateLimitConfig struct {
 	DefaultRPM int `yaml:"default_rpm"` // Requests per minute
@@ -180,7 +188,9 @@ func Load() (*Config, error) {
 	}
 
 	// Override with environment variables
-	cfg.applyEnvOverrides()
+	if err := cfg.applyEnvOverrides(); err != nil {
+		return nil, fmt.Errorf("invalid configuration: %w", err)
+	}
 
 	// Expand environment variables in string fields
 	cfg.expandEnvVars()
@@ -224,7 +234,9 @@ func LoadFrozen(path string) (*Config, error) {
 	// Resolve ENV=/FILE= references in config
 	cfg.expandEnvVars()
 
-	// No validation needed - frozen config was already validated at freeze time
+	if err := cfg.validate(); err != nil {
+		return nil, fmt.Errorf("invalid frozen configuration: %w", err)
+	}
 	return cfg, nil
 }
 
@@ -259,6 +271,9 @@ func defaultConfig() *Config {
 		},
 		Auth: AuthConfig{
 			AuthMode: "static",
+		},
+		Idempotency: IdempotencyConfig{
+			CompletedResponseRetention: minimumIdempotencyCompletedResponseRetention,
 		},
 		RateLimits: RateLimitConfig{
 			DefaultRPM: 60,
@@ -305,7 +320,7 @@ func defaultConfig() *Config {
 }
 
 // applyEnvOverrides applies environment variable overrides
-func (c *Config) applyEnvOverrides() {
+func (c *Config) applyEnvOverrides() error {
 	// Server configuration
 	c.Server.GRPCPort = envutil.GetIntEnv("AIRBORNE_GRPC_PORT", c.Server.GRPCPort)
 	c.Server.Host = envutil.GetStringEnv("AIRBORNE_HOST", c.Server.Host)
@@ -365,6 +380,14 @@ func (c *Config) applyEnvOverrides() {
 	c.Auth.AdminToken = envutil.GetStringEnv("AIRBORNE_ADMIN_TOKEN", c.Auth.AdminToken)
 	c.Auth.AuthMode = envutil.GetStringEnv("AIRBORNE_AUTH_MODE", c.Auth.AuthMode)
 
+	if value := os.Getenv("IDEMPOTENCY_COMPLETED_RESPONSE_RETENTION"); value != "" {
+		retention, err := time.ParseDuration(value)
+		if err != nil {
+			return fmt.Errorf("invalid IDEMPOTENCY_COMPLETED_RESPONSE_RETENTION %q: %w", value, err)
+		}
+		c.Idempotency.CompletedResponseRetention = retention
+	}
+
 	// Logging configuration
 	c.Logging.Level = envutil.GetStringEnv("AIRBORNE_LOG_LEVEL", c.Logging.Level)
 	c.Logging.Format = envutil.GetStringEnv("AIRBORNE_LOG_FORMAT", c.Logging.Format)
@@ -393,6 +416,7 @@ func (c *Config) applyEnvOverrides() {
 	c.Kafkakit.TenantID = envutil.GetStringEnv("KAFKAKIT_TENANT_ID", c.Kafkakit.TenantID)
 	c.Kafkakit.Source = envutil.GetStringEnv("KAFKAKIT_SOURCE", c.Kafkakit.Source)
 
+	return nil
 }
 
 // expandEnvVars expands ${VAR} patterns in string fields
@@ -447,6 +471,13 @@ func (c *Config) validate() error {
 	}
 	if err := validateAdminAllowedOrigins(c.Admin.AllowedOrigins); err != nil {
 		return err
+	}
+	if c.Idempotency.CompletedResponseRetention < minimumIdempotencyCompletedResponseRetention {
+		return fmt.Errorf(
+			"idempotency.completed_response_retention must be at least %s, got %s",
+			minimumIdempotencyCompletedResponseRetention,
+			c.Idempotency.CompletedResponseRetention,
+		)
 	}
 
 	if c.TLS.Enabled {

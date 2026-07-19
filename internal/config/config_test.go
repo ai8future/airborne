@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	chassis "github.com/ai8future/chassis-go/v11"
 	"github.com/ai8future/chassis-go/v11/call"
@@ -50,6 +51,9 @@ func TestLoad_DefaultValues(t *testing.T) {
 	}
 	if cfg.Redis.DB != 0 {
 		t.Errorf("expected default Redis.DB 0, got %d", cfg.Redis.DB)
+	}
+	if cfg.Idempotency.CompletedResponseRetention != 48*time.Hour {
+		t.Errorf("expected default idempotency retention 48h, got %s", cfg.Idempotency.CompletedResponseRetention)
 	}
 
 	// Logging defaults
@@ -542,7 +546,7 @@ func TestLoad_GRPCPortEnvOverride_InvalidValue(t *testing.T) {
 func TestLoadFrozen(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "frozen.json")
-	if err := os.WriteFile(path, []byte(`{"global_config":{"server":{"GRPCPort":9123,"Host":"127.0.0.1"},"tls":{"enabled":false},"admin":{"enabled":false,"port":8473},"auth":{},"logging":{}},"frozen_at":"2026-01-01T00:00:00Z"}`), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"global_config":{"server":{"GRPCPort":9123,"Host":"127.0.0.1"},"tls":{"enabled":false},"admin":{"enabled":false,"port":8473},"auth":{},"idempotency":{"CompletedResponseRetention":172800000000000},"logging":{}},"frozen_at":"2026-01-01T00:00:00Z"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := LoadFrozen(path)
@@ -560,6 +564,61 @@ func TestLoadFrozen(t *testing.T) {
 	}
 	if _, err := LoadFrozen(path); err == nil {
 		t.Fatal("invalid frozen config should fail")
+	}
+}
+
+func TestLoadFrozenRejectsShortIdempotencyRetention(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "frozen.json")
+	data := `{"global_config":{"server":{"GRPCPort":9123,"Host":"127.0.0.1"},"tls":{"enabled":false},"admin":{"enabled":false,"port":8473},"auth":{},"idempotency":{"CompletedResponseRetention":172799999999999},"logging":{}},"frozen_at":"2026-01-01T00:00:00Z"}`
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadFrozen(path)
+	if err == nil || !strings.Contains(err.Error(), "idempotency.completed_response_retention must be at least 48h0m0s") {
+		t.Fatalf("LoadFrozen() error = %v, want minimum-retention rejection", err)
+	}
+}
+
+func TestLoad_IdempotencyRetentionConfigAndValidation(t *testing.T) {
+	t.Run("yaml duration", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "config.yaml")
+		if err := os.WriteFile(path, []byte("idempotency:\n  completed_response_retention: 72h\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("AIRBORNE_CONFIG", path)
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Idempotency.CompletedResponseRetention != 72*time.Hour {
+			t.Fatalf("retention = %s, want 72h", cfg.Idempotency.CompletedResponseRetention)
+		}
+	})
+
+	t.Run("environment override", func(t *testing.T) {
+		dir := t.TempDir()
+		t.Setenv("AIRBORNE_CONFIG", filepath.Join(dir, "missing.yaml"))
+		t.Setenv("IDEMPOTENCY_COMPLETED_RESPONSE_RETENTION", "96h")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Idempotency.CompletedResponseRetention != 96*time.Hour {
+			t.Fatalf("retention = %s, want 96h", cfg.Idempotency.CompletedResponseRetention)
+		}
+	})
+
+	for _, value := range []string{"47h59m", "not-a-duration"} {
+		t.Run("reject_"+value, func(t *testing.T) {
+			dir := t.TempDir()
+			t.Setenv("AIRBORNE_CONFIG", filepath.Join(dir, "missing.yaml"))
+			t.Setenv("IDEMPOTENCY_COMPLETED_RESPONSE_RETENTION", value)
+			if _, err := Load(); err == nil {
+				t.Fatalf("expected retention %q to be rejected", value)
+			}
+		})
 	}
 }
 

@@ -11,6 +11,7 @@ DASHBOARD_TOKEN=dashboard-e2e-token
 mkdir -p "$ARTIFACTS"
 
 [[ ${POSTGRES_E2E_IMAGE:-} == *@sha256:* ]] || { echo 'POSTGRES_E2E_IMAGE must be digest-pinned' >&2; exit 2; }
+[[ ${REDIS_E2E_IMAGE:-} == *@sha256:* ]] || { echo 'REDIS_E2E_IMAGE must be digest-pinned' >&2; exit 2; }
 [[ -n ${AIRBORNE_E2E_IMAGE:-} ]] || { echo 'AIRBORNE_E2E_IMAGE must name the tested production image' >&2; exit 2; }
 cli=${AIRBORNE_E2E_CLI:-"$ROOT/bin/airborne-cli"}
 probe=${AIRBORNE_E2E_PROBE:-"$ROOT/bin/airborne-e2e-probe"}
@@ -108,13 +109,25 @@ wait_for_admin() {
 
 echo 'E2E-001: production image and gRPC health'
 "${COMPOSE[@]}" exec -T airborne /app/airborne --health-check
+provider_request_count() {
+  "${COMPOSE[@]}" exec -T provider-stub python -c \
+    "import json; from urllib.request import urlopen; print(len(json.load(urlopen('http://localhost:8080/requests'))['requests']))"
+}
+provider_count_before=$(provider_request_count)
 "$probe" --addr "$grpc_addr" --token "$ADMIN_TOKEN" --tenant ai8 --prompt 'deterministic grpc e2e' >"$ARTIFACTS/grpc-chat.json"
 grep -q 'deterministic-e2e-response' "$ARTIFACTS/grpc-chat.json"
 grep -q 'PROVIDER_OPENAI' "$ARTIFACTS/grpc-chat.json"
+provider_count_after_first=$(provider_request_count)
+[[ "$provider_count_after_first" -eq $((provider_count_before + 1)) ]]
+"$probe" --addr "$grpc_addr" --token "$ADMIN_TOKEN" --tenant ai8 --prompt 'deterministic grpc e2e' >"$ARTIFACTS/grpc-chat-replay.json"
+cmp "$ARTIFACTS/grpc-chat.json" "$ARTIFACTS/grpc-chat-replay.json"
+provider_count_after_replay=$(provider_request_count)
+[[ "$provider_count_after_replay" -eq "$provider_count_after_first" ]]
 
 echo 'E2E-002: public health and protected auth boundary'
 curl --fail --silent --show-error "$admin/admin/health" >"$ARTIFACTS/admin-health.json"
 grep -q '"database":"healthy"' "$ARTIFACTS/admin-health.json"
+grep -q '"redis":"healthy"' "$ARTIFACTS/admin-health.json"
 [[ $(curl --silent --output /dev/null --write-out '%{http_code}' "$admin/admin/activity") == 401 ]]
 [[ $(curl --silent --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer wrong-token' "$admin/admin/activity") == 401 ]]
 curl --fail --silent --show-error -H "Authorization: Bearer $ADMIN_TOKEN" "$admin/admin/activity" >"$ARTIFACTS/activity-initial.json"

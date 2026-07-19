@@ -2,12 +2,34 @@ package server
 
 import (
 	"context"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/ai8future/airborne/internal/auth"
 	"github.com/ai8future/airborne/internal/config"
+	"github.com/alicebob/miniredis/v2"
 	"google.golang.org/grpc"
 )
+
+func staticServerConfig(redisAddr string) *config.Config {
+	return &config.Config{
+		Auth:  config.AuthConfig{AuthMode: "static", AdminToken: "test-token-12345"},
+		Redis: config.RedisConfig{Addr: redisAddr},
+	}
+}
+
+func waitForRedisConnections(t *testing.T, mr *miniredis.Miniredis, want int) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if mr.CurrentConnectionCount() == want {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("Redis connections = %d, want %d", mr.CurrentConnectionCount(), want)
+}
 
 func TestNewGRPCServer_FailsWithoutRedisInRedisAuthMode(t *testing.T) {
 	cfg := &config.Config{
@@ -49,6 +71,101 @@ func TestNewGRPCServer_WorksWithStaticAuthMode(t *testing.T) {
 		t.Fatal("server should not be nil")
 	}
 	server.Stop()
+}
+
+func TestNewGRPCServer_StaticAuthInitializesConfiguredRedis(t *testing.T) {
+	mr := miniredis.RunT(t)
+	server, components, err := NewGRPCServer(staticServerConfig(mr.Addr()), VersionInfo{Version: "test"})
+	if err != nil {
+		t.Fatalf("NewGRPCServer() error = %v", err)
+	}
+	t.Cleanup(server.Stop)
+	if components.RedisClient == nil {
+		t.Fatal("configured reachable Redis was not initialized for static auth")
+	}
+	if components.KeyStore != nil || components.RateLimiter != nil {
+		t.Fatal("static auth must not enable Redis authentication components")
+	}
+	components.Close()
+}
+
+func TestNewGRPCServer_StaticAuthContinuesWithoutRedis(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		addr string
+	}{
+		{name: "missing", addr: ""},
+		{name: "unavailable", addr: "127.0.0.1:1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server, components, err := NewGRPCServer(staticServerConfig(tc.addr), VersionInfo{Version: "test"})
+			if err != nil {
+				t.Fatalf("static auth should retain optional unkeyed startup: %v", err)
+			}
+			t.Cleanup(server.Stop)
+			if components.RedisClient != nil {
+				t.Fatal("missing or unavailable Redis should leave static auth unkeyed")
+			}
+			components.Close()
+		})
+	}
+}
+
+func TestNewGRPCServer_RedisAuthFailsWhenRedisMissing(t *testing.T) {
+	cfg := &config.Config{Auth: config.AuthConfig{AuthMode: "redis"}}
+	server, components, err := NewGRPCServer(cfg, VersionInfo{Version: "test"})
+	if err == nil || server != nil || components != nil {
+		t.Fatalf("NewGRPCServer() = (%v, %v, %v), want missing Redis failure", server, components, err)
+	}
+	if !strings.Contains(err.Error(), "redis required for auth_mode=redis") {
+		t.Fatalf("NewGRPCServer() error = %q, want required Redis context", err)
+	}
+}
+
+func TestNewGRPCServer_GRPCHealthIncludesInitializedRedis(t *testing.T) {
+	mr := miniredis.RunT(t)
+	server, components, err := NewGRPCServer(staticServerConfig(mr.Addr()), VersionInfo{Version: "test"})
+	if err != nil {
+		t.Fatalf("NewGRPCServer() error = %v", err)
+	}
+	t.Cleanup(server.Stop)
+	t.Cleanup(components.Close)
+	if err := checkServerDependencies(context.Background(), components.DBClient, components.RedisClient); err != nil {
+		t.Fatalf("healthy dependency check error = %v", err)
+	}
+
+	mr.Close()
+	if err := checkServerDependencies(context.Background(), components.DBClient, components.RedisClient); err == nil {
+		t.Fatal("dependency check succeeded after Redis failure")
+	}
+}
+
+func TestServerComponentsCloseClosesRedis(t *testing.T) {
+	mr := miniredis.RunT(t)
+	server, components, err := NewGRPCServer(staticServerConfig(mr.Addr()), VersionInfo{Version: "test"})
+	if err != nil {
+		t.Fatalf("NewGRPCServer() error = %v", err)
+	}
+	t.Cleanup(server.Stop)
+	waitForRedisConnections(t, mr, 1)
+
+	components.Close()
+	waitForRedisConnections(t, mr, 0)
+	if err := components.RedisClient.Ping(context.Background()); err == nil {
+		t.Fatal("Ping() after ServerComponents.Close() succeeded")
+	}
+}
+
+func TestNewGRPCServer_ClosesRedisWhenLaterInitializationFails(t *testing.T) {
+	mr := miniredis.RunT(t)
+	cfg := staticServerConfig(mr.Addr())
+	cfg.TLS = config.TLSConfig{Enabled: true, CertFile: "missing-cert.pem", KeyFile: "missing-key.pem"}
+
+	server, components, err := NewGRPCServer(cfg, VersionInfo{Version: "test"})
+	if err == nil || server != nil || components != nil {
+		t.Fatalf("NewGRPCServer() = (%v, %v, %v), want TLS setup failure", server, components, err)
+	}
+	waitForRedisConnections(t, mr, 0)
 }
 
 func TestNewGRPCServer_FailsWithoutTokenInStaticAuthMode(t *testing.T) {

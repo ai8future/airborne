@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -17,6 +18,9 @@ type contextKey string
 const (
 	// ClientContextKey is the context key for client info
 	ClientContextKey contextKey = "airborne_client"
+
+	authRateLimitPreDispatchReason = "auth_rate_limit_pre_dispatch"
+	authErrorDomain                = "airborne.ai8future.com"
 )
 
 // Authenticator handles API key authentication
@@ -55,7 +59,7 @@ func (a *Authenticator) UnaryInterceptor() grpc.UnaryServerInterceptor {
 		// Check rate limits
 		if a.rateLimiter != nil {
 			if err := a.rateLimiter.Allow(ctx, client); err != nil {
-				return nil, status.Error(codes.ResourceExhausted, err.Error())
+				return nil, authRateLimitError(err)
 			}
 		}
 
@@ -83,7 +87,7 @@ func (a *Authenticator) StreamInterceptor() grpc.StreamServerInterceptor {
 		// Check rate limits
 		if a.rateLimiter != nil {
 			if err := a.rateLimiter.Allow(ss.Context(), client); err != nil {
-				return status.Error(codes.ResourceExhausted, err.Error())
+				return authRateLimitError(err)
 			}
 		}
 
@@ -95,6 +99,23 @@ func (a *Authenticator) StreamInterceptor() grpc.StreamServerInterceptor {
 
 		return handler(srv, wrapped)
 	}
+}
+
+func authRateLimitError(rateLimitErr error) error {
+	base := status.New(codes.ResourceExhausted, rateLimitErr.Error())
+	detailed, err := base.WithDetails(&errdetails.ErrorInfo{
+		Reason: authRateLimitPreDispatchReason,
+		Domain: authErrorDomain,
+		Metadata: map[string]string{
+			"dispatch_phase":    "pre_dispatch",
+			"retry_disposition": "safe_without_provider_side_effects",
+		},
+	})
+	if err != nil {
+		slog.Error("failed to attach auth rate-limit gRPC error detail", "error", err)
+		return base.Err()
+	}
+	return detailed.Err()
 }
 
 // authenticate extracts and validates the API key from metadata

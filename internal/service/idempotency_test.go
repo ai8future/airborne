@@ -3,17 +3,23 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/db"
+	"github.com/ai8future/airborne/internal/provider"
 	"github.com/ai8future/airborne/internal/redis"
 	"github.com/ai8future/airborne/internal/service/config"
 	"github.com/ai8future/airborne/internal/tenant"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/jackc/pgx/v5/pgconn"
+	goredis "github.com/redis/go-redis/v9"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -23,7 +29,7 @@ import (
 // miniredis-backed idempotency store. Returns the service, the openai mock
 // (whose generateCalls slice is the generation counter), and the miniredis
 // handle so tests can simulate Redis outages.
-func newIdemTestService(t *testing.T) (*ChatService, *mockProvider, *miniredis.Miniredis) {
+func newIdemTestService(t *testing.T, retention ...time.Duration) (*ChatService, *mockProvider, *miniredis.Miniredis) {
 	t.Helper()
 
 	mr, err := miniredis.Run()
@@ -39,14 +45,131 @@ func newIdemTestService(t *testing.T) (*ChatService, *mockProvider, *miniredis.M
 	t.Cleanup(func() { redisClient.Close() })
 
 	mockOpenAI := newMockProvider("openai")
+	completedRetention := defaultIdemCompletedRetention
+	if len(retention) > 0 {
+		completedRetention = retention[0]
+	}
 	svc := &ChatService{
 		openaiProvider:    mockOpenAI,
 		geminiProvider:    newMockProvider("gemini"),
 		anthropicProvider: newMockProvider("anthropic"),
 		configBuilder:     config.NewBuilder(),
-		idem:              newIdempotencyStore(redisClient),
+		idem:              newIdempotencyStore(redisClient, completedRetention),
 	}
 	return svc, mockOpenAI, mr
+}
+
+type fakeIdempotencyClient struct {
+	values        map[string]string
+	beginErr      error
+	readErr       error
+	completionErr error
+	releaseErr    error
+	forceExisting bool
+	// replaceBeforeComplete simulates expiry/eviction/failover followed by a
+	// replacement acquisition immediately before the stale owner completes.
+	replaceBeforeComplete string
+}
+
+type deadlineRecordingProvider struct {
+	*mockProvider
+	deadline    time.Time
+	hasDeadline bool
+}
+
+func (p *deadlineRecordingProvider) GenerateReply(ctx context.Context, params provider.GenerateParams) (provider.GenerateResult, error) {
+	p.deadline, p.hasDeadline = ctx.Deadline()
+	return p.mockProvider.GenerateReply(ctx, params)
+}
+
+func newFakeIdempotencyClient() *fakeIdempotencyClient {
+	return &fakeIdempotencyClient{values: make(map[string]string)}
+}
+
+func (f *fakeIdempotencyClient) SetNX(_ context.Context, key string, value interface{}, _ time.Duration) (bool, error) {
+	if f.beginErr != nil {
+		return false, f.beginErr
+	}
+	if f.forceExisting {
+		return false, nil
+	}
+	if _, exists := f.values[key]; exists {
+		return false, nil
+	}
+	f.values[key] = fmt.Sprint(value)
+	return true, nil
+}
+
+func (f *fakeIdempotencyClient) Get(_ context.Context, key string) (string, error) {
+	if f.readErr != nil {
+		return "", f.readErr
+	}
+	value, ok := f.values[key]
+	if !ok {
+		return "", goredis.Nil
+	}
+	return value, nil
+}
+
+func (f *fakeIdempotencyClient) CompareAndSet(_ context.Context, key, expected string, value interface{}, _ time.Duration) (bool, error) {
+	if f.completionErr != nil {
+		return false, f.completionErr
+	}
+	if f.replaceBeforeComplete != "" {
+		f.values[key] = f.replaceBeforeComplete
+		f.replaceBeforeComplete = ""
+	}
+	if f.values[key] != expected {
+		return false, nil
+	}
+	switch value := value.(type) {
+	case []byte:
+		f.values[key] = string(value)
+	default:
+		f.values[key] = fmt.Sprint(value)
+	}
+	return true, nil
+}
+
+func (f *fakeIdempotencyClient) CompareAndDelete(_ context.Context, key, expected string) (bool, error) {
+	if f.releaseErr != nil {
+		return false, f.releaseErr
+	}
+	if f.values[key] != expected {
+		return false, nil
+	}
+	delete(f.values, key)
+	return true, nil
+}
+
+func newIdemServiceWithClient(client idempotencyClient) (*ChatService, *mockProvider) {
+	mockOpenAI := newMockProvider("openai")
+	return &ChatService{
+		openaiProvider:    mockOpenAI,
+		geminiProvider:    newMockProvider("gemini"),
+		anthropicProvider: newMockProvider("anthropic"),
+		configBuilder:     config.NewBuilder(),
+		idem: &idempotencyStore{
+			client:             client,
+			completedRetention: defaultIdemCompletedRetention,
+		},
+	}, mockOpenAI
+}
+
+func errorInfoDetail(err error) *errdetails.ErrorInfo {
+	for _, detail := range status.Convert(err).Details() {
+		if info, ok := detail.(*errdetails.ErrorInfo); ok {
+			return info
+		}
+	}
+	return nil
+}
+
+func errorInfoReason(err error) string {
+	if info := errorInfoDetail(err); info != nil {
+		return info.Reason
+	}
+	return ""
 }
 
 // tenantCtx builds a chat-permission context scoped to an explicit tenant id.
@@ -199,20 +322,113 @@ func TestGenerateReply_TenantNamespacedKeys(t *testing.T) {
 	}
 }
 
+// A delimiter-joined namespace maps both pairs below to
+// "idem:tenant:a:b:c". Tenant and caller key boundaries must remain distinct
+// even when both values contain the delimiter.
+func TestGenerateReply_TenantAndKeyDelimiterPairsDoNotCollide(t *testing.T) {
+	svc, mock, _ := newIdemTestService(t)
+
+	if _, err := svc.GenerateReply(tenantCtx("tenant:a"), &pb.GenerateReplyRequest{UserInput: "first", IdempotencyKey: "b:c"}); err != nil {
+		t.Fatalf("first delimiter pair failed: %v", err)
+	}
+	if _, err := svc.GenerateReply(tenantCtx("tenant:a:b"), &pb.GenerateReplyRequest{UserInput: "second", IdempotencyKey: "c"}); err != nil {
+		t.Fatalf("second delimiter pair failed: %v", err)
+	}
+
+	if got := len(mock.generateCalls); got != 2 {
+		t.Fatalf("provider calls = %d, want 2 for distinct tenant/key pairs", got)
+	}
+}
+
+func TestIdempotencyRedisNamespaceIsVersionedBoundedAndUnambiguous(t *testing.T) {
+	store := &idempotencyStore{}
+	first := store.redisKey("tenant:a", "b:c")
+	second := store.redisKey("tenant:a:b", "c")
+	if first == second {
+		t.Fatal("delimiter-bearing tenant/key pairs produced the same Redis key")
+	}
+	if !strings.HasPrefix(first, idemRedisKeyPrefix) {
+		t.Fatalf("Redis key %q lacks versioned namespace %q", first, idemRedisKeyPrefix)
+	}
+	if got, want := len(first), len(idemRedisKeyPrefix)+sha256.Size*2; got != want {
+		t.Fatalf("Redis key length = %d, want fixed length %d", got, want)
+	}
+	if strings.Contains(first, "tenant:a") || strings.Contains(first, "b:c") {
+		t.Fatal("Redis key exposes raw tenant or caller key")
+	}
+}
+
+func TestGenerateReply_InvalidIdempotencyKeysAreRejectedBeforeDispatch(t *testing.T) {
+	tests := []struct {
+		name         string
+		key          string
+		fromMetadata bool
+	}{
+		{name: "space", key: "eai1_bad key"},
+		{name: "control", key: "eai1_bad\nkey"},
+		{name: "non ascii", key: "eai1_café"},
+		{name: "too long", key: strings.Repeat("a", 256)},
+		{name: "metadata control", key: "eai1_bad\tkey", fromMetadata: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, mock, mr := newIdemTestService(t)
+			req := &pb.GenerateReplyRequest{UserInput: "hello", IdempotencyKey: tt.key}
+			if tt.fromMetadata {
+				req.IdempotencyKey = ""
+				req.Metadata = map[string]string{"idempotency_key": tt.key}
+			}
+			_, err := svc.GenerateReply(tenantCtx("test-tenant"), req)
+			if status.Code(err) != codes.InvalidArgument {
+				t.Fatalf("code = %v, want %v (err=%v)", status.Code(err), codes.InvalidArgument, err)
+			}
+			if got := len(mock.generateCalls); got != 0 {
+				t.Fatalf("provider calls = %d, want 0", got)
+			}
+			if keys := mr.Keys(); len(keys) != 0 {
+				t.Fatalf("Redis keys = %v, want none", keys)
+			}
+		})
+	}
+}
+
+func TestGenerateReply_EmailAIKeyContractReplays(t *testing.T) {
+	svc, mock, _ := newIdemTestService(t)
+	ctx := tenantCtx("test-tenant")
+	key := "eai1_01JZX8YQ0PZQH1WQF6V6R7R8S9"
+
+	first, err := svc.GenerateReply(ctx, &pb.GenerateReplyRequest{UserInput: "hello", IdempotencyKey: key})
+	if err != nil {
+		t.Fatalf("first eai1_ request failed: %v", err)
+	}
+	second, err := svc.GenerateReply(ctx, &pb.GenerateReplyRequest{UserInput: "hello", IdempotencyKey: key})
+	if err != nil {
+		t.Fatalf("replayed eai1_ request failed: %v", err)
+	}
+	if got := len(mock.generateCalls); got != 1 {
+		t.Fatalf("provider calls = %d, want 1", got)
+	}
+	if !bytes.Equal(mustMarshal(t, first), mustMarshal(t, second)) {
+		t.Fatal("eai1_ replay was not byte-identical")
+	}
+}
+
 // TestGenerateReply_InFlightDuplicateAborted: while a key's first request is
 // still processing (in-flight marker held), a duplicate is rejected with
 // codes.Aborted rather than double-generating — mirroring the admin path's
 // 409 Conflict.
 func TestGenerateReply_InFlightDuplicateAborted(t *testing.T) {
-	svc, mock, mr := newIdemTestService(t)
+	svc, mock, _ := newIdemTestService(t)
 	ctx := tenantCtx("test-tenant")
 
-	// Simulate an in-flight first request by planting the marker directly.
-	if err := mr.Set("idem:test-tenant:key-busy", idemInFlightMarker); err != nil {
-		t.Fatalf("failed to plant in-flight marker: %v", err)
+	// Simulate an in-flight first request by acquiring and retaining its claim.
+	_, state, claim, err := svc.idem.Begin(ctx, "test-tenant", "key-busy")
+	if err != nil || state != idemAcquired || claim == nil {
+		t.Fatalf("Begin = state %v, claim %v, err %v; want acquired claim", state, claim, err)
 	}
 
-	_, err := svc.GenerateReply(ctx, &pb.GenerateReplyRequest{UserInput: "hello", IdempotencyKey: "key-busy"})
+	_, err = svc.GenerateReply(ctx, &pb.GenerateReplyRequest{UserInput: "hello", IdempotencyKey: "key-busy"})
 	if status.Code(err) != codes.Aborted {
 		t.Fatalf("expected codes.Aborted for in-flight duplicate, got %v (err=%v)", status.Code(err), err)
 	}
@@ -221,45 +437,293 @@ func TestGenerateReply_InFlightDuplicateAborted(t *testing.T) {
 	}
 }
 
-// TestGenerateReply_RedisDownDegradesUncached: an unreachable idempotency
-// store must never fail the request — both calls generate.
-func TestGenerateReply_RedisDownDegradesUncached(t *testing.T) {
+// TestGenerateReply_RedisDownFailsClosed: a keyed request must never dispatch
+// when its idempotency prerequisite cannot be read.
+func TestGenerateReply_RedisDownFailsClosed(t *testing.T) {
 	svc, mock, mr := newIdemTestService(t)
 	ctx := tenantCtx("test-tenant")
 	mr.Close() // Redis goes down before any call
 
-	if _, err := svc.GenerateReply(ctx, &pb.GenerateReplyRequest{UserInput: "hello", IdempotencyKey: "key-1"}); err != nil {
-		t.Fatalf("GenerateReply with Redis down failed: %v", err)
-	}
-	if _, err := svc.GenerateReply(ctx, &pb.GenerateReplyRequest{UserInput: "hello", IdempotencyKey: "key-1"}); err != nil {
-		t.Fatalf("second GenerateReply with Redis down failed: %v", err)
+	_, err := svc.GenerateReply(ctx, &pb.GenerateReplyRequest{UserInput: "hello", IdempotencyKey: "key-1"})
+	if status.Code(err) != codes.Unavailable || errorInfoReason(err) != idempotencyUnavailableReason {
+		t.Fatalf("Redis-down error = %v, reason = %q", err, errorInfoReason(err))
 	}
 
-	if got := len(mock.generateCalls); got != 2 {
-		t.Errorf("expected 2 provider generations with Redis down (uncached degrade), got %d", got)
+	if got := len(mock.generateCalls); got != 0 {
+		t.Errorf("expected 0 provider generations with Redis down, got %d", got)
 	}
 }
 
-// TestGenerateReply_NoIdemStoreUncached: a ChatService constructed without a
-// Redis client (idem == nil) behaves exactly as today.
-func TestGenerateReply_NoIdemStoreUncached(t *testing.T) {
+// TestGenerateReply_NoIdemStoreFailsClosed: keyed generation requires a live
+// idempotency store even though unkeyed generation remains supported.
+func TestGenerateReply_NoIdemStoreFailsClosed(t *testing.T) {
 	mock := newMockProvider("openai")
 	svc := &ChatService{
 		openaiProvider:    mock,
 		geminiProvider:    newMockProvider("gemini"),
 		anthropicProvider: newMockProvider("anthropic"),
 		configBuilder:     config.NewBuilder(),
-		idem:              newIdempotencyStore(nil),
+		idem:              newIdempotencyStore(nil, defaultIdemCompletedRetention),
 	}
 	ctx := tenantCtx("test-tenant")
 
-	for i := 0; i < 2; i++ {
-		if _, err := svc.GenerateReply(ctx, &pb.GenerateReplyRequest{UserInput: "hello", IdempotencyKey: "key-1"}); err != nil {
-			t.Fatalf("GenerateReply without idem store failed: %v", err)
-		}
+	_, err := svc.GenerateReply(ctx, &pb.GenerateReplyRequest{UserInput: "hello", IdempotencyKey: "key-1"})
+	if status.Code(err) != codes.Unavailable || errorInfoReason(err) != idempotencyUnavailableReason {
+		t.Fatalf("missing-store error = %v, reason = %q", err, errorInfoReason(err))
 	}
-	if got := len(mock.generateCalls); got != 2 {
-		t.Errorf("expected 2 provider generations without idem store, got %d", got)
+	if got := len(mock.generateCalls); got != 0 {
+		t.Errorf("expected 0 provider generations without idem store, got %d", got)
+	}
+
+	if _, err := svc.GenerateReply(ctx, &pb.GenerateReplyRequest{UserInput: "unkeyed"}); err != nil {
+		t.Fatalf("unkeyed GenerateReply without idem store failed: %v", err)
+	}
+	if got := len(mock.generateCalls); got != 1 {
+		t.Errorf("expected the unkeyed request alone to generate, got %d calls", got)
+	}
+}
+
+func TestGenerateReply_IdempotencyBeginFailuresAreTypedPreDispatch(t *testing.T) {
+	redisKey := (&idempotencyStore{}).redisKey("test-tenant", "key-1")
+	tests := []struct {
+		name   string
+		client *fakeIdempotencyClient
+	}{
+		{
+			name: "begin failure",
+			client: &fakeIdempotencyClient{
+				values:   make(map[string]string),
+				beginErr: errors.New("setnx failed"),
+			},
+		},
+		{
+			name: "read failure",
+			client: &fakeIdempotencyClient{
+				values:        make(map[string]string),
+				forceExisting: true,
+				readErr:       errors.New("get failed"),
+			},
+		},
+		{
+			name: "marker disappeared",
+			client: &fakeIdempotencyClient{
+				values:        make(map[string]string),
+				forceExisting: true,
+			},
+		},
+		{
+			name: "invalid cached marker",
+			client: &fakeIdempotencyClient{
+				values: map[string]string{redisKey: "\xff"},
+			},
+		},
+		{
+			name: "invalid cached payload",
+			client: &fakeIdempotencyClient{
+				values: map[string]string{redisKey: idemCompletedMarker + "\xff"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, mock := newIdemServiceWithClient(tt.client)
+			_, err := svc.GenerateReply(tenantCtx("test-tenant"), &pb.GenerateReplyRequest{UserInput: "hello", IdempotencyKey: "key-1"})
+			if status.Code(err) != codes.Unavailable {
+				t.Fatalf("code = %v, want %v (err=%v)", status.Code(err), codes.Unavailable, err)
+			}
+			if reason := errorInfoReason(err); reason != idempotencyUnavailableReason {
+				t.Fatalf("ErrorInfo reason = %q, want %q", reason, idempotencyUnavailableReason)
+			}
+			if info := errorInfoDetail(err); info == nil || info.Metadata["dispatch_phase"] != "pre_dispatch" {
+				t.Fatalf("ErrorInfo metadata = %#v, want pre_dispatch", info)
+			}
+			if got := len(mock.generateCalls); got != 0 {
+				t.Fatalf("provider calls = %d, want 0", got)
+			}
+		})
+	}
+}
+
+func TestGenerateReply_CanceledBeginIsNotClassifiedAsStorageUnavailable(t *testing.T) {
+	client := newFakeIdempotencyClient()
+	client.beginErr = context.Canceled
+	svc, mock := newIdemServiceWithClient(client)
+	ctx, cancel := context.WithCancel(tenantCtx("test-tenant"))
+	cancel()
+
+	_, err := svc.GenerateReply(ctx, &pb.GenerateReplyRequest{UserInput: "hello", IdempotencyKey: "eai1_cancelled"})
+	if status.Code(err) != codes.Canceled {
+		t.Fatalf("code = %v, want %v (err=%v)", status.Code(err), codes.Canceled, err)
+	}
+	if reason := errorInfoReason(err); reason == idempotencyUnavailableReason {
+		t.Fatalf("caller cancellation was marked as a storage failure: %v", err)
+	}
+	if got := len(mock.generateCalls); got != 0 {
+		t.Fatalf("provider calls = %d, want 0", got)
+	}
+}
+
+func TestGenerateReply_CompletionFailureIsAmbiguousAndRetainsMarker(t *testing.T) {
+	client := newFakeIdempotencyClient()
+	client.completionErr = errors.New("completion set failed")
+	svc, mock := newIdemServiceWithClient(client)
+	ctx := tenantCtx("test-tenant")
+	req := &pb.GenerateReplyRequest{UserInput: "hello", IdempotencyKey: "key-ambiguous"}
+
+	resp, err := svc.GenerateReply(ctx, req)
+	if resp != nil {
+		t.Fatalf("completion failure returned successful response: %v", resp)
+	}
+	if status.Code(err) != codes.DataLoss || errorInfoReason(err) != idempotencyCompletionAmbiguousReason {
+		t.Fatalf("completion error = %v, reason = %q", err, errorInfoReason(err))
+	}
+	if info := errorInfoDetail(err); info == nil || info.Metadata["retry_disposition"] != "quarantine" || info.Metadata["dispatch_phase"] != "post_dispatch" {
+		t.Fatalf("completion ErrorInfo metadata = %#v, want post-dispatch quarantine", info)
+	}
+	redisKey := svc.idem.redisKey("test-tenant", "key-ambiguous")
+	if got := client.values[redisKey]; !isIdemInFlightValue(got) {
+		t.Fatalf("marker after completion failure is not an owned in-flight marker")
+	}
+
+	_, retryErr := svc.GenerateReply(ctx, req)
+	if status.Code(retryErr) != codes.Aborted {
+		t.Fatalf("automatic retry code = %v, want %v (err=%v)", status.Code(retryErr), codes.Aborted, retryErr)
+	}
+	if got := len(mock.generateCalls); got != 1 {
+		t.Fatalf("provider calls after automatic retry = %d, want 1", got)
+	}
+}
+
+func TestGenerateReply_CompletionOwnershipLossIsAmbiguousAndDoesNotRegenerate(t *testing.T) {
+	replacementToken, err := newIdempotencyOwnerToken()
+	if err != nil {
+		t.Fatalf("newIdempotencyOwnerToken: %v", err)
+	}
+	replacementMarker := idemInFlightMarker + replacementToken
+	client := newFakeIdempotencyClient()
+	client.replaceBeforeComplete = replacementMarker
+	svc, mock := newIdemServiceWithClient(client)
+	ctx := tenantCtx("test-tenant")
+	req := &pb.GenerateReplyRequest{UserInput: "hello", IdempotencyKey: "key-owner-lost"}
+
+	resp, err := svc.GenerateReply(ctx, req)
+	if resp != nil {
+		t.Fatalf("ownership loss returned successful response: %v", resp)
+	}
+	if status.Code(err) != codes.DataLoss || errorInfoReason(err) != idempotencyCompletionAmbiguousReason {
+		t.Fatalf("completion error = %v, reason = %q", err, errorInfoReason(err))
+	}
+	redisKey := svc.idem.redisKey("test-tenant", "key-owner-lost")
+	if got := client.values[redisKey]; got != replacementMarker {
+		t.Fatal("stale completion overwrote the replacement owner marker")
+	}
+
+	_, retryErr := svc.GenerateReply(ctx, req)
+	if status.Code(retryErr) != codes.Aborted {
+		t.Fatalf("automatic retry code = %v, want %v (err=%v)", status.Code(retryErr), codes.Aborted, retryErr)
+	}
+	if got := len(mock.generateCalls); got != 1 {
+		t.Fatalf("provider calls after ownership loss and retry = %d, want 1", got)
+	}
+}
+
+func TestIdempotencyStaleOwnerCannotReleaseReplacementAfterExpiry(t *testing.T) {
+	svc, _, mr := newIdemTestService(t)
+	store := svc.idem
+	ctx := context.Background()
+	const tenantID = "tenant:with:delimiter"
+	const key = "eai1_owner-release:test"
+
+	_, state, stale, err := store.Begin(ctx, tenantID, key)
+	if err != nil || state != idemAcquired || stale == nil {
+		t.Fatalf("first Begin = state %v, claim %v, err %v", state, stale, err)
+	}
+	mr.FastForward(idemInFlightTTL)
+	if mr.Exists(stale.redisKey) {
+		t.Fatal("first in-flight marker did not expire")
+	}
+	_, state, replacement, err := store.Begin(ctx, tenantID, key)
+	if err != nil || state != idemAcquired || replacement == nil {
+		t.Fatalf("replacement Begin = state %v, claim %v, err %v", state, replacement, err)
+	}
+	if stale.ownerToken == replacement.ownerToken {
+		t.Fatal("separate acquisitions reused an owner token")
+	}
+
+	store.Release(ctx, stale)
+	got, err := mr.Get(replacement.redisKey)
+	if err != nil {
+		t.Fatalf("replacement marker missing after stale release: %v", err)
+	}
+	if got != replacement.marker() {
+		t.Fatal("stale release changed the replacement owner marker")
+	}
+}
+
+func TestIdempotencyStaleOwnerCannotCompleteOverReplacementAfterExpiry(t *testing.T) {
+	svc, _, mr := newIdemTestService(t)
+	store := svc.idem
+	ctx := context.Background()
+	const tenantID = "tenant:with:delimiter"
+	const key = "eai1_owner-complete:test"
+
+	_, state, stale, err := store.Begin(ctx, tenantID, key)
+	if err != nil || state != idemAcquired || stale == nil {
+		t.Fatalf("first Begin = state %v, claim %v, err %v", state, stale, err)
+	}
+	mr.FastForward(idemInFlightTTL)
+	_, state, replacement, err := store.Begin(ctx, tenantID, key)
+	if err != nil || state != idemAcquired || replacement == nil {
+		t.Fatalf("replacement Begin = state %v, claim %v, err %v", state, replacement, err)
+	}
+
+	err = store.Put(ctx, stale, &pb.GenerateReplyResponse{Text: "stale response"})
+	if err == nil {
+		t.Fatal("stale completion unexpectedly proved ownership")
+	}
+	got, getErr := mr.Get(replacement.redisKey)
+	if getErr != nil {
+		t.Fatalf("replacement marker missing after stale completion: %v", getErr)
+	}
+	if got != replacement.marker() {
+		t.Fatal("stale completion overwrote the replacement owner marker")
+	}
+}
+
+func TestIdempotencyRetentionAndLeaseSafety(t *testing.T) {
+	retention := 72 * time.Hour
+	svc, mock, mr := newIdemTestService(t, retention)
+	deadlineProvider := &deadlineRecordingProvider{mockProvider: mock}
+	svc.openaiProvider = deadlineProvider
+	ctx := tenantCtx("test-tenant")
+	started := time.Now()
+	if _, err := svc.GenerateReply(ctx, &pb.GenerateReplyRequest{UserInput: "hello", IdempotencyKey: "key-retention"}); err != nil {
+		t.Fatalf("GenerateReply failed: %v", err)
+	}
+	if got := mr.TTL(svc.idem.redisKey("test-tenant", "key-retention")); got != retention {
+		t.Fatalf("completed response TTL = %s, want %s", got, retention)
+	}
+	if idemInFlightTTL <= maximumKeyedGenerationDuration {
+		t.Fatalf("in-flight lease %s must exceed maximum keyed generation duration %s", idemInFlightTTL, maximumKeyedGenerationDuration)
+	}
+	if !deadlineProvider.hasDeadline {
+		t.Fatal("keyed provider context has no maximum generation deadline")
+	}
+	if got := deadlineProvider.deadline.Sub(started); got > maximumKeyedGenerationDuration+time.Second || got < maximumKeyedGenerationDuration-time.Second {
+		t.Fatalf("keyed generation deadline = %s from start, want approximately %s", got, maximumKeyedGenerationDuration)
+	}
+}
+
+func TestGenerateReply_ProviderExhaustionIsNotPreDispatchSafe(t *testing.T) {
+	svc, mock, _ := newIdemTestService(t)
+	mock.generateErr = status.Error(codes.ResourceExhausted, "provider exhausted")
+	_, err := svc.GenerateReply(tenantCtx("test-tenant"), &pb.GenerateReplyRequest{UserInput: "hello", IdempotencyKey: "provider-exhausted"})
+	if got := len(mock.generateCalls); got != 1 {
+		t.Fatalf("provider calls = %d, want 1", got)
+	}
+	if reason := errorInfoReason(err); reason == idempotencyUnavailableReason {
+		t.Fatalf("post-dispatch provider failure was incorrectly marked safe: %v", err)
 	}
 }
 

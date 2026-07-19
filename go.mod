@@ -6,9 +6,9 @@ require (
 	github.com/ai8future/chassis-go-addons/pgkit v1.2.10
 	github.com/ai8future/chassis-go-addons/rediskit v1.2.10
 	github.com/ai8future/chassis-go-addons/ssrfcheck v1.2.10
-	github.com/ai8future/chassis-go/v11 v11.3.0
+	github.com/ai8future/chassis-go/v11 v11.3.24
 	github.com/ai8future/markdown_svc/clients/go v0.0.0
-	github.com/ai8future/pricing_db v0.0.0-00010101000000-000000000000
+	github.com/ai8future/pricing_db v0.0.0-20260703044902-275688ca5718
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/anthropics/anthropic-sdk-go v1.19.0
 	github.com/fatih/color v1.18.0
@@ -21,23 +21,11 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.43.0
 	golang.org/x/crypto v0.53.0
 	google.golang.org/genai v1.40.0
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260128011058-8636f8732409
 	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 )
-
-replace github.com/ai8future/chassis-go/v11 => ../../chassis_suite/chassis-go
-
-replace github.com/ai8future/markdown_svc/clients/go => ./markdown_svc/clients/go
-
-// Use shared pricing_db library
-replace github.com/ai8future/pricing_db => ../pricing_db
-
-replace github.com/ai8future/chassis-go-addons/rediskit => ../../chassis_suite/chassis-go-addons/rediskit
-
-replace github.com/ai8future/chassis-go-addons/pgkit => ../../chassis_suite/chassis-go-addons/pgkit
-
-replace github.com/ai8future/chassis-go-addons/ssrfcheck => ../../chassis_suite/chassis-go-addons/ssrfcheck
 
 require (
 	cloud.google.com/go v0.116.0 // indirect
@@ -124,5 +112,6 @@ require (
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260128011058-8636f8732409 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260128011058-8636f8732409 // indirect
 )
+
+replace github.com/ai8future/markdown_svc/clients/go => github.com/ai8future/airborne/markdown_svc/clients/go v0.0.0-20260714021411-96527b95b8b4

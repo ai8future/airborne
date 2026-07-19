@@ -17,8 +17,7 @@ coverage.html
 *.key
 .npmrc
 
-# Local dependency/cache/build output not needed in Docker context
-vendor
+# Vendored modules are the authenticated host boundary; never include dependency credentials.
 node_modules
 dashboard/node_modules
 dashboard/.next

@@ -10,52 +10,24 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ai8future/airborne
-  PRICING_DB_REF: b7cf0ec4e2f5ccae0ee5bb7545a137777e4b2c24
-  CHASSIS_GO_REF: 8601951558c28bb23081af0d5207af7567f607b8
-  CHASSIS_GO_ADDONS_REF: 9bdb354cb37cd4935609444bbec532f5db25e48e
 
 jobs:
   verify-go:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout pricing_db
-        uses: actions/checkout@v4
-        with:
-          repository: ai8future/pricing_db
-          ref: ${{ env.PRICING_DB_REF }}
-          path: pricing_db
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Checkout chassis-go
-        uses: actions/checkout@v4
-        with:
-          repository: ai8future/chassis-go
-          ref: ${{ env.CHASSIS_GO_REF }}
-          path: chassis_suite/chassis-go
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Checkout chassis-go-addons
-        uses: actions/checkout@v4
-        with:
-          repository: ai8future/chassis-go-addons
-          ref: ${{ env.CHASSIS_GO_ADDONS_REF }}
-          path: chassis_suite/chassis-go-addons
-          ssh-key: ${{ secrets.CHASSIS_GO_ADDONS_DEPLOY_KEY }}
-          persist-credentials: false
-      - name: Arrange Go local replacements
-        run: |
-          ln -sfn "$GITHUB_WORKSPACE/pricing_db" "$GITHUB_WORKSPACE/../pricing_db"
-          mkdir -p "$GITHUB_WORKSPACE/../../chassis_suite"
-          ln -sfn "$GITHUB_WORKSPACE/chassis_suite/chassis-go" "$GITHUB_WORKSPACE/../../chassis_suite/chassis-go"
-          ln -sfn "$GITHUB_WORKSPACE/chassis_suite/chassis-go-addons" "$GITHUB_WORKSPACE/../../chassis_suite/chassis-go-addons"
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
+      - name: Prime exact private Go modules
+        env:
+          CHASSIS_GO_ADDONS_DEPLOY_KEY: ${{ secrets.CHASSIS_GO_ADDONS_DEPLOY_KEY }}
+        run: ./scripts/prime-private-go-modules.sh
       - name: Run daemon-free race verification
         run: make test-fast
       - name: Run static analysis
         run: go vet ./...
-
   verify-dashboard:
     runs-on: ubuntu-latest
     steps:
@@ -95,38 +67,14 @@ jobs:
       source_image: ${{ steps.package.outputs.source_image }}
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout pricing_db
-        uses: actions/checkout@v4
-        with:
-          repository: ai8future/pricing_db
-          ref: ${{ env.PRICING_DB_REF }}
-          path: node_modules/airborne-ci-deps/pricing_db
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Checkout chassis-go
-        uses: actions/checkout@v4
-        with:
-          repository: ai8future/chassis-go
-          ref: ${{ env.CHASSIS_GO_REF }}
-          path: node_modules/airborne-ci-deps/chassis-go
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Checkout chassis-go-addons
-        uses: actions/checkout@v4
-        with:
-          repository: ai8future/chassis-go-addons
-          ref: ${{ env.CHASSIS_GO_ADDONS_REF }}
-          path: node_modules/airborne-ci-deps/chassis-go-addons
-          ssh-key: ${{ secrets.CHASSIS_GO_ADDONS_DEPLOY_KEY }}
-          persist-credentials: false
-      - name: Arrange Go local replacements
-        run: |
-          ln -sfn "$GITHUB_WORKSPACE/node_modules/airborne-ci-deps/pricing_db" "$GITHUB_WORKSPACE/../pricing_db"
-          mkdir -p "$GITHUB_WORKSPACE/../../chassis_suite"
-          ln -sfn "$GITHUB_WORKSPACE/node_modules/airborne-ci-deps/chassis-go" "$GITHUB_WORKSPACE/../../chassis_suite/chassis-go"
-          ln -sfn "$GITHUB_WORKSPACE/node_modules/airborne-ci-deps/chassis-go-addons" "$GITHUB_WORKSPACE/../../chassis_suite/chassis-go-addons"
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
+      - name: Prime exact private Go modules
+        env:
+          CHASSIS_GO_ADDONS_DEPLOY_KEY: ${{ secrets.CHASSIS_GO_ADDONS_DEPLOY_KEY }}
+        run: ./scripts/prime-private-go-modules.sh
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -180,7 +128,6 @@ jobs:
           rm -rf e2e/image-artifact
           make clean
           ./scripts/assert-verification-clean.sh
-
   publish:
     if: github.event_name != 'pull_request'
     needs: [verify-go, verify-dashboard, verify-e2e]

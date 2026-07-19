@@ -4,20 +4,11 @@
 # Build stage
 FROM golang:1.26.5-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS builder
 
-# Install build dependencies
-RUN apk add --no-cache git ca-certificates tzdata
-
 WORKDIR /build
 
-# Copy go mod files and local replace targets for layer caching
+# Copy the host-authenticated, checksum-verified module boundary first
 COPY go.mod go.sum ./
-COPY markdown_svc/ ./markdown_svc/
-# Local replace targets are staged into the Docker build context by Makefile/CI
-# and copied to the absolute paths that resolve from /build/../../...
-COPY pricing_db/ /pricing_db/
-COPY chassis_suite/chassis-go/ /chassis_suite/chassis-go/
-COPY chassis_suite/chassis-go-addons/ /chassis_suite/chassis-go-addons/
-RUN go mod download
+COPY vendor/ ./vendor/
 
 # Copy source code
 COPY . .
@@ -28,7 +19,7 @@ ARG GIT_COMMIT=unknown
 ARG BUILD_TIME=unknown
 
 # Build the binary
-RUN CGO_ENABLED=0 GOOS=linux go build \
+RUN CGO_ENABLED=0 GOOS=linux go build -mod=vendor \
     -ldflags "-X main.version=${VERSION} -X main.GitCommit=${GIT_COMMIT} -X main.BuildTime=${BUILD_TIME}" \
     -o airborne ./cmd/airborne
 

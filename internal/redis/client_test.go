@@ -131,6 +131,48 @@ func TestClientExtendedCommands(t *testing.T) {
 	}
 }
 
+func TestClientCompareAndSetAndDeleteAreOwnerSafe(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client, err := NewClient(Config{Addr: mr.Addr()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	ctx := context.Background()
+
+	if err := client.Set(ctx, "lease", "owner-two", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := client.CompareAndSet(ctx, "lease", "owner-one", []byte("stale-completion"), 2*time.Hour); err != nil || changed {
+		t.Fatalf("stale CompareAndSet = %v, %v; want false, nil", changed, err)
+	}
+	if got, err := client.Get(ctx, "lease"); err != nil || got != "owner-two" {
+		t.Fatalf("value after stale CompareAndSet = %q, %v", got, err)
+	}
+	if deleted, err := client.CompareAndDelete(ctx, "lease", "owner-one"); err != nil || deleted {
+		t.Fatalf("stale CompareAndDelete = %v, %v; want false, nil", deleted, err)
+	}
+	if got, err := client.Get(ctx, "lease"); err != nil || got != "owner-two" {
+		t.Fatalf("value after stale CompareAndDelete = %q, %v", got, err)
+	}
+
+	if changed, err := client.CompareAndSet(ctx, "lease", "owner-two", []byte("completed"), 2*time.Hour); err != nil || !changed {
+		t.Fatalf("owned CompareAndSet = %v, %v; want true, nil", changed, err)
+	}
+	if got, err := client.Get(ctx, "lease"); err != nil || got != "completed" {
+		t.Fatalf("value after owned CompareAndSet = %q, %v", got, err)
+	}
+	if got := mr.TTL("lease"); got != 2*time.Hour {
+		t.Fatalf("completed TTL = %v, want %v", got, 2*time.Hour)
+	}
+	if deleted, err := client.CompareAndDelete(ctx, "lease", "completed"); err != nil || !deleted {
+		t.Fatalf("owned CompareAndDelete = %v, %v; want true, nil", deleted, err)
+	}
+	if mr.Exists("lease") {
+		t.Fatal("owned CompareAndDelete retained the key")
+	}
+}
+
 func TestIsNilRecognizesRedisNotFoundErrors(t *testing.T) {
 	if !IsNil(rediskit.ErrNotFound) {
 		t.Fatal("expected rediskit.ErrNotFound to be treated as redis nil")

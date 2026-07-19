@@ -396,6 +396,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 	status := "healthy"
 	dbStatus := "not_configured"
+	redisStatus := "not_configured"
 
 	if s.dbClient != nil {
 		// Check database connectivity
@@ -410,11 +411,23 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 			dbStatus = "healthy"
 		}
 	}
+	if s.redisClient != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		if err := s.redisClient.Ping(ctx); err != nil {
+			redisStatus = "unhealthy"
+			status = "degraded"
+		} else {
+			redisStatus = "healthy"
+		}
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":   status,
 		"database": dbStatus,
+		"redis":    redisStatus,
 	})
 }
 

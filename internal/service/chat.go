@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"html"
 	"log/slog"
@@ -63,14 +64,19 @@ type ChatService struct {
 // The ragService parameter is optional - pass nil to disable self-hosted RAG.
 // The imageGen parameter is optional - pass nil to disable image generation.
 // The dbClient parameter is optional - pass nil to disable message persistence.
-// The redisClient parameter is optional - pass nil to disable idempotent
-// GenerateReply replay (requests then always regenerate).
-func NewChatService(rateLimiter *auth.RateLimiter, ragService *rag.Service, imageGen *imagegen.Client, dbClient *db.Client, redisClient *redis.Client) *ChatService {
+// The redisClient parameter is optional for unkeyed requests. Keyed
+// GenerateReply requests fail closed when it is nil. completedRetention may
+// override the 48h default and is validated by the global config loader.
+func NewChatService(rateLimiter *auth.RateLimiter, ragService *rag.Service, imageGen *imagegen.Client, dbClient *db.Client, redisClient *redis.Client, completedRetention ...time.Duration) *ChatService {
 	// Persisting conversations without an idempotency store is the exact gap
 	// addendum A10 closes for email_ai_svc — make the degrade loud, once, at
 	// startup, instead of silently regenerating duplicates.
 	if dbClient != nil && redisClient == nil {
-		slog.Warn("GenerateReply idempotency disabled: no Redis client (auth_mode != redis); duplicate requests will regenerate")
+		slog.Warn("GenerateReply idempotency unavailable: no Redis client; keyed requests will fail closed")
+	}
+	retention := defaultIdemCompletedRetention
+	if len(completedRetention) > 0 && completedRetention[0] > 0 {
+		retention = completedRetention[0]
 	}
 	return &ChatService{
 		openaiProvider:    openai.NewClient(),
@@ -81,7 +87,7 @@ func NewChatService(rateLimiter *auth.RateLimiter, ragService *rag.Service, imag
 		imageGen:          imageGen,
 		dbClient:          dbClient,
 		configBuilder:     config.NewBuilder(),
-		idem:              newIdempotencyStore(redisClient),
+		idem:              newIdempotencyStore(redisClient, retention),
 	}
 }
 
@@ -288,8 +294,9 @@ func conversationHistoryContents(msgs []*pb.Message) []string {
 // idempotency key (first-class field or metadata["idempotency_key"]), a
 // duplicate call replays the byte-identical prior response instead of
 // regenerating (addendum A10). The check runs BEFORE provider dispatch; only
-// successful responses are cached (24h); provider errors release the in-flight
-// marker so retries regenerate; an unavailable Redis degrades to uncached.
+// successful responses are cached before success is returned; provider errors
+// release the in-flight marker so retries regenerate; storage uncertainty
+// fails closed before dispatch or becomes a post-dispatch quarantine error.
 func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRequest) (*pb.GenerateReplyResponse, error) {
 	// Check permission
 	if err := auth.RequirePermission(ctx, auth.PermissionChat); err != nil {
@@ -297,35 +304,53 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 	}
 
 	key := idempotencyKeyFromRequest(req)
-	if key == "" || s.idem == nil {
+	if key == "" {
 		return s.generateReply(ctx, req)
+	}
+	if err := validateIdempotencyKey(key); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if s.idem == nil {
+		slog.Warn("rejecting keyed GenerateReply without idempotency storage")
+		return nil, idempotencyUnavailableError()
 	}
 
 	tenantID := auth.TenantIDFromContext(ctx)
-	cached, state := s.idem.Begin(ctx, tenantID, key)
+	cached, state, claim, beginErr := s.idem.Begin(ctx, tenantID, key)
+	if beginErr != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, status.FromContextError(ctxErr).Err()
+		}
+		if stderrors.Is(beginErr, errIdempotencyOwnerTokenGeneration) {
+			slog.Error("rejecting keyed GenerateReply because ownership initialization failed", "error", beginErr, "tenant_id", tenantID)
+			return nil, status.Error(codes.Internal, "failed to initialize idempotency ownership")
+		}
+		slog.Warn("rejecting keyed GenerateReply because idempotency begin failed", "error", beginErr, "tenant_id", tenantID)
+		return nil, idempotencyUnavailableError()
+	}
 	switch state {
 	case idemHit:
-		slog.Info("replaying cached idempotent response",
-			"idempotency_key", key,
-			"tenant_id", tenantID,
-		)
+		slog.Info("replaying cached idempotent response", "tenant_id", tenantID)
 		return cached, nil
 	case idemInFlight:
 		// Mirror the admin path's 409 Conflict: a duplicate arriving while the
 		// first is still generating is rejected rather than double-generating.
 		return nil, status.Error(codes.Aborted, "request with this idempotency_key is already in progress")
-	case idemBypass:
-		return s.generateReply(ctx, req) // store unavailable: degrade to uncached
 	}
 
 	// idemAcquired: we own the in-flight marker — cache on success, release on
 	// any error (validation or provider failures are never cached).
-	resp, err := s.generateReply(ctx, req)
+	generationCtx, cancel := context.WithTimeout(ctx, maximumKeyedGenerationDuration)
+	defer cancel()
+	resp, err := s.generateReply(generationCtx, req)
 	if err != nil {
-		s.idem.Release(ctx, tenantID, key)
+		s.idem.Release(ctx, claim)
 		return nil, err
 	}
-	s.idem.Put(ctx, tenantID, key, resp)
+	if err := s.idem.Put(ctx, claim, resp); err != nil {
+		slog.Error("idempotency completion is ambiguous; retaining in-flight marker", "error", err, "tenant_id", tenantID)
+		return nil, idempotencyCompletionAmbiguousError()
+	}
 	return resp, nil
 }
 

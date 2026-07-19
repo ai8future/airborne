@@ -210,6 +210,7 @@ Key environment variables:
 | `DATABASE_ENABLED` | `false` | Enable PostgreSQL persistence |
 | `DATABASE_URL` | — | PostgreSQL connection string |
 | `REDIS_ADDR` | — | Redis address for auth/rate limiting |
+| `IDEMPOTENCY_COMPLETED_RESPONSE_RETENTION` | `48h` | Completed keyed `GenerateReply` replay retention; values below 48h are rejected |
 | `RAG_ENABLED` | `false` | Enable RAG (requires Ollama + Qdrant) |
 | `ADMIN_ENABLED` | `false` | Enable HTTP admin server |
 | `ADMIN_PORT` | `8473` | HTTP admin port |
@@ -218,6 +219,42 @@ Key environment variables:
 | `DASHBOARD_ADMIN_TOKEN` | `AIRBORNE_ADMIN_TOKEN` | Token accepted by the Next.js dashboard API routes; set explicitly when dashboard auth should differ from backend admin auth |
 
 Provider keys: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `GROK_API_KEY`, `MISTRAL_API_KEY`, etc.
+
+#### Keyed GenerateReply deployment contract
+
+`GenerateReplyRequest.idempotency_key` is a fail-closed contract for callers such as
+`email_ai_svc`, not a best-effort cache hint. Redis initialization follows the configured
+`redis.addr` independently of authentication mode: a reachable Redis enables keyed idempotency
+under either static or Redis auth. Static auth deliberately retains an optional unkeyed startup
+path when Redis is missing or unavailable, but keyed requests then return gRPC `Unavailable` with
+an `ErrorInfo` reason of `idempotency_unavailable` before provider dispatch. Redis auth still
+fails startup when Redis is missing or unavailable.
+
+When present, the key must be 1–255 bytes of visible ASCII (`!` through `~`), which includes
+`email_ai_svc`'s `eai1_...` keys. Invalid keys return `InvalidArgument` before Redis or provider
+dispatch, and raw caller keys are not logged. Redis uses a fixed-size versioned hash over
+length-prefixed tenant and key components, so delimiter-bearing values cannot collide. Each
+acquisition also has a cryptographically random owner token; completion and release use atomic
+compare-and-set/delete Lua operations, so a stale request cannot modify a replacement marker.
+
+Production Redis for keyed requests must retain completed entries for at least 48 hours, have
+enough memory for that window, use a non-evicting policy for idempotency keys, and enable the
+deployment's required Redis persistence/replication guarantees. Set
+`idempotency.completed_response_retention` in YAML or
+`IDEMPOTENCY_COMPLETED_RESPONSE_RETENTION`; Airborne rejects shorter durations. Probe Redis through
+the authenticated `AdminService.Ready` response (or the admin `/admin/healthz` dependency check),
+not basic liveness alone.
+
+Callers must inspect `google.rpc.ErrorInfo` rather than treating every status with the same gRPC
+code as retry-safe:
+
+- `Unavailable` + `idempotency_unavailable`: proven pre-dispatch; retry only after storage recovers.
+- `DataLoss` + `idempotency_completion_ambiguous`: provider generation completed but caching did
+  not, including when marker ownership can no longer be proven; quarantine the key and do not
+  automatically regenerate.
+- `ResourceExhausted` + `auth_rate_limit_pre_dispatch`: rejected by the auth interceptor before
+  provider dispatch. Generic provider exhaustion does not carry this detail and is not safe to
+  classify as pre-dispatch.
 
 ### Frozen Config
 
@@ -248,11 +285,14 @@ go test -mod=mod -count=1 ./internal/db/
 This is currently the **only** verification that tenant data is actually isolated by
 Row-Level Security — treat a failure here as a release blocker.
 
-**CI/build note:** the Docker workflow and `make docker-build` stage pinned snapshots of every
-local `replace` target (`pricing_db`, `chassis-go`, and `chassis-go-addons`) into the Docker build
-context before image builds, then copy them to the absolute paths that satisfy the `go.mod`
-replacements inside the builder image. Keep those context-staging refs aligned with any future
-`replace` directive or dependency release.
+**CI/build note:** release builds resolve the exact `chassis-go`, addon, and `pricing_db` versions
+recorded in `go.mod` with `GOWORK=off`; they do not depend on workstation-relative replacements.
+The legacy markdown import path is mapped to the audited nested client published from this
+repository at its pinned pseudo-version. CI exposes the addon deploy key only to a fail-closed
+module-cache priming step, then verifies and vendors without credentials; Go action caching is
+disabled so private dependency source cannot enter a persistent Actions cache. The production
+Docker build consumes that vendored boundary and receives no network credentials. Refresh
+`go.sum` and `vendor/` whenever those pins change.
 
 ## Admin Dashboard
 
@@ -365,4 +405,4 @@ deploy/               Chassis deploy metadata
 | Tracing/Metrics | OpenTelemetry (OTLP export) |
 | Secrets | Doppler |
 | Proto Tooling | buf |
-| Shared Library | chassis-go/v11 v11.3.0 + chassis-go-addons v1.2.10 |
+| Shared Library | chassis-go/v11 v11.3.24 + chassis-go-addons v1.2.10 |

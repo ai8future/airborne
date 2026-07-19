@@ -18,6 +18,17 @@ services:
       - ../migrations/001_baseline.sql:/docker-entrypoint-initdb.d/001_baseline.sql:ro
     labels: ["com.ai8future.airborne.e2e=true"]
 
+  redis:
+    image: ${REDIS_E2E_IMAGE:?set a digest-pinned Redis image}
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    tmpfs: [/data]
+    labels: ["com.ai8future.airborne.e2e=true"]
+
   provider-stub:
     build: ./stub
     environment:
@@ -52,6 +63,7 @@ services:
       - ${AIRBORNE_E2E_FROZEN_CONFIG:?set the generated frozen config path}:/e2e/frozen.json:ro
     depends_on:
       postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
       provider-stub: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "/app/airborne", "--health-check"]

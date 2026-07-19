@@ -15,6 +15,11 @@ redis:
   password: "${REDIS_PASSWORD}"
   db: 0
 
+# Completed keyed GenerateReply responses must remain replayable for at least
+# 48 hours. Shorter values are rejected during configuration validation.
+idempotency:
+  completed_response_retention: 48h
+
 # PostgreSQL database for message persistence and activity feed
 # Required for admin dashboard activity monitoring
 database:

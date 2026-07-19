@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.10.9] - 2026-07-19
+
+### Fixed — Fail-closed email_ai_svc idempotency/auth prerequisites
+- Made keyed `GenerateReply` fail closed before provider dispatch whenever idempotency storage is absent or uncertain, and removed the uncached keyed-success bypass.
+- Added a bounded visible-ASCII key contract and a fixed-size versioned hash namespace over length-prefixed tenant/key components, preventing delimiter collisions without logging raw keys.
+- Gave every in-flight acquisition a cryptographically random owner token and made completion/release atomic compare operations; stale owners cannot overwrite or delete replacements, and unprovable completion returns typed `idempotency_completion_ambiguous` without exposing success.
+- Added validated, configurable completed-response retention with a 48-hour minimum and enforced an 18-minute maximum keyed-generation duration beneath the 20-minute in-flight lease.
+- Added a typed pre-dispatch auth rate-limit detail plus focused idempotency, replay, retention/lease, auth, and protobuf contract regressions without changing or regenerating the protobuf API.
+- Decoupled configured Redis initialization from authentication mode so static auth gains keyed idempotency when Redis is reachable, deliberately retains unkeyed startup when it is not, and keeps keyed requests fail-closed; Redis auth still fails startup without Redis.
+- Added Redis lifecycle cleanup and consistent gRPC/admin dependency health, including focused reachable, unavailable, required-startup, readiness, and connection-close regressions.
+- Added an official digest-pinned, healthy, tmpfs-backed Redis to the isolated E2E topology and proved stable keyed replay is byte-identical without redispatching the deterministic provider.
+- Pinned the release to Chassis 11.3.24, addon 1.2.10 modules, the audited pricing database and nested markdown client revisions, and removed workstation-relative module replacements from the release manifest.
+- Isolated the addon deploy key to fail-closed CI cache priming, disabled persistent Go caches for private source, and made credential-free verified vendoring the production Docker build boundary.
+
+Agent: Codex:gpt-5.6-sol-high
+
 ## [1.10.8] - 2026-07-14
 
 ### Fixed — Non-root CI frozen-config readability
