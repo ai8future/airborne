@@ -1,53 +1,219 @@
-name: Build and Push Docker Image
+name: Verify and Publish Docker Image
 
 on:
+  pull_request:
   push:
     branches: [main, master]
-    tags: ['v*']
+    tags: ["v*"]
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ai8future/airborne
+  PRICING_DB_REF: b7cf0ec4e2f5ccae0ee5bb7545a137777e4b2c24
+  CHASSIS_GO_REF: 8601951558c28bb23081af0d5207af7567f607b8
+  CHASSIS_GO_ADDONS_REF: 9bdb354cb37cd4935609444bbec532f5db25e48e
 
 jobs:
-  build:
+  verify-go:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Checkout pricing_db
         uses: actions/checkout@v4
         with:
           repository: ai8future/pricing_db
+          ref: ${{ env.PRICING_DB_REF }}
           path: pricing_db
           token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Read VERSION file
-        id: version
+      - name: Checkout chassis-go
+        uses: actions/checkout@v4
+        with:
+          repository: ai8future/chassis-go
+          ref: ${{ env.CHASSIS_GO_REF }}
+          path: chassis_suite/chassis-go
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout chassis-go-addons
+        uses: actions/checkout@v4
+        with:
+          repository: ai8future/chassis-go-addons
+          ref: ${{ env.CHASSIS_GO_ADDONS_REF }}
+          path: chassis_suite/chassis-go-addons
+          ssh-key: ${{ secrets.CHASSIS_GO_ADDONS_DEPLOY_KEY }}
+          persist-credentials: false
+      - name: Arrange Go local replacements
         run: |
-          if [ -f VERSION ]; then
-            echo "version=$(cat VERSION)" >> $GITHUB_OUTPUT
-          else
-            echo "version=latest" >> $GITHUB_OUTPUT
-          fi
+          ln -sfn "$GITHUB_WORKSPACE/pricing_db" "$GITHUB_WORKSPACE/../pricing_db"
+          mkdir -p "$GITHUB_WORKSPACE/../../chassis_suite"
+          ln -sfn "$GITHUB_WORKSPACE/chassis_suite/chassis-go" "$GITHUB_WORKSPACE/../../chassis_suite/chassis-go"
+          ln -sfn "$GITHUB_WORKSPACE/chassis_suite/chassis-go-addons" "$GITHUB_WORKSPACE/../../chassis_suite/chassis-go-addons"
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run daemon-free race verification
+        run: make test-fast
+      - name: Run static analysis
+        run: go vet ./...
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+  verify-dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - name: Verify dashboard
+        working-directory: dashboard
+        run: |
+          npm ci
+          CI=1 npm test
+          npm run test:coverage
+          npm run lint
+          npm run build
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+      - name: Upload dashboard verification artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-verification-artifacts-${{ github.sha }}
+          path: |
+            dashboard/coverage/
+            dashboard/playwright-report/
+            dashboard/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
-      - name: Log in to Container Registry
+  verify-e2e:
+    runs-on: ubuntu-latest
+    outputs:
+      archive_sha256: ${{ steps.package.outputs.archive_sha256 }}
+      image_id: ${{ steps.package.outputs.image_id }}
+      source_image: ${{ steps.package.outputs.source_image }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout pricing_db
+        uses: actions/checkout@v4
+        with:
+          repository: ai8future/pricing_db
+          ref: ${{ env.PRICING_DB_REF }}
+          path: node_modules/airborne-ci-deps/pricing_db
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout chassis-go
+        uses: actions/checkout@v4
+        with:
+          repository: ai8future/chassis-go
+          ref: ${{ env.CHASSIS_GO_REF }}
+          path: node_modules/airborne-ci-deps/chassis-go
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout chassis-go-addons
+        uses: actions/checkout@v4
+        with:
+          repository: ai8future/chassis-go-addons
+          ref: ${{ env.CHASSIS_GO_ADDONS_REF }}
+          path: node_modules/airborne-ci-deps/chassis-go-addons
+          ssh-key: ${{ secrets.CHASSIS_GO_ADDONS_DEPLOY_KEY }}
+          persist-credentials: false
+      - name: Arrange Go local replacements
+        run: |
+          ln -sfn "$GITHUB_WORKSPACE/node_modules/airborne-ci-deps/pricing_db" "$GITHUB_WORKSPACE/../pricing_db"
+          mkdir -p "$GITHUB_WORKSPACE/../../chassis_suite"
+          ln -sfn "$GITHUB_WORKSPACE/node_modules/airborne-ci-deps/chassis-go" "$GITHUB_WORKSPACE/../../chassis_suite/chassis-go"
+          ln -sfn "$GITHUB_WORKSPACE/node_modules/airborne-ci-deps/chassis-go-addons" "$GITHUB_WORKSPACE/../../chassis_suite/chassis-go-addons"
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - name: Install browser E2E dependencies
+        working-directory: dashboard
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Run required DB integration and coverage
+        run: make test-integration test-coverage
+      - name: Build and exercise the exact production image
+        env:
+          TESTED_IMAGE: airborne:e2e-${{ github.sha }}
+        run: |
+          make e2e E2E_IMAGE="$TESTED_IMAGE"
+      - name: Package the tested image without rebuilding
+        id: package
+        env:
+          TESTED_IMAGE: airborne:e2e-${{ github.sha }}
+        run: |
+          mkdir -p e2e/image-artifact
+          docker image inspect "$TESTED_IMAGE" >/dev/null
+          docker save --output e2e/image-artifact/tested-image.tar "$TESTED_IMAGE"
+          archive_sha256=$(sha256sum e2e/image-artifact/tested-image.tar | awk '{print $1}')
+          image_id=$(docker image inspect --format '{{.Id}}' "$TESTED_IMAGE")
+          echo "archive_sha256=$archive_sha256" >> "$GITHUB_OUTPUT"
+          echo "image_id=$image_id" >> "$GITHUB_OUTPUT"
+          echo "source_image=$TESTED_IMAGE" >> "$GITHUB_OUTPUT"
+      - name: Upload exact tested image
+        uses: actions/upload-artifact@v4
+        with:
+          name: tested-image-${{ github.sha }}
+          path: e2e/image-artifact/tested-image.tar
+          if-no-files-found: error
+          retention-days: 1
+      - name: Upload coverage and E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-artifacts-${{ github.sha }}
+          path: |
+            coverage.out
+            testdata/go-package-evidence.json
+            e2e/artifacts/
+          if-no-files-found: ignore
+      - name: Reject dirty checkout and residual E2E containers
+        if: always()
+        run: |
+          rm -rf e2e/image-artifact
+          make clean
+          ./scripts/assert-verification-clean.sh
+
+  publish:
+    if: github.event_name != 'pull_request'
+    needs: [verify-go, verify-dashboard, verify-e2e]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read version
+        id: version
+        run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          name: tested-image-${{ github.sha }}
+          path: e2e/image-artifact
+      - name: Verify and load the exact tested image
+        env:
+          EXPECTED_ARCHIVE_SHA256: ${{ needs['verify-e2e'].outputs.archive_sha256 }}
+          EXPECTED_IMAGE_ID: ${{ needs['verify-e2e'].outputs.image_id }}
+          SOURCE_IMAGE: ${{ needs['verify-e2e'].outputs.source_image }}
+        run: |
+          echo "$EXPECTED_ARCHIVE_SHA256  e2e/image-artifact/tested-image.tar" | sha256sum --check
+          docker load --input e2e/image-artifact/tested-image.tar
+          test "$(docker image inspect --format '{{.Id}}' "$SOURCE_IMAGE")" = "$EXPECTED_IMAGE_ID"
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata for Docker
+      - name: Extract publication tags
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -57,13 +223,16 @@ jobs:
             type=raw,value=${{ steps.version.outputs.version }},enable={{is_default_branch}}
             type=sha,prefix=
             type=ref,event=tag
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/amd64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          no-cache: true
+      - name: Publish the already-tested image
+        env:
+          SOURCE_IMAGE: ${{ needs['verify-e2e'].outputs.source_image }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          while IFS= read -r tag; do
+            test -n "$tag" || continue
+            docker tag "$SOURCE_IMAGE" "$tag"
+            docker push "$tag"
+          done <<< "$TAGS"
+          first_tag=$(printf '%s\n' "$TAGS" | sed -n '1p')
+          digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "$first_tag")
+          echo "Published tested image: $digest" >> "$GITHUB_STEP_SUMMARY"

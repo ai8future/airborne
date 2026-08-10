@@ -1,10 +1,26 @@
 package config
 
 import (
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
+
+	chassis "github.com/ai8future/chassis-go/v11"
+	"github.com/ai8future/chassis-go/v11/call"
 )
+
+type configRoundTrip func(*http.Request) (*http.Response, error)
+
+func (f configRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestMain(m *testing.M) {
+	chassis.RequireMajor(11)
+	os.Exit(m.Run())
+}
 
 func TestLoad_DefaultValues(t *testing.T) {
 	// Point to non-existent config to use defaults
@@ -35,6 +51,9 @@ func TestLoad_DefaultValues(t *testing.T) {
 	}
 	if cfg.Redis.DB != 0 {
 		t.Errorf("expected default Redis.DB 0, got %d", cfg.Redis.DB)
+	}
+	if cfg.Idempotency.CompletedResponseRetention != 48*time.Hour {
+		t.Errorf("expected default idempotency retention 48h, got %s", cfg.Idempotency.CompletedResponseRetention)
 	}
 
 	// Logging defaults
@@ -450,6 +469,7 @@ func TestLoad_MultipleEnvOverrides(t *testing.T) {
 	t.Setenv("REDIS_PASSWORD", "mypassword")
 	t.Setenv("REDIS_DB", "3")
 	t.Setenv("AIRBORNE_ADMIN_TOKEN", "supersecret")
+	t.Setenv("ADMIN_ALLOWED_ORIGINS", "https://dashboard.example.com, https://ops.example.com ")
 	t.Setenv("AIRBORNE_LOG_LEVEL", "error")
 	t.Setenv("AIRBORNE_LOG_FORMAT", "text")
 
@@ -476,11 +496,34 @@ func TestLoad_MultipleEnvOverrides(t *testing.T) {
 	if cfg.Auth.AdminToken != "supersecret" {
 		t.Errorf("expected Auth.AdminToken supersecret, got %s", cfg.Auth.AdminToken)
 	}
+	if len(cfg.Admin.AllowedOrigins) != 2 ||
+		cfg.Admin.AllowedOrigins[0] != "https://dashboard.example.com" ||
+		cfg.Admin.AllowedOrigins[1] != "https://ops.example.com" {
+		t.Errorf("expected Admin.AllowedOrigins env override, got %#v", cfg.Admin.AllowedOrigins)
+	}
 	if cfg.Logging.Level != "error" {
 		t.Errorf("expected Logging.Level error, got %s", cfg.Logging.Level)
 	}
 	if cfg.Logging.Format != "text" {
 		t.Errorf("expected Logging.Format text, got %s", cfg.Logging.Format)
+	}
+}
+
+func TestLoad_AdminAllowedOriginsRejectsWildcard(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte(`
+admin:
+  allowed_origins:
+    - "*"
+`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	t.Setenv("AIRBORNE_CONFIG", cfgPath)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected wildcard admin origin to be rejected")
 	}
 }
 
@@ -497,5 +540,124 @@ func TestLoad_GRPCPortEnvOverride_InvalidValue(t *testing.T) {
 	// Should keep default when invalid
 	if cfg.Server.GRPCPort != DefaultGRPCPort {
 		t.Errorf("expected default port DefaultGRPCPort for invalid env, got %d", cfg.Server.GRPCPort)
+	}
+}
+
+func TestLoadFrozen(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "frozen.json")
+	if err := os.WriteFile(path, []byte(`{"global_config":{"server":{"GRPCPort":9123,"Host":"127.0.0.1"},"tls":{"enabled":false},"admin":{"enabled":false,"port":8473},"auth":{},"idempotency":{"CompletedResponseRetention":172800000000000},"logging":{}},"frozen_at":"2026-01-01T00:00:00Z"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadFrozen(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Server.GRPCPort != 9123 {
+		t.Fatalf("grpc port = %d", cfg.Server.GRPCPort)
+	}
+	if _, err := LoadFrozen(filepath.Join(dir, "missing.json")); err == nil {
+		t.Fatal("missing frozen config should fail")
+	}
+	if err := os.WriteFile(path, []byte(`not-json`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadFrozen(path); err == nil {
+		t.Fatal("invalid frozen config should fail")
+	}
+}
+
+func TestLoad_IdempotencyRetentionConfigAndValidation(t *testing.T) {
+	t.Run("yaml duration", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "config.yaml")
+		if err := os.WriteFile(path, []byte("idempotency:\n  completed_response_retention: 72h\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("AIRBORNE_CONFIG", path)
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Idempotency.CompletedResponseRetention != 72*time.Hour {
+			t.Fatalf("retention = %s, want 72h", cfg.Idempotency.CompletedResponseRetention)
+		}
+	})
+
+	t.Run("environment override", func(t *testing.T) {
+		dir := t.TempDir()
+		t.Setenv("AIRBORNE_CONFIG", filepath.Join(dir, "missing.yaml"))
+		t.Setenv("IDEMPOTENCY_COMPLETED_RESPONSE_RETENTION", "96h")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Idempotency.CompletedResponseRetention != 96*time.Hour {
+			t.Fatalf("retention = %s, want 96h", cfg.Idempotency.CompletedResponseRetention)
+		}
+	})
+
+	for _, value := range []string{"47h59m", "not-a-duration"} {
+		t.Run("reject_"+value, func(t *testing.T) {
+			dir := t.TempDir()
+			t.Setenv("AIRBORNE_CONFIG", filepath.Join(dir, "missing.yaml"))
+			t.Setenv("IDEMPOTENCY_COMPLETED_RESPONSE_RETENTION", value)
+			if _, err := Load(); err == nil {
+				t.Fatalf("expected retention %q to be rejected", value)
+			}
+		})
+	}
+}
+
+func TestEnvironmentExpansionHelpers(t *testing.T) {
+	t.Setenv("CONFIG_TEST_VALUE", "expanded")
+	t.Setenv("CONFIG_TEST_CSV", " one, two ,,three ")
+	if got := expandEnv("prefix-${CONFIG_TEST_VALUE}-$CONFIG_TEST_VALUE"); got != "prefix-expanded-expanded" {
+		t.Fatalf("expandEnv() = %q", got)
+	}
+	if got := expandEnv("ENV=CONFIG_TEST_VALUE"); got != "expanded" {
+		t.Fatalf("ENV= expansion = %q", got)
+	}
+	values := splitCSVEnv("CONFIG_TEST_CSV")
+	if len(values) != 3 || values[0] != "one" || values[2] != "three" {
+		t.Fatalf("splitCSVEnv() = %#v", values)
+	}
+}
+
+func TestKafkakitConfigConversion(t *testing.T) {
+	cfg := KafkakitConfig{BootstrapServers: "broker:9092", SchemaRegistryURL: "http://schema", TenantID: "tenant", Source: "source"}
+	got := cfg.ToKafkakit()
+	if got.BootstrapServers != cfg.BootstrapServers || got.SchemaRegistryURL != cfg.SchemaRegistryURL || got.TenantID != cfg.TenantID || got.Source != cfg.Source {
+		t.Fatalf("ToKafkakit() = %#v", got)
+	}
+}
+
+func TestFetchDopplerSecretSuccessAndFailures(t *testing.T) {
+	t.Setenv("DOPPLER_TOKEN", "token")
+	t.Setenv("DOPPLER_CONFIG", "test")
+	original := dopplerClientFactory
+	t.Cleanup(func() { dopplerClientFactory = original })
+	dopplerClientFactory = func() *call.Client {
+		return call.New(call.WithHTTPClient(&http.Client{Transport: configRoundTrip(func(r *http.Request) (*http.Response, error) {
+			if r.URL.Query().Get("project") != "project" || r.URL.Query().Get("config") != "test" {
+				t.Error("unexpected Doppler query")
+			}
+			return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"secrets":{"NAME":{"raw":"value"}}}`)), Request: r}, nil
+		})}))
+	}
+	if got := fetchDopplerSecret("project", "NAME"); got != "value" {
+		t.Fatalf("secret = %q", got)
+	}
+	if got := fetchDopplerSecret("project", "MISSING"); got != "" {
+		t.Fatalf("missing secret = %q", got)
+	}
+}
+
+func TestConfigValidationRejectsInvalidPortsAndOrigins(t *testing.T) {
+	if err := (&Config{}).validate(); err == nil {
+		t.Fatal("zero port config should fail validation")
+	}
+	if err := validateAdminAllowedOrigins([]string{"https://admin.example.com", "http://localhost:3000"}); err != nil {
+		t.Fatal(err)
 	}
 }

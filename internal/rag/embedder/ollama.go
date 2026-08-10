@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/ai8future/airborne/internal/validation"
 	"github.com/ai8future/chassis-go/v11/call"
 )
 
@@ -20,6 +22,9 @@ type OllamaEmbedder struct {
 	client     *call.Client
 }
 
+const maxOllamaErrorBodyBytes = 64 * 1024
+const defaultOllamaTimeout = 120 * time.Second
+
 // OllamaConfig configures the Ollama embedder.
 type OllamaConfig struct {
 	// BaseURL is the Ollama API base URL (default: http://localhost:11434).
@@ -28,17 +33,17 @@ type OllamaConfig struct {
 	// Model is the embedding model to use (default: nomic-embed-text).
 	Model string
 
-	// Timeout is the HTTP request timeout (default: 30s).
+	// Timeout is the HTTP request timeout (default: 120s).
 	Timeout time.Duration
 }
 
 // modelDimensions maps known models to their embedding dimensions.
 var modelDimensions = map[string]int{
-	"nomic-embed-text":    768,
-	"mxbai-embed-large":   1024,
-	"bge-m3":              1024,
-	"bge-large-en-v1.5":   1024,
-	"all-minilm":          384,
+	"nomic-embed-text":       768,
+	"mxbai-embed-large":      1024,
+	"bge-m3":                 1024,
+	"bge-large-en-v1.5":      1024,
+	"all-minilm":             384,
 	"snowflake-arctic-embed": 1024,
 }
 
@@ -47,11 +52,15 @@ func NewOllamaEmbedder(cfg OllamaConfig) *OllamaEmbedder {
 	if cfg.BaseURL == "" {
 		cfg.BaseURL = "http://localhost:11434"
 	}
+	if err := validation.ValidateProviderURL(cfg.BaseURL); err != nil {
+		slog.Warn("invalid ollama URL, defaulting to safe localhost", "url", cfg.BaseURL, "error", err)
+		cfg.BaseURL = "http://localhost:11434"
+	}
 	if cfg.Model == "" {
 		cfg.Model = "nomic-embed-text"
 	}
 	if cfg.Timeout == 0 {
-		cfg.Timeout = 30 * time.Second
+		cfg.Timeout = defaultOllamaTimeout
 	}
 
 	dimensions := 768 // default
@@ -107,8 +116,7 @@ func (e *OllamaEmbedder) Embed(ctx context.Context, text string) ([]float32, err
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("ollama error (status %d): %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("ollama error (status %d): %s", resp.StatusCode, readOllamaErrorBody(resp.Body))
 	}
 
 	var embedResp ollamaEmbedResponse
@@ -123,6 +131,14 @@ func (e *OllamaEmbedder) Embed(ctx context.Context, text string) ([]float32, err
 	}
 
 	return embedding, nil
+}
+
+func readOllamaErrorBody(body io.Reader) string {
+	data, _ := io.ReadAll(io.LimitReader(body, maxOllamaErrorBodyBytes+1))
+	if len(data) > maxOllamaErrorBodyBytes {
+		return string(data[:maxOllamaErrorBodyBytes]) + "...(truncated)"
+	}
+	return string(data)
 }
 
 // EmbedBatch generates embeddings for multiple texts.

@@ -77,10 +77,10 @@ func main() {
 
 	// Create frozen config structure
 	frozen := FrozenConfig{
-		GlobalConfig:   cfg,
-		TenantConfigs:  tenants,
-		FrozenAt:       time.Now().Format(time.RFC3339),
-		SingleTenant:   mgr.IsSingleTenant(),
+		GlobalConfig:  cfg,
+		TenantConfigs: tenants,
+		FrozenAt:      time.Now().Format(time.RFC3339),
+		SingleTenant:  mgr.IsSingleTenant(),
 	}
 
 	// Determine output path
@@ -90,7 +90,7 @@ func main() {
 	}
 
 	// Ensure directory exists
-	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0700); err != nil {
 		slog.Error("Failed to create output directory", "path", outputPath, "error", err)
 		os.Exit(1)
 	}
@@ -112,10 +112,10 @@ func main() {
 
 // FrozenConfig represents a fully-resolved, validated configuration snapshot
 type FrozenConfig struct {
-	GlobalConfig  *config.Config           `json:"global_config"`
-	TenantConfigs []*tenant.TenantConfig   `json:"tenant_configs"`
-	FrozenAt      string                   `json:"frozen_at"`
-	SingleTenant  bool                     `json:"single_tenant"`
+	GlobalConfig  *config.Config         `json:"global_config"`
+	TenantConfigs []*tenant.TenantConfig `json:"tenant_configs"`
+	FrozenAt      string                 `json:"frozen_at"`
+	SingleTenant  bool                   `json:"single_tenant"`
 }
 
 func writeFrozenConfig(frozen FrozenConfig, path string) error {
@@ -134,43 +134,43 @@ func writeFrozenConfig(frozen FrozenConfig, path string) error {
 func replaceGlobalSecretsWithReferences(cfg *config.Config) {
 	// Replace database URL if it's not already a reference
 	if cfg.Database.URL != "" &&
-	   !hasReferencePattern(cfg.Database.URL) {
+		!hasReferencePattern(cfg.Database.URL) {
 		cfg.Database.URL = "ENV=DATABASE_URL"
 	}
 
 	// Replace Redis password if it's not already a reference
 	if cfg.Redis.Password != "" &&
-	   !hasReferencePattern(cfg.Redis.Password) {
+		!hasReferencePattern(cfg.Redis.Password) {
 		cfg.Redis.Password = "ENV=REDIS_PASSWORD"
 	}
 
 	// Replace admin token if it's not already a reference
 	if cfg.Auth.AdminToken != "" &&
-	   !hasReferencePattern(cfg.Auth.AdminToken) {
+		!hasReferencePattern(cfg.Auth.AdminToken) {
 		cfg.Auth.AdminToken = "ENV=AIRBORNE_ADMIN_TOKEN"
 	}
 
 	// Replace TLS certificate paths (keep FILE= patterns if present)
 	if cfg.TLS.CertFile != "" &&
-	   !hasReferencePattern(cfg.TLS.CertFile) {
+		!hasReferencePattern(cfg.TLS.CertFile) {
 		cfg.TLS.CertFile = "ENV=AIRBORNE_TLS_CERT_FILE"
 	}
 	if cfg.TLS.KeyFile != "" &&
-	   !hasReferencePattern(cfg.TLS.KeyFile) {
+		!hasReferencePattern(cfg.TLS.KeyFile) {
 		cfg.TLS.KeyFile = "ENV=AIRBORNE_TLS_KEY_FILE"
 	}
 
 	// Replace database CA cert if present
 	if cfg.Database.CACert != "" &&
-	   !hasReferencePattern(cfg.Database.CACert) {
+		!hasReferencePattern(cfg.Database.CACert) {
 		cfg.Database.CACert = "ENV=SUPABASE_CA_CERT"
 	}
 }
 
 func hasReferencePattern(value string) bool {
 	return strings.HasPrefix(value, "ENV=") ||
-	       strings.HasPrefix(value, "FILE=") ||
-	       strings.HasPrefix(value, "${")
+		strings.HasPrefix(value, "FILE=") ||
+		strings.HasPrefix(value, "${")
 }
 
 func validateTenantConfig(tc *tenant.TenantConfig) error {

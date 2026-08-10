@@ -6,23 +6,29 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
 
-	chassis "github.com/ai8future/chassis-go/v11"
 	"github.com/ai8future/airborne/internal/config/envutil"
+	chassis "github.com/ai8future/chassis-go/v11"
 	"github.com/ai8future/chassis-go/v11/call"
 	"github.com/ai8future/chassis-go/v11/kafkakit"
 )
 
 // Deterministic ports derived from service name via djb2 hashing.
 var (
-	DefaultGRPCPort  = chassis.Port("airborne", chassis.PortGRPC)
-	DefaultAdminPort = chassis.Port("airborne", chassis.PortHTTP)
+	DefaultGRPCPort      = chassis.Port("airborne", chassis.PortGRPC)
+	DefaultAdminPort     = chassis.Port("airborne", chassis.PortHTTP)
+	dopplerClientFactory = func() *call.Client {
+		return call.New(call.WithTimeout(10*time.Second), call.WithRetry(3, 1*time.Second))
+	}
 )
+
+const minimumIdempotencyCompletedResponseRetention = 48 * time.Hour
 
 // Config holds all server configuration
 type Config struct {
@@ -32,6 +38,7 @@ type Config struct {
 	Database        DatabaseConfig            `yaml:"database"`
 	Admin           AdminConfig               `yaml:"admin"`
 	Auth            AuthConfig                `yaml:"auth"`
+	Idempotency     IdempotencyConfig         `yaml:"idempotency"`
 	RateLimits      RateLimitConfig           `yaml:"rate_limits"`
 	Providers       map[string]ProviderConfig `yaml:"providers"`
 	Failover        FailoverConfig            `yaml:"failover"`
@@ -42,7 +49,6 @@ type Config struct {
 
 	// Event bus (kafkakit) — enables heartbeatkit + announcekit automatically.
 	Kafkakit KafkakitConfig `yaml:"kafkakit"`
-
 }
 
 // KafkakitConfig holds event bus configuration.
@@ -74,8 +80,9 @@ type DatabaseConfig struct {
 
 // AdminConfig holds HTTP admin server settings
 type AdminConfig struct {
-	Enabled bool `yaml:"enabled"`
-	Port    int  `yaml:"port"`
+	Enabled        bool     `yaml:"enabled"`
+	Port           int      `yaml:"port"`
+	AllowedOrigins []string `yaml:"allowed_origins"`
 }
 
 // RAGConfig holds RAG (Retrieval-Augmented Generation) settings
@@ -114,6 +121,11 @@ type RedisConfig struct {
 type AuthConfig struct {
 	AdminToken string `yaml:"admin_token"`
 	AuthMode   string `yaml:"auth_mode"` // "static" (default) or "redis"
+}
+
+// IdempotencyConfig controls completed GenerateReply replay retention.
+type IdempotencyConfig struct {
+	CompletedResponseRetention time.Duration `yaml:"completed_response_retention"`
 }
 
 // RateLimitConfig holds default rate limits
@@ -176,7 +188,9 @@ func Load() (*Config, error) {
 	}
 
 	// Override with environment variables
-	cfg.applyEnvOverrides()
+	if err := cfg.applyEnvOverrides(); err != nil {
+		return nil, fmt.Errorf("invalid configuration: %w", err)
+	}
 
 	// Expand environment variables in string fields
 	cfg.expandEnvVars()
@@ -220,7 +234,9 @@ func LoadFrozen(path string) (*Config, error) {
 	// Resolve ENV=/FILE= references in config
 	cfg.expandEnvVars()
 
-	// No validation needed - frozen config was already validated at freeze time
+	if err := cfg.validate(); err != nil {
+		return nil, fmt.Errorf("invalid frozen configuration: %w", err)
+	}
 	return cfg, nil
 }
 
@@ -246,9 +262,18 @@ func defaultConfig() *Config {
 		Admin: AdminConfig{
 			Enabled: false,
 			Port:    DefaultAdminPort,
+			AllowedOrigins: []string{
+				"http://localhost:3000",
+				"http://127.0.0.1:3000",
+				"http://localhost:4848",
+				"http://127.0.0.1:4848",
+			},
 		},
 		Auth: AuthConfig{
 			AuthMode: "static",
+		},
+		Idempotency: IdempotencyConfig{
+			CompletedResponseRetention: minimumIdempotencyCompletedResponseRetention,
 		},
 		RateLimits: RateLimitConfig{
 			DefaultRPM: 60,
@@ -295,7 +320,7 @@ func defaultConfig() *Config {
 }
 
 // applyEnvOverrides applies environment variable overrides
-func (c *Config) applyEnvOverrides() {
+func (c *Config) applyEnvOverrides() error {
 	// Server configuration
 	c.Server.GRPCPort = envutil.GetIntEnv("AIRBORNE_GRPC_PORT", c.Server.GRPCPort)
 	c.Server.Host = envutil.GetStringEnv("AIRBORNE_HOST", c.Server.Host)
@@ -347,10 +372,21 @@ func (c *Config) applyEnvOverrides() {
 	// Admin HTTP server configuration
 	c.Admin.Enabled = envutil.GetBoolEnv("ADMIN_ENABLED", c.Admin.Enabled)
 	c.Admin.Port = envutil.GetIntEnv("ADMIN_PORT", c.Admin.Port)
+	if origins := splitCSVEnv("ADMIN_ALLOWED_ORIGINS"); len(origins) > 0 {
+		c.Admin.AllowedOrigins = origins
+	}
 
 	// Auth configuration
 	c.Auth.AdminToken = envutil.GetStringEnv("AIRBORNE_ADMIN_TOKEN", c.Auth.AdminToken)
 	c.Auth.AuthMode = envutil.GetStringEnv("AIRBORNE_AUTH_MODE", c.Auth.AuthMode)
+
+	if value := os.Getenv("IDEMPOTENCY_COMPLETED_RESPONSE_RETENTION"); value != "" {
+		retention, err := time.ParseDuration(value)
+		if err != nil {
+			return fmt.Errorf("invalid IDEMPOTENCY_COMPLETED_RESPONSE_RETENTION %q: %w", value, err)
+		}
+		c.Idempotency.CompletedResponseRetention = retention
+	}
 
 	// Logging configuration
 	c.Logging.Level = envutil.GetStringEnv("AIRBORNE_LOG_LEVEL", c.Logging.Level)
@@ -380,6 +416,7 @@ func (c *Config) applyEnvOverrides() {
 	c.Kafkakit.TenantID = envutil.GetStringEnv("KAFKAKIT_TENANT_ID", c.Kafkakit.TenantID)
 	c.Kafkakit.Source = envutil.GetStringEnv("KAFKAKIT_SOURCE", c.Kafkakit.Source)
 
+	return nil
 }
 
 // expandEnvVars expands ${VAR} patterns in string fields
@@ -411,10 +448,36 @@ func expandEnv(s string) string {
 	return os.ExpandEnv(s)
 }
 
+func splitCSVEnv(key string) []string {
+	value := os.Getenv(key)
+	if value == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			result = append(result, part)
+		}
+	}
+	return result
+}
+
 // validate checks configuration validity
 func (c *Config) validate() error {
 	if c.Server.GRPCPort <= 0 || c.Server.GRPCPort > 65535 {
 		return fmt.Errorf("invalid grpc_port: %d", c.Server.GRPCPort)
+	}
+	if err := validateAdminAllowedOrigins(c.Admin.AllowedOrigins); err != nil {
+		return err
+	}
+	if c.Idempotency.CompletedResponseRetention < minimumIdempotencyCompletedResponseRetention {
+		return fmt.Errorf(
+			"idempotency.completed_response_retention must be at least %s, got %s",
+			minimumIdempotencyCompletedResponseRetention,
+			c.Idempotency.CompletedResponseRetention,
+		)
 	}
 
 	if c.TLS.Enabled {
@@ -438,6 +501,29 @@ func (c *Config) validate() error {
 	return nil
 }
 
+func validateAdminAllowedOrigins(origins []string) error {
+	for _, origin := range origins {
+		origin = strings.TrimSpace(origin)
+		if origin == "" {
+			continue
+		}
+		if origin == "*" {
+			return fmt.Errorf("admin.allowed_origins wildcard is not allowed")
+		}
+		parsed, err := url.Parse(origin)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			return fmt.Errorf("invalid admin.allowed_origins entry %q", origin)
+		}
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			return fmt.Errorf("invalid admin.allowed_origins scheme %q", parsed.Scheme)
+		}
+		if parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.User != nil {
+			return fmt.Errorf("admin.allowed_origins entry %q must be an origin only", origin)
+		}
+	}
+	return nil
+}
+
 // fetchDopplerSecret fetches a single secret from Doppler.
 // Returns empty string if DOPPLER_TOKEN is not set or on any error.
 // Note: This runs before logger is configured, so we use fmt.Fprintf for errors.
@@ -452,10 +538,18 @@ func fetchDopplerSecret(project, secretName string) string {
 		config = "prod"
 	}
 
-	url := fmt.Sprintf("https://api.doppler.com/v3/configs/config/secrets?project=%s&config=%s", project, config)
+	endpoint, err := url.Parse("https://api.doppler.com/v3/configs/config/secrets")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "doppler: invalid endpoint: %v\n", err)
+		return ""
+	}
+	query := endpoint.Query()
+	query.Set("project", project)
+	query.Set("config", config)
+	endpoint.RawQuery = query.Encode()
 
-	client := call.New(call.WithTimeout(10*time.Second), call.WithRetry(3, 1*time.Second))
-	req, err := http.NewRequest("GET", url, nil)
+	client := dopplerClientFactory()
+	req, err := http.NewRequest(http.MethodGet, endpoint.String(), nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "doppler: request creation failed: %v\n", err)
 		return ""

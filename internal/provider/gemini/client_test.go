@@ -3,6 +3,10 @@ package gemini
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"google.golang.org/genai"
@@ -239,6 +243,97 @@ func TestExtractCitations_NoMetadata(t *testing.T) {
 	}
 }
 
+func TestExtractCitations_GroundingChunksAndSupports(t *testing.T) {
+	resp := &genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{
+			{GroundingMetadata: nil},
+			{
+				GroundingMetadata: &genai.GroundingMetadata{
+					GroundingChunks: []*genai.GroundingChunk{
+						{Web: &genai.GroundingChunkWeb{URI: "https://example.com/source", Title: "Web source"}},
+						{RetrievedContext: &genai.GroundingChunkRetrievedContext{Title: "file-1", Text: "mapped excerpt"}},
+						{RetrievedContext: &genai.GroundingChunkRetrievedContext{Title: "file-2", Text: "unmapped excerpt"}},
+					},
+					GroundingSupports: []*genai.GroundingSupport{
+						{Segment: nil, GroundingChunkIndices: []int32{0}},
+						{Segment: &genai.Segment{StartIndex: 1, EndIndex: 2}},
+						{Segment: &genai.Segment{StartIndex: 3, EndIndex: 8}, GroundingChunkIndices: []int32{0, 99}},
+						{Segment: &genai.Segment{StartIndex: 9, EndIndex: 15}, GroundingChunkIndices: []int32{1, 2}},
+					},
+				},
+			},
+		},
+	}
+
+	citations := extractCitations(resp, map[string]string{"file-1": "report.pdf"})
+	if len(citations) != 6 {
+		t.Fatalf("extractCitations() returned %d citations, want 6: %#v", len(citations), citations)
+	}
+
+	if got := citations[1]; got.Type != provider.CitationTypeFile || got.FileID != "file-1" || got.Filename != "report.pdf" || got.Snippet != "mapped excerpt" {
+		t.Errorf("mapped chunk citation = %#v", got)
+	}
+	if got := citations[2]; got.Type != provider.CitationTypeFile || got.FileID != "file-2" || got.Filename != "file-2" {
+		t.Errorf("unmapped chunk citation = %#v", got)
+	}
+	if got := citations[3]; got.Type != provider.CitationTypeURL || got.StartIndex != 3 || got.EndIndex != 8 || got.URL != "https://example.com/source" {
+		t.Errorf("web support citation = %#v", got)
+	}
+	if got := citations[4]; got.Type != provider.CitationTypeFile || got.StartIndex != 9 || got.EndIndex != 15 || got.Filename != "report.pdf" {
+		t.Errorf("mapped file support citation = %#v", got)
+	}
+	if got := citations[5]; got.Type != provider.CitationTypeFile || got.Filename != "file-2" {
+		t.Errorf("unmapped file support citation = %#v", got)
+	}
+}
+
+func TestExtractGroundingQueryCount(t *testing.T) {
+	tests := []struct {
+		name  string
+		resp  *genai.GenerateContentResponse
+		model string
+		want  int
+	}{
+		{name: "nil response", model: "gemini-3-pro", want: 0},
+		{name: "empty response", resp: &genai.GenerateContentResponse{}, model: "gemini-3-pro", want: 0},
+		{
+			name: "gemini 3 counts every search query",
+			resp: &genai.GenerateContentResponse{Candidates: []*genai.Candidate{
+				{GroundingMetadata: nil},
+				{GroundingMetadata: &genai.GroundingMetadata{WebSearchQueries: []string{"alpha", "beta", "gamma"}}},
+			}},
+			model: "gemini-3-flash",
+			want:  3,
+		},
+		{
+			name:  "older models bill query grounding once",
+			resp:  &genai.GenerateContentResponse{Candidates: []*genai.Candidate{{GroundingMetadata: &genai.GroundingMetadata{WebSearchQueries: []string{"alpha", "beta"}}}}},
+			model: "gemini-2.5-pro",
+			want:  1,
+		},
+		{
+			name:  "older models bill chunk grounding once",
+			resp:  &genai.GenerateContentResponse{Candidates: []*genai.Candidate{{GroundingMetadata: &genai.GroundingMetadata{GroundingChunks: []*genai.GroundingChunk{{Web: &genai.GroundingChunkWeb{URI: "https://example.com"}}}}}}},
+			model: "gemini-1.5-pro",
+			want:  1,
+		},
+		{
+			name:  "metadata without grounding is free",
+			resp:  &genai.GenerateContentResponse{Candidates: []*genai.Candidate{{GroundingMetadata: &genai.GroundingMetadata{}}}},
+			model: "gemini-2.5-pro",
+			want:  0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := extractGroundingQueryCount(tt.resp, tt.model); got != tt.want {
+				t.Fatalf("extractGroundingQueryCount() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestBuildSafetySettings(t *testing.T) {
 	tests := []struct {
 		threshold string
@@ -337,5 +432,230 @@ func TestGenerateReply_MissingAPIKey(t *testing.T) {
 	}
 	if err.Error() != "Gemini API key is required" {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestGenerateReplyStream_MissingAPIKey(t *testing.T) {
+	stream, err := NewClient().GenerateReplyStream(context.Background(), provider.GenerateParams{})
+	if err == nil || stream != nil || err.Error() != "Gemini API key is required" {
+		t.Fatalf("stream=%v err=%v", stream, err)
+	}
+}
+func TestGeminiConversionBoundaries(t *testing.T) {
+	if parseThinkingLevel("high") == parseThinkingLevel("nonsense") {
+		t.Fatal("thinking levels")
+	}
+	s := convertToSchema(map[string]interface{}{"type": "string", "enum": []interface{}{"a"}})
+	if s == nil || len(s.Enum) != 1 {
+		t.Fatal("schema")
+	}
+	d := buildFunctionDeclaration(provider.Tool{Name: "f", ParametersSchema: `{"type":"object"}`})
+	if d.Name != "f" {
+		t.Fatal("function")
+	}
+	if len(extractFunctionCalls(nil)) != 0 || len(extractCodeExecutionResults(nil)) != 0 {
+		t.Fatal("nil")
+	}
+}
+
+func TestGeminiConfigurationConversions(t *testing.T) {
+	for _, level := range []string{"MINIMAL", "LOW", "MEDIUM", "HIGH", "unknown"} {
+		if level != "unknown" && parseThinkingLevel(level) == genai.ThinkingLevelUnspecified {
+			t.Fatalf("thinking level %q was unspecified", level)
+		}
+	}
+	for _, threshold := range []string{"BLOCK_NONE", "LOW_AND_ABOVE", "MEDIUM_AND_ABOVE", "ONLY_HIGH", "unknown"} {
+		settings := buildSafetySettings(threshold)
+		if len(settings) != 4 || settings[0].Threshold == "" {
+			t.Fatalf("safety settings for %q = %#v", threshold, settings)
+		}
+	}
+	schema := convertToSchema(map[string]interface{}{
+		"type": "object", "description": "root", "required": []interface{}{"name"},
+		"properties": map[string]interface{}{"name": map[string]interface{}{"type": "string"}},
+		"items":      map[string]interface{}{"type": "number"}, "enum": []interface{}{"one", 2},
+	})
+	if schema.Type != "OBJECT" || schema.Properties["name"].Type != "STRING" || schema.Items.Type != "NUMBER" || len(schema.Enum) != 1 {
+		t.Fatalf("schema conversion = %#v", schema)
+	}
+	if declaration := buildFunctionDeclaration(provider.Tool{Name: "bad", ParametersSchema: "{"}); declaration.Parameters != nil {
+		t.Fatalf("invalid schema parameters = %#v", declaration.Parameters)
+	}
+}
+
+func TestConvertToSchemaNestedArrayAndRequired(t *testing.T) {
+	s := convertToSchema(map[string]interface{}{"type": "object", "required": []interface{}{"items"}, "properties": map[string]interface{}{"items": map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "object", "properties": map[string]interface{}{"kind": map[string]interface{}{"type": "string", "enum": []interface{}{"a", "b"}}}}}}})
+	if s.Required[0] != "items" || s.Properties["items"].Items.Properties["kind"].Enum[1] != "b" {
+		t.Fatalf("schema = %#v", s)
+	}
+}
+
+func TestConvertToSchema_IgnoresMalformedMembers(t *testing.T) {
+	schema := convertToSchema(map[string]interface{}{
+		"type":        7,
+		"description": true,
+		"properties": map[string]interface{}{
+			"valid":   map[string]interface{}{"type": "integer"},
+			"invalid": "not-a-schema",
+		},
+		"required": []interface{}{"valid", 12, false},
+		"items":    []interface{}{"not-a-schema"},
+		"enum":     []interface{}{"one", 2, false, "two"},
+	})
+
+	if schema.Type != "" || schema.Description != "" {
+		t.Fatalf("malformed scalar members should be ignored: %#v", schema)
+	}
+	if len(schema.Properties) != 1 || schema.Properties["valid"].Type != genai.TypeInteger {
+		t.Fatalf("properties = %#v", schema.Properties)
+	}
+	if len(schema.Required) != 1 || schema.Required[0] != "valid" {
+		t.Fatalf("required = %#v", schema.Required)
+	}
+	if schema.Items != nil || len(schema.Enum) != 2 || schema.Enum[1] != "two" {
+		t.Fatalf("items/enum = %#v/%#v", schema.Items, schema.Enum)
+	}
+}
+
+func TestExtractFunctionCalls_MultipleAndMalformedArguments(t *testing.T) {
+	resp := &genai.GenerateContentResponse{Candidates: []*genai.Candidate{
+		{Content: nil},
+		{Content: &genai.Content{Parts: []*genai.Part{
+			{Text: "ordinary text"},
+			{FunctionCall: &genai.FunctionCall{ID: "call-1", Name: "lookup", Args: map[string]any{"query": "airborne", "limit": float64(2)}}},
+			{FunctionCall: &genai.FunctionCall{ID: "call-2", Name: "broken", Args: map[string]any{"bad": func() {}}}},
+		}}},
+	}}
+
+	calls := extractFunctionCalls(resp)
+	if len(calls) != 2 {
+		t.Fatalf("extractFunctionCalls() returned %d calls, want 2: %#v", len(calls), calls)
+	}
+	if calls[0].ID != "call-1" || calls[0].Name != "lookup" || calls[0].Arguments != `{"limit":2,"query":"airborne"}` {
+		t.Errorf("first call = %#v", calls[0])
+	}
+	if calls[1].ID != "call-2" || calls[1].Name != "broken" || calls[1].Arguments != `{}` {
+		t.Errorf("malformed call fallback = %#v", calls[1])
+	}
+}
+
+func TestExtractCodeExecutionResults_ErrorAndOrdering(t *testing.T) {
+	resp := &genai.GenerateContentResponse{Candidates: []*genai.Candidate{
+		{Content: nil},
+		{Content: &genai.Content{Parts: []*genai.Part{
+			{CodeExecutionResult: &genai.CodeExecutionResult{Outcome: genai.OutcomeFailed, Output: "orphan result"}},
+			{ExecutableCode: &genai.ExecutableCode{Code: "print('first')", Language: genai.LanguagePython}},
+			{CodeExecutionResult: &genai.CodeExecutionResult{Outcome: genai.OutcomeFailed, Output: "traceback"}},
+			{ExecutableCode: &genai.ExecutableCode{Code: "print('second')", Language: genai.LanguagePython}},
+			{CodeExecutionResult: &genai.CodeExecutionResult{Outcome: genai.OutcomeOK, Output: "second\n"}},
+		}}},
+	}}
+
+	executions := extractCodeExecutionResults(resp)
+	if len(executions) != 2 {
+		t.Fatalf("extractCodeExecutionResults() returned %d executions, want 2: %#v", len(executions), executions)
+	}
+	if executions[0].Code != "print('first')" || executions[0].Language != "PYTHON" || executions[0].ExitCode != 1 || executions[0].Stdout != "traceback" {
+		t.Errorf("failed execution = %#v", executions[0])
+	}
+	if executions[1].Code != "print('second')" || executions[1].ExitCode != 0 || executions[1].Stdout != "second\n" {
+		t.Errorf("successful execution = %#v", executions[1])
+	}
+}
+func TestGeminiPureResponseConversions(t *testing.T) {
+	if positiveInt32OrDefault(nil, 7) != 7 || positiveInt32OrDefault(intPtr(0), 7) != 7 || positiveInt32OrDefault(intPtr(2), 7) != 2 {
+		t.Fatal("positive defaults")
+	}
+	if schema := structuredOutputSchema(); schema == nil || schema.Properties["reply"] == nil || len(schema.Required) != 2 {
+		t.Fatal("structured schema")
+	}
+	for _, reason := range []genai.FinishReason{genai.FinishReasonSafety, genai.FinishReasonRecitation, genai.FinishReasonBlocklist, genai.FinishReasonProhibitedContent, genai.FinishReasonSPII} {
+		if getBlockReason(&genai.GenerateContentResponse{Candidates: []*genai.Candidate{{FinishReason: reason}}}) == "" {
+			t.Fatalf("missing reason for %v", reason)
+		}
+	}
+
+	parts := []*genai.Part{
+		{Text: `{"reply":"done","intent":"request","requires_user_action":true,"entities":[{"name":"Ada","type":"person"}],"topics":["code"],"scheduling_intent":{"detected":true,"datetime_mentioned":"tomorrow"}}`},
+		{FunctionCall: &genai.FunctionCall{ID: "call-1", Name: "lookup", Args: map[string]any{"q": "gemini"}}},
+		{ExecutableCode: &genai.ExecutableCode{Code: "print(1)", Language: genai.LanguagePython}},
+		{CodeExecutionResult: &genai.CodeExecutionResult{Outcome: genai.OutcomeOK, Output: "1\n"}},
+	}
+	response := &genai.GenerateContentResponse{Candidates: []*genai.Candidate{{Content: &genai.Content{Parts: parts}}}}
+	text, metadata := extractStructuredResponse(response)
+	if text != "done" || metadata == nil || metadata.Intent != "request" || len(metadata.Entities) != 1 || metadata.Scheduling == nil {
+		t.Fatalf("structured conversion = %#v %#v", text, metadata)
+	}
+	if calls := extractFunctionCalls(response); len(calls) != 1 || calls[0].Name != "lookup" || calls[0].Arguments != `{"q":"gemini"}` {
+		t.Fatalf("function calls = %#v", calls)
+	}
+	if executions := extractCodeExecutionResults(response); len(executions) != 1 || executions[0].ExitCode != 0 || executions[0].Stdout != "1\n" {
+		t.Fatalf("executions = %#v", executions)
+	}
+	bad := &genai.GenerateContentResponse{Candidates: []*genai.Candidate{{Content: &genai.Content{Parts: []*genai.Part{{Text: "not-json"}}}}}}
+	if raw, metadata := extractStructuredResponse(bad); raw != "not-json" || metadata != nil {
+		t.Fatalf("malformed structured response = %q %#v", raw, metadata)
+	}
+}
+
+func intPtr(v int) *int { return &v }
+
+func TestGenerateReplyHTTPProtocol(t *testing.T) {
+	var requests int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s", r.Method)
+		}
+		body, _ := io.ReadAll(r.Body)
+		if !strings.Contains(string(body), `"temperature"`) || !strings.Contains(string(body), `"functionDeclarations"`) {
+			t.Errorf("request body missing config: %s", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"candidates":[{"content":{"role":"model","parts":[{"text":"fixture reply"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":2,"totalTokenCount":5}}`)
+	}))
+	defer srv.Close()
+	temp := 0.25
+	result, err := NewClient().GenerateReply(context.Background(), provider.GenerateParams{
+		UserInput: "hello", EnableCodeExecution: true, EnableWebSearch: true,
+		Tools:  []provider.Tool{{Name: "lookup", Description: "lookup", ParametersSchema: `{"type":"object"}`}},
+		Config: provider.ProviderConfig{APIKey: "test-key", BaseURL: srv.URL, Model: "gemini-2.5-pro", Temperature: &temp, ExtraOptions: map[string]string{"thinking_level": "LOW", "safety_threshold": "BLOCK_NONE"}},
+	})
+	if err != nil {
+		t.Fatalf("GenerateReply() error = %v", err)
+	}
+	if result.Text != "fixture reply" || result.Usage.TotalTokens != 5 || result.Model != "gemini-2.5-pro" || requests != 1 {
+		t.Fatalf("result = %#v requests=%d", result, requests)
+	}
+}
+
+func TestGenerateReplyHTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "bad fixture", http.StatusBadRequest) }))
+	defer srv.Close()
+	_, err := NewClient().GenerateReply(context.Background(), provider.GenerateParams{UserInput: "hello", Config: provider.ProviderConfig{APIKey: "key", BaseURL: srv.URL}})
+	if err == nil || !strings.Contains(err.Error(), "400") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestGenerateReplyStream_HTTPProtocol(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, `data: {"candidates":[{"content":{"parts":[{"text":"hello "}]}}]}`+"\n\n")
+		_, _ = io.WriteString(w, `data: {"candidates":[{"content":{"parts":[{"text":"world"}]}}],"usageMetadata":{"promptTokenCount":2,"candidatesTokenCount":2,"totalTokenCount":4}}`+"\n\n")
+	}))
+	defer srv.Close()
+	ch, err := NewClient().GenerateReplyStream(context.Background(), provider.GenerateParams{UserInput: "hi", Config: provider.ProviderConfig{APIKey: "key", BaseURL: srv.URL}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var texts []string
+	for chunk := range ch {
+		if chunk.Type == provider.ChunkTypeText {
+			texts = append(texts, chunk.Text)
+		}
+	}
+	if strings.Join(texts, "") != "hello world" {
+		t.Fatalf("chunks = %#v", texts)
 	}
 }

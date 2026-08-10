@@ -6,21 +6,44 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"os"
 	"time"
 )
 
 type Client struct {
 	BaseURL    string
+	AuthToken  string
 	HTTPClient *http.Client
 }
 
 func NewClient(baseURL string) *Client {
 	return &Client{
-		BaseURL: baseURL,
+		BaseURL:   baseURL,
+		AuthToken: os.Getenv("AIRBORNE_ADMIN_TOKEN"),
 		HTTPClient: &http.Client{
 			Timeout: 120 * time.Second,
 		},
 	}
+}
+
+func (c *Client) setAuth(req *http.Request) {
+	if c.AuthToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.AuthToken)
+	}
+}
+
+func (c *Client) do(req *http.Request) (*http.Response, error) {
+	c.setAuth(req)
+	return c.HTTPClient.Do(req)
+}
+
+func readErrorBody(body io.Reader) string {
+	data, _ := io.ReadAll(io.LimitReader(body, 64*1024+1))
+	if len(data) > 64*1024 {
+		return string(data[:64*1024]) + "...(truncated)"
+	}
+	return string(data)
 }
 
 // Response types
@@ -61,6 +84,7 @@ type TestRequest struct {
 }
 
 type TestResponse struct {
+	Error        string `json:"error,omitempty"`
 	Reply        string `json:"reply"`
 	Provider     string `json:"provider"`
 	Model        string `json:"model"`
@@ -108,15 +132,18 @@ type ThreadResponse struct {
 // API methods
 
 func (c *Client) Health() (*HealthResponse, error) {
-	resp, err := c.HTTPClient.Get(c.BaseURL + "/admin/health")
+	req, err := http.NewRequest(http.MethodGet, c.BaseURL+"/admin/health", nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, fmt.Errorf("connection failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("health check failed (HTTP %d): %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("health check failed (HTTP %d): %s", resp.StatusCode, readErrorBody(resp.Body))
 	}
 
 	var health HealthResponse
@@ -127,20 +154,29 @@ func (c *Client) Health() (*HealthResponse, error) {
 }
 
 func (c *Client) Activity(limit int, tenantID string) (*ActivityResponse, error) {
-	url := fmt.Sprintf("%s/admin/activity?limit=%d", c.BaseURL, limit)
-	if tenantID != "" {
-		url += "&tenant_id=" + tenantID
+	u, err := url.Parse(c.BaseURL + "/admin/activity")
+	if err != nil {
+		return nil, fmt.Errorf("invalid base URL: %w", err)
 	}
+	q := u.Query()
+	q.Set("limit", fmt.Sprintf("%d", limit))
+	if tenantID != "" {
+		q.Set("tenant_id", tenantID)
+	}
+	u.RawQuery = q.Encode()
 
-	resp, err := c.HTTPClient.Get(url)
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, fmt.Errorf("connection failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("request failed (HTTP %d): %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("request failed (HTTP %d): %s", resp.StatusCode, readErrorBody(resp.Body))
 	}
 
 	var activity ActivityResponse
@@ -156,34 +192,44 @@ func (c *Client) Test(req TestRequest) (*TestResponse, error) {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	resp, err := c.HTTPClient.Post(c.BaseURL+"/admin/test", "application/json", bytes.NewReader(body))
+	httpReq, err := http.NewRequest(http.MethodPost, c.BaseURL+"/admin/test", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("connection failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("request failed (HTTP %d): %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("request failed (HTTP %d): %s", resp.StatusCode, readErrorBody(resp.Body))
 	}
 
 	var testResp TestResponse
 	if err := json.NewDecoder(resp.Body).Decode(&testResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
+	if testResp.Error != "" {
+		return nil, fmt.Errorf("test request failed: %s", testResp.Error)
+	}
 	return &testResp, nil
 }
 
 func (c *Client) Debug(messageID string) (*DebugResponse, error) {
-	resp, err := c.HTTPClient.Get(c.BaseURL + "/admin/debug/" + messageID)
+	req, err := http.NewRequest(http.MethodGet, c.BaseURL+"/admin/debug/"+url.PathEscape(messageID), nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, fmt.Errorf("connection failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("request failed (HTTP %d): %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("request failed (HTTP %d): %s", resp.StatusCode, readErrorBody(resp.Body))
 	}
 
 	var debug DebugResponse
@@ -194,15 +240,18 @@ func (c *Client) Debug(messageID string) (*DebugResponse, error) {
 }
 
 func (c *Client) Thread(threadID string) (*ThreadResponse, error) {
-	resp, err := c.HTTPClient.Get(c.BaseURL + "/admin/thread/" + threadID)
+	req, err := http.NewRequest(http.MethodGet, c.BaseURL+"/admin/thread/"+url.PathEscape(threadID), nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, fmt.Errorf("connection failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("request failed (HTTP %d): %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("request failed (HTTP %d): %s", resp.StatusCode, readErrorBody(resp.Body))
 	}
 
 	var thread ThreadResponse

@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 
+	"github.com/ai8future/airborne/internal/validation"
 	"github.com/ai8future/chassis-go/v11/call"
 )
 
@@ -18,12 +21,15 @@ type QdrantStore struct {
 	client  *call.Client
 }
 
+const maxQdrantErrorBodyBytes = 64 * 1024
+const defaultQdrantTimeout = 120 * time.Second
+
 // QdrantConfig configures the Qdrant store.
 type QdrantConfig struct {
 	// BaseURL is the Qdrant REST API base URL (default: http://localhost:6333).
 	BaseURL string
 
-	// Timeout is the HTTP request timeout (default: 30s).
+	// Timeout is the HTTP request timeout (default: 120s).
 	Timeout time.Duration
 }
 
@@ -32,8 +38,12 @@ func NewQdrantStore(cfg QdrantConfig) *QdrantStore {
 	if cfg.BaseURL == "" {
 		cfg.BaseURL = "http://localhost:6333"
 	}
+	if err := validation.ValidateProviderURL(cfg.BaseURL); err != nil {
+		slog.Warn("invalid qdrant URL, defaulting to safe localhost", "url", cfg.BaseURL, "error", err)
+		cfg.BaseURL = "http://localhost:6333"
+	}
 	if cfg.Timeout == 0 {
-		cfg.Timeout = 30 * time.Second
+		cfg.Timeout = defaultQdrantTimeout
 	}
 
 	return &QdrantStore{
@@ -55,19 +65,19 @@ func (s *QdrantStore) CreateCollection(ctx context.Context, name string, dimensi
 		},
 	}
 
-	_, err := s.doRequest(ctx, http.MethodPut, "/collections/"+name, body)
+	_, err := s.doRequest(ctx, http.MethodPut, "/collections/"+qdrantPathSegment(name), body)
 	return err
 }
 
 // DeleteCollection removes a collection.
 func (s *QdrantStore) DeleteCollection(ctx context.Context, name string) error {
-	_, err := s.doRequest(ctx, http.MethodDelete, "/collections/"+name, nil)
+	_, err := s.doRequest(ctx, http.MethodDelete, "/collections/"+qdrantPathSegment(name), nil)
 	return err
 }
 
 // CollectionExists checks if a collection exists.
 func (s *QdrantStore) CollectionExists(ctx context.Context, name string) (bool, error) {
-	resp, err := s.doRequestRaw(ctx, http.MethodGet, "/collections/"+name, nil)
+	resp, err := s.doRequestRaw(ctx, http.MethodGet, "/collections/"+qdrantPathSegment(name), nil)
 	if err != nil {
 		return false, err
 	}
@@ -77,8 +87,7 @@ func (s *QdrantStore) CollectionExists(ctx context.Context, name string) (bool, 
 		return false, nil
 	}
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return false, fmt.Errorf("qdrant error (status %d): %s", resp.StatusCode, string(body))
+		return false, fmt.Errorf("qdrant error (status %d): %s", resp.StatusCode, readQdrantErrorBody(resp.Body))
 	}
 
 	return true, nil
@@ -86,7 +95,7 @@ func (s *QdrantStore) CollectionExists(ctx context.Context, name string) (bool, 
 
 // CollectionInfo returns metadata about a collection.
 func (s *QdrantStore) CollectionInfo(ctx context.Context, name string) (*CollectionInfo, error) {
-	resp, err := s.doRequest(ctx, http.MethodGet, "/collections/"+name, nil)
+	resp, err := s.doRequest(ctx, http.MethodGet, "/collections/"+qdrantPathSegment(name), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +143,7 @@ func (s *QdrantStore) Upsert(ctx context.Context, collection string, points []Po
 		"points": qdrantPoints,
 	}
 
-	_, err := s.doRequest(ctx, http.MethodPut, "/collections/"+collection+"/points?wait=true", body)
+	_, err := s.doRequest(ctx, http.MethodPut, "/collections/"+qdrantPathSegment(collection)+"/points?wait=true", body)
 	return err
 }
 
@@ -163,7 +172,7 @@ func (s *QdrantStore) Search(ctx context.Context, params SearchParams) ([]Search
 		body["score_threshold"] = params.ScoreThreshold
 	}
 
-	resp, err := s.doRequest(ctx, http.MethodPost, "/collections/"+params.Collection+"/points/search", body)
+	resp, err := s.doRequest(ctx, http.MethodPost, "/collections/"+qdrantPathSegment(params.Collection)+"/points/search", body)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +219,7 @@ func (s *QdrantStore) Delete(ctx context.Context, collection string, ids []strin
 		"points": ids,
 	}
 
-	_, err := s.doRequest(ctx, http.MethodPost, "/collections/"+collection+"/points/delete?wait=true", body)
+	_, err := s.doRequest(ctx, http.MethodPost, "/collections/"+qdrantPathSegment(collection)+"/points/delete?wait=true", body)
 	return err
 }
 
@@ -223,8 +232,7 @@ func (s *QdrantStore) doRequest(ctx context.Context, method, path string, body a
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("qdrant error (status %d): %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("qdrant error (status %d): %s", resp.StatusCode, readQdrantErrorBody(resp.Body))
 	}
 
 	var result map[string]any
@@ -273,4 +281,16 @@ func (s *QdrantStore) Ping(ctx context.Context) error {
 		return fmt.Errorf("qdrant health check returned %d", resp.StatusCode)
 	}
 	return nil
+}
+
+func qdrantPathSegment(value string) string {
+	return url.PathEscape(value)
+}
+
+func readQdrantErrorBody(body io.Reader) string {
+	data, _ := io.ReadAll(io.LimitReader(body, maxQdrantErrorBodyBytes+1))
+	if len(data) > maxQdrantErrorBodyBytes {
+		return string(data[:maxQdrantErrorBodyBytes]) + "...(truncated)"
+	}
+	return string(data)
 }

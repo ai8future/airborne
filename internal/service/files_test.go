@@ -4,15 +4,21 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
 	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/auth"
+	"github.com/ai8future/airborne/internal/provider/gemini"
+	"github.com/ai8future/airborne/internal/provider/openai"
 	"github.com/ai8future/airborne/internal/rag"
 	"github.com/ai8future/airborne/internal/rag/extractor"
 	"github.com/ai8future/airborne/internal/rag/testutil"
 	"github.com/ai8future/airborne/internal/rag/vectorstore"
+	chassis "github.com/ai8future/chassis-go/v11"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -23,6 +29,33 @@ func ctxWithFilePermission(clientID string) context.Context {
 		ClientID:    clientID,
 		Permissions: []auth.Permission{auth.PermissionFiles},
 	})
+}
+
+func ctxWithAdminFilePermission(clientID string) context.Context {
+	return context.WithValue(context.Background(), auth.ClientContextKey, &auth.ClientKey{
+		ClientID:    clientID,
+		Permissions: []auth.Permission{auth.PermissionFiles, auth.PermissionAdmin},
+	})
+}
+
+func TestRequireAdminForFileServiceBaseURL(t *testing.T) {
+	if err := requireAdminForFileServiceBaseURL(ctxWithFilePermission("tenant1"), ""); err != nil {
+		t.Fatalf("empty base URL should not require admin: %v", err)
+	}
+
+	err := requireAdminForFileServiceBaseURL(ctxWithFilePermission("tenant1"), "http://localhost:1234")
+	if status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("non-admin custom base URL code = %v, want %v (err=%v)", status.Code(err), codes.PermissionDenied, err)
+	}
+
+	err = requireAdminForFileServiceBaseURL(ctxWithAdminFilePermission("tenant1"), "file:///etc/passwd")
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("invalid admin custom base URL code = %v, want %v (err=%v)", status.Code(err), codes.InvalidArgument, err)
+	}
+
+	if err := requireAdminForFileServiceBaseURL(ctxWithAdminFilePermission("tenant1"), "http://localhost:1234"); err != nil {
+		t.Fatalf("admin localhost base URL should be allowed: %v", err)
+	}
 }
 
 func TestNewFileService(t *testing.T) {
@@ -335,6 +368,37 @@ func (m *mockUploadFileServer) Recv() (*pb.UploadFileRequest, error) {
 func (m *mockUploadFileServer) SendAndClose(resp *pb.UploadFileResponse) error {
 	m.response = resp
 	return nil
+}
+
+func TestExternalUploadAdaptersUseInjectedClients(t *testing.T) {
+	ctx := ctxWithAdminFilePermission("tenant1")
+	for _, tc := range []struct {
+		name string
+		run  func(*FileService, *mockUploadFileServer) error
+	}{
+		{"openai success", func(s *FileService, stream *mockUploadFileServer) error {
+			s.openAIUpload = func(_ context.Context, _ openai.FileStoreConfig, store, name string, _ io.Reader) (*openai.UploadedFile, error) {
+				return &openai.UploadedFile{FileID: "oa-file", StoreID: store, Filename: name, Status: "completed"}, nil
+			}
+			return s.uploadToOpenAI(ctx, stream, &pb.UploadFileMetadata{StoreId: "store", Filename: "a.txt", Config: &pb.ProviderConfig{ApiKey: "key"}}, strings.NewReader("data"))
+		}},
+		{"gemini success", func(s *FileService, stream *mockUploadFileServer) error {
+			s.geminiUpload = func(_ context.Context, _ gemini.FileStoreConfig, store, name, _ string, _ io.Reader) (*gemini.UploadedFile, error) {
+				return &gemini.UploadedFile{FileID: "gm-file", StoreID: store, Filename: name, Status: "active"}, nil
+			}
+			return s.uploadToGemini(ctx, stream, &pb.UploadFileMetadata{StoreId: "store", Filename: "b.txt", MimeType: "text/plain", Config: &pb.ProviderConfig{ApiKey: "key"}}, strings.NewReader("data"))
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stream := &mockUploadFileServer{ctx: ctx}
+			if err := tc.run(NewFileService(nil, nil), stream); err != nil {
+				t.Fatal(err)
+			}
+			if stream.response == nil || stream.response.FileId == "" || stream.response.Status == "" {
+				t.Fatalf("response = %#v", stream.response)
+			}
+		})
+	}
 }
 
 func TestFileService_UploadFile_Success(t *testing.T) {
@@ -745,4 +809,140 @@ func createRAGServiceWithMocks(
 	}
 
 	return rag.NewService(embedder, store, extractor, rag.DefaultServiceOptions())
+}
+
+func TestExternalFileBackendsRejectMissingCredentialsBeforeNetwork(t *testing.T) {
+	svc := NewFileService(nil, nil)
+	ctx := ctxWithFilePermission("tenant1")
+	checks := []struct {
+		name string
+		err  error
+	}{
+		{"create openai", func() error {
+			_, err := svc.createOpenAIVectorStore(ctx, &pb.CreateFileStoreRequest{Name: "store"})
+			return err
+		}()},
+		{"create gemini", func() error {
+			_, err := svc.createGeminiFileSearchStore(ctx, &pb.CreateFileStoreRequest{Name: "store"})
+			return err
+		}()},
+		{"delete openai", func() error {
+			_, err := svc.deleteOpenAIVectorStore(ctx, &pb.DeleteFileStoreRequest{StoreId: "store"})
+			return err
+		}()},
+		{"delete gemini", func() error {
+			_, err := svc.deleteGeminiFileSearchStore(ctx, &pb.DeleteFileStoreRequest{StoreId: "store"})
+			return err
+		}()},
+		{"get openai", func() error {
+			_, err := svc.getOpenAIVectorStore(ctx, &pb.GetFileStoreRequest{StoreId: "store"})
+			return err
+		}()},
+		{"get gemini", func() error {
+			_, err := svc.getGeminiFileSearchStore(ctx, &pb.GetFileStoreRequest{StoreId: "store"})
+			return err
+		}()},
+		{"list openai", func() error { _, err := svc.listOpenAIVectorStores(ctx, &pb.ListFileStoresRequest{}); return err }()},
+		{"list gemini", func() error { _, err := svc.listGeminiFileSearchStores(ctx, &pb.ListFileStoresRequest{}); return err }()},
+		{"upload openai", svc.uploadToOpenAI(ctx, &mockUploadFileServer{ctx: ctx}, &pb.UploadFileMetadata{StoreId: "store", Filename: "file.txt"}, strings.NewReader("data"))},
+		{"upload gemini", svc.uploadToGemini(ctx, &mockUploadFileServer{ctx: ctx}, &pb.UploadFileMetadata{StoreId: "store", Filename: "file.txt"}, strings.NewReader("data"))},
+	}
+	for _, check := range checks {
+		t.Run(check.name, func(t *testing.T) {
+			if status.Code(check.err) != codes.InvalidArgument {
+				t.Fatalf("error code = %v, want InvalidArgument (err=%v)", status.Code(check.err), check.err)
+			}
+		})
+	}
+}
+
+func TestFileService_ExternalStoreHTTPRoutes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/vector_stores":
+			if r.Method != http.MethodPost {
+				t.Errorf("OpenAI method = %s", r.Method)
+			}
+			_, _ = io.WriteString(w, `{"id":"vs_1","name":"external","status":"completed","created_at":1700000000}`)
+		case "/fileSearchStores":
+			if r.URL.Query().Get("key") != "gem-key" {
+				t.Errorf("Gemini key = %q", r.URL.Query().Get("key"))
+			}
+			_, _ = io.WriteString(w, `{"name":"fileSearchStores/fs_1","displayName":"external","createTime":"2026-01-01T00:00:00Z"}`)
+		default:
+			http.Error(w, "unexpected route "+r.URL.Path, http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	svc := NewFileService(nil, nil)
+	ctx := ctxWithAdminFilePermission("tenant1")
+	for _, tc := range []struct {
+		name     string
+		provider pb.Provider
+		key      string
+		want     string
+	}{
+		{"openai", pb.Provider_PROVIDER_OPENAI, "open-key", "vs_1"},
+		{"gemini", pb.Provider_PROVIDER_GEMINI, "gem-key", "fs_1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			response, err := svc.CreateFileStore(ctx, &pb.CreateFileStoreRequest{Provider: tc.provider, Name: "external", Config: &pb.ProviderConfig{ApiKey: tc.key, BaseUrl: server.URL}})
+			if err != nil {
+				t.Fatalf("CreateFileStore() error = %v", err)
+			}
+			if response.StoreId != tc.want || response.Provider != tc.provider {
+				t.Fatalf("response = %#v", response)
+			}
+		})
+	}
+}
+
+func TestMain(m *testing.M) {
+	chassis.RequireMajor(11)
+	os.Exit(m.Run())
+}
+
+func TestFileService_ExternalStoreGetListDelete(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/vector_stores":
+			_, _ = io.WriteString(w, `{"data":[{"id":"vs_1","name":"external","status":"completed","file_counts":{"total":2},"created_at":1700000000}]}`)
+		case "/vector_stores/vs_1":
+			_, _ = io.WriteString(w, `{"id":"vs_1","name":"external","status":"completed","file_counts":{"total":2},"created_at":1700000000}`)
+		case "/fileSearchStores":
+			_, _ = io.WriteString(w, `{"fileSearchStores":[{"name":"fileSearchStores/fs_1","displayName":"external","createTime":"2026-01-01T00:00:00Z","totalDocumentCount":2}]}`)
+		case "/fileSearchStores/fs_1":
+			_, _ = io.WriteString(w, `{"name":"fileSearchStores/fs_1","displayName":"external","createTime":"2026-01-01T00:00:00Z","totalDocumentCount":2}`)
+		default:
+			http.Error(w, "unexpected route "+r.URL.Path, http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	svc, ctx := NewFileService(nil, nil), ctxWithAdminFilePermission("tenant1")
+	for _, tc := range []struct {
+		name     string
+		provider pb.Provider
+		id, key  string
+	}{
+		{"openai", pb.Provider_PROVIDER_OPENAI, "vs_1", "open-key"},
+		{"gemini", pb.Provider_PROVIDER_GEMINI, "fs_1", "gem-key"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &pb.ProviderConfig{ApiKey: tc.key, BaseUrl: server.URL}
+			got, err := svc.GetFileStore(ctx, &pb.GetFileStoreRequest{Provider: tc.provider, StoreId: tc.id, Config: cfg})
+			if err != nil || got.FileCount != 2 {
+				t.Fatalf("GetFileStore() = %#v, %v", got, err)
+			}
+			listed, err := svc.ListFileStores(ctx, &pb.ListFileStoresRequest{Provider: tc.provider, Limit: 10, Config: cfg})
+			if err != nil || len(listed.Stores) != 1 {
+				t.Fatalf("ListFileStores() = %#v, %v", listed, err)
+			}
+			deleted, err := svc.DeleteFileStore(ctx, &pb.DeleteFileStoreRequest{Provider: tc.provider, StoreId: tc.id, Config: cfg, Force: true})
+			if err != nil || !deleted.Success {
+				t.Fatalf("DeleteFileStore() = %#v, %v", deleted, err)
+			}
+		})
+	}
 }

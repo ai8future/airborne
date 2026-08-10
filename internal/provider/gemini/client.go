@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"sort"
 	"strings"
 
@@ -20,6 +21,8 @@ import (
 const (
 	// maxHistoryChars limits conversation history to prevent context overflow
 	maxHistoryChars = 50000
+
+	defaultMaxOutputTokens int32 = 32000
 )
 
 // Client implements the provider.Provider interface using Google's Gemini API.
@@ -46,6 +49,16 @@ func NewClient(opts ...ClientOption) *Client {
 		}
 	}
 	return c
+}
+
+func positiveInt32OrDefault(v *int, fallback int32) int32 {
+	if v == nil || *v <= 0 {
+		return fallback
+	}
+	if *v > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	return int32(*v)
 }
 
 // Name returns the provider identifier.
@@ -147,11 +160,7 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 		generateConfig.TopP = &topP
 	}
 	// MaxOutputTokens: default 32000 for full response length
-	if cfg.MaxOutputTokens != nil {
-		generateConfig.MaxOutputTokens = int32(*cfg.MaxOutputTokens)
-	} else {
-		generateConfig.MaxOutputTokens = 32000
-	}
+	generateConfig.MaxOutputTokens = positiveInt32OrDefault(cfg.MaxOutputTokens, defaultMaxOutputTokens)
 
 	// Configure safety settings
 	if threshold := cfg.ExtraOptions["safety_threshold"]; threshold != "" {
@@ -187,7 +196,7 @@ func (c *Client) GenerateReply(ctx context.Context, params provider.GeneratePara
 					budget = 0
 				}
 				if budget > 0 {
-					budget32 := int32(budget)
+					budget32 := positiveInt32OrDefault(&budget, math.MaxInt32)
 					thinkingConfig.ThinkingBudget = &budget32
 				}
 			}
@@ -434,11 +443,7 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 		generateConfig.TopP = &topP
 	}
 	// MaxOutputTokens: default 32000 for full response length
-	if cfg.MaxOutputTokens != nil {
-		generateConfig.MaxOutputTokens = int32(*cfg.MaxOutputTokens)
-	} else {
-		generateConfig.MaxOutputTokens = 32000
-	}
+	generateConfig.MaxOutputTokens = positiveInt32OrDefault(cfg.MaxOutputTokens, defaultMaxOutputTokens)
 
 	// Configure safety settings
 	if threshold := cfg.ExtraOptions["safety_threshold"]; threshold != "" {
@@ -474,7 +479,7 @@ func (c *Client) GenerateReplyStream(ctx context.Context, params provider.Genera
 					budget = 0
 				}
 				if budget > 0 {
-					budget32 := int32(budget)
+					budget32 := positiveInt32OrDefault(&budget, math.MaxInt32)
 					thinkingConfig.ThinkingBudget = &budget32
 				}
 			}

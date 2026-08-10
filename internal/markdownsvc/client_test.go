@@ -3,8 +3,20 @@ package markdownsvc
 import (
 	"context"
 	"errors"
+	"net"
 	"testing"
+
+	pb "github.com/ai8future/markdown_svc/clients/go/markdownsvcv1"
+	"google.golang.org/grpc"
 )
+
+type markdownTestServer struct {
+	pb.UnimplementedMarkdownServiceServer
+}
+
+func (markdownTestServer) RenderToHTML(context.Context, *pb.RenderToHTMLRequest) (*pb.RenderToHTMLResponse, error) {
+	return &pb.RenderToHTMLResponse{Html: "<h1>Hello</h1>"}, nil
+}
 
 func TestInitialize_Empty(t *testing.T) {
 	// Reset global state
@@ -94,5 +106,24 @@ func TestRenderHTML_ContextCancellation(t *testing.T) {
 	// Should return ErrNotEnabled since client is nil (cancelled context doesn't matter if client is nil)
 	if !errors.Is(err, ErrNotEnabled) {
 		t.Fatalf("RenderHTML() with cancelled context and nil client error = %v, want ErrNotEnabled", err)
+	}
+}
+
+func TestRenderHTMLWithInProcessGRPCServer(t *testing.T) {
+	_ = Close()
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := grpc.NewServer()
+	pb.RegisterMarkdownServiceServer(server, markdownTestServer{})
+	go server.Serve(lis)
+	t.Cleanup(func() { server.Stop(); _ = lis.Close(); _ = Close() })
+	if err := Initialize(lis.Addr().String()); err != nil {
+		t.Fatal(err)
+	}
+	html, err := RenderHTML(context.Background(), "# Hello")
+	if err != nil || html != "<h1>Hello</h1>" {
+		t.Fatalf("RenderHTML() = %q, %v", html, err)
 	}
 }

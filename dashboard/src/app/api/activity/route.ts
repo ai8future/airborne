@@ -1,22 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
+import { adminFetchHeaders, requireDashboardAdmin } from "@/lib/adminAuth";
 
 const AIRBORNE_ADMIN_URL = process.env.AIRBORNE_ADMIN_URL || "http://localhost:50054";
 
 export async function GET(request: NextRequest) {
+  const authError = requireDashboardAdmin(request);
+  if (authError) return authError;
+
   const searchParams = request.nextUrl.searchParams;
-  const limit = searchParams.get("limit") || "50";
+  const parsedLimit = Number.parseInt(searchParams.get("limit") || "50", 10);
+  const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 200) : 50;
   const tenantId = searchParams.get("tenant_id");
 
   try {
-    let url = `${AIRBORNE_ADMIN_URL}/admin/activity?limit=${limit}`;
+    const url = new URL("/admin/activity", AIRBORNE_ADMIN_URL);
+    url.searchParams.set("limit", String(limit));
     if (tenantId) {
-      url += `&tenant_id=${encodeURIComponent(tenantId)}`;
+      url.searchParams.set("tenant_id", tenantId);
     }
 
-    const response = await fetch(url, {
-      headers: {
+    const response = await fetch(url.toString(), {
+      headers: adminFetchHeaders({
         "Content-Type": "application/json",
-      },
+      }),
       // Don't cache the response - we want fresh data every poll
       cache: "no-store",
     });

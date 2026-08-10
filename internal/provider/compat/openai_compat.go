@@ -389,4 +389,3 @@ func extractUsage(resp *openai.ChatCompletion) *provider.Usage {
 		TotalTokens:  int64(resp.Usage.TotalTokens),
 	}
 }
-

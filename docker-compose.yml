@@ -3,9 +3,7 @@
 
 services:
   airborne:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: airborne:${AIRBORNE_VERSION:-latest}
     ports:
       - "50612:50612"
     environment:

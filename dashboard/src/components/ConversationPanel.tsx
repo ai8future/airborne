@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useCallback, Component, ReactNode } from "
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useTenant } from "@/context/TenantContext";
+import { generateUUID } from "@/lib/uuid";
+import { displayHostname, safeExternalURL } from "@/lib/safeUrl";
 
 // Error boundary to prevent individual message crashes from breaking the whole UI
 interface ErrorBoundaryProps {
@@ -74,8 +76,8 @@ interface ActivityEntry {
   output_tokens: number;
   tokens_used: number;
   cost_usd: number;
-  grounding_queries: number;
-  grounding_cost_usd: number;
+  grounding_queries?: number;
+  grounding_cost_usd?: number;
   thread_cost_usd: number;
   processing_time_ms: number;
   status: string;
@@ -123,22 +125,24 @@ function GroundingSources({ chunks }: { chunks: GroundingChunk[] }) {
         {webChunks.map((chunk, idx) => {
           const uri = chunk.web!.uri;
           const title = chunk.web!.title;
-          let hostname = "";
-          try {
-            hostname = new URL(uri).hostname;
-          } catch {
-            hostname = uri;
-          }
+          const safe = safeExternalURL(uri);
+          const hostname = safe?.hostname || displayHostname(uri);
           return (
             <li key={idx} className="text-xs">
-              <a
-                href={uri}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:text-blue-800 hover:underline"
-              >
-                {title || hostname}
-              </a>
+              {safe ? (
+                <a
+                  href={safe.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800 hover:underline"
+                >
+                  {title || hostname}
+                </a>
+              ) : (
+                <span className="text-slate-600">
+                  {title || hostname || "Blocked unsafe source URL"}
+                </span>
+              )}
               {title && (
                 <span className="text-slate-400 ml-1.5">({hostname})</span>
               )}
@@ -435,7 +439,13 @@ function MessageBubble({ message, isPending, sendStartTime }: MessageBubbleProps
         </>
       );
     }
-    // Default: "formatted" - server-rendered HTML from markdown_svc
+    // Default: "formatted".
+    //
+    // SECURITY: do not inject stored rendered_html with dangerouslySetInnerHTML.
+    // markdown_svc requests sanitized HTML, but the dashboard is the last XSS
+    // boundary and must remain safe even if stored debug HTML is stale,
+    // tampered with, or produced by a compromised renderer. ReactMarkdown
+    // renders markdown as React elements and escapes raw HTML by default.
     if (loadingData) {
       return <div className="text-xs text-slate-400">Loading formatted content...</div>;
     }
@@ -444,10 +454,11 @@ function MessageBubble({ message, isPending, sendStartTime }: MessageBubbleProps
     if (renderedHtml) {
       return (
         <>
-          <div
-            className="text-sm leading-relaxed prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 text-slate-700"
-            dangerouslySetInnerHTML={{ __html: renderedHtml }}
-          />
+          <div className="text-sm leading-relaxed prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 text-slate-700">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {message.content}
+            </ReactMarkdown>
+          </div>
           {formattedGroundingChunks.length > 0 && (
             <div className="mt-4 pt-3 border-t border-slate-200">
               <GroundingSources chunks={formattedGroundingChunks} />
@@ -606,15 +617,6 @@ function MessageBubble({ message, isPending, sendStartTime }: MessageBubbleProps
       </div>
     </div>
   );
-}
-
-// Generate a UUID for new threads
-function generateUUID(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
 }
 
 // Check if a string is a valid UUID
@@ -829,7 +831,7 @@ export default function ConversationPanel({ activity, selectedThreadId, onSelect
       }
 
       // Generate unique request ID for idempotency
-      const requestId = crypto.randomUUID();
+      const requestId = generateUUID();
 
       const res = await fetch('/api/chat', {
         method: 'POST',

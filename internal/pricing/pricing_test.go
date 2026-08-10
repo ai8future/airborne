@@ -208,3 +208,24 @@ func TestPackageLevelFunctions(t *testing.T) {
 		t.Error("ProviderCount() = 0")
 	}
 }
+
+func TestPricingWrapperLookupsAndGrounding(t *testing.T) {
+	pricer, err := NewPricer("")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := GetPricing("gpt-4o"); !ok {
+		t.Fatal("package-level GetPricing() did not find embedded gpt-4o data")
+	}
+	providers := pricer.ListProviders()
+	if len(providers) == 0 {
+		t.Fatal("no embedded providers")
+	}
+	if _, ok := pricer.GetProviderMetadata(providers[0]); !ok {
+		t.Fatalf("GetProviderMetadata(%q) did not find embedded provider", providers[0])
+	}
+	if got := CalculateGroundingCost("gemini-2.5-flash", 0); got != 0 {
+		t.Fatalf("CalculateGroundingCost() = %v, want 0 with no queries", got)
+	}
+}

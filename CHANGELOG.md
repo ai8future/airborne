@@ -1,5 +1,107 @@
 # Changelog
 
+## [1.10.9] - 2026-07-18
+
+### Fixed — Fail-closed email_ai_svc idempotency/auth prerequisites
+- Made keyed `GenerateReply` fail closed before provider dispatch whenever idempotency storage is absent or uncertain, and removed the uncached keyed-success bypass.
+- Added a bounded visible-ASCII key contract and a fixed-size versioned hash namespace over length-prefixed tenant/key components, preventing delimiter collisions without logging raw keys.
+- Gave every in-flight acquisition a cryptographically random owner token and made completion/release atomic compare operations; stale owners cannot overwrite or delete replacements, and unprovable completion returns typed `idempotency_completion_ambiguous` without exposing success.
+- Added validated, configurable completed-response retention with a 48-hour minimum and enforced an 18-minute maximum keyed-generation duration beneath the 20-minute in-flight lease.
+- Added a typed pre-dispatch auth rate-limit detail plus focused idempotency, replay, retention/lease, auth, and protobuf contract regressions without changing or regenerating the protobuf API.
+
+Agent: Codex:gpt-5.6-sol-high
+
+## [1.10.8] - 2026-07-14
+
+### Fixed — Non-root CI frozen-config readability
+- Made the validated, secret-free E2E frozen snapshot explicitly mode `0644` before Compose mounts it, allowing the production container's non-root user to read it on Linux hosted runners.
+- Added a fast regression test that proves the permission transition occurs after freezing and before container startup.
+
+Agent: Codex:gpt-5.5-high
+
+## [1.10.7] - 2026-07-14
+
+### Fixed — CI E2E dependency staging isolation
+- Moved verify-E2E dependency checkouts beneath ignored and Docker-excluded `node_modules/airborne-ci-deps` so source-cleanliness and image-context checks do not collide with CI staging.
+- Repointed the external Go replacement symlinks to the isolated staging area and removed in-worktree Make overrides that bypassed the canonical replacement layout.
+
+Agent: Codex:gpt-5.5-high
+
+## [1.10.6] - 2026-07-14
+
+### Fixed — Release CI private dependency access
+- Authenticated both private dependency checkouts with the repository-scoped read-only `CHASSIS_GO_ADDONS_DEPLOY_KEY` and disabled credential persistence.
+- Made dashboard coverage and Playwright diagnostics upload on success or failure so CI breakage leaves actionable evidence.
+
+Agent: Codex:gpt-5.5-high
+
+## [1.10.5] - 2026-07-14
+
+### Changed — Complete deterministic release verification
+- Added production-stack browser E2E coverage across provider behavior, persistence, RLS, restart, cleanup, and the live dashboard, with fail-closed CI publishing the exact tested image.
+- Enforced root, package, nested-module, and dashboard coverage floors while rejecting stale or generated verification evidence.
+- Standardized request defaults on 120 seconds, repaired markdown operation deadlines and admin shutdown cleanup, and made local dashboard chat reliable on real HTTP origins.
+
+Agent: Codex:gpt-5.5-high
+
+## [1.10.4] - 2026-07-13
+
+### Fixed — Admin request timeout policy
+- Replaced the implicit 30-second admin request deadline with a route-aware policy: 120 seconds by default, four minutes for chat/test operations, and two minutes for uploads, all beneath the five-minute write timeout.
+- Added deterministic middleware and installed-server deadline regression coverage, plus documented the operational policy and recorded the corrected timeout-preemption bug.
+
+Agent: Codex:gpt-5.5-high
+
+## [1.10.3] - 2026-07-13
+
+### Fixed — Build, Docker, and verification hardening
+- Raised the Go toolchain and Docker builder to 1.26.5 after `govulncheck` found a reachable standard-library TLS vulnerability in the older patch level.
+- Made server Docker builds repeatable by staging pinned snapshots for every local `replace` target and passing version/commit/build-time metadata into the image.
+- Hardened Docker contexts against local secret leakage, fixed non-root config readability, and aligned Compose to use the pinned Makefile-built image.
+- Restored dashboard verification under Next 16 with deterministic `npm ci`, TypeScript linting, secret-safe Docker context handling, and a Dockerfile path that works without committed `public/` assets.
+- Updated Buf linting to the current `STANDARD` category while preserving Airborne's intentional shared request contract.
+
+Agent: Codex:gpt-5.5-high
+
+## [1.10.2] - 2026-07-06
+
+### Security — Admin/dashboard hardening audit
+- Closed the unauthenticated HTTP admin and dashboard proxy surfaces: protected admin routes now require bearer/API-key credentials, dashboard API routes fail closed without a configured token, cookie auth gets same-origin CSRF checks, and admin CORS is explicit-origin only.
+- Removed raw stored HTML injection from the dashboard conversation view and restricted dashboard citation links to safe `http`/`https` URLs.
+- Hardened provider/file/RAG boundaries with admin-only custom FileService base URLs, stricter provider URL validation, escaped Gemini/Qdrant resource paths, escaped Doppler/Gemini query construction, and capped provider/Docbox error-body reads.
+- Added DoS controls for admin uploads, request history, HTTP capture buffers, multipart memory, CLI/admin path/query construction, and int32 narrowing.
+- Updated README operator guidance for admin/dashboard/CLI auth and moved the dashboard to a patched Next.js canary with clean npm audit results.
+
+Agent: Codex:gpt-5.5-high
+
+## [1.10.1] - 2026-07-04
+
+### Changed — Final review and verification
+- Aligned chassis pins and marker usage to chassis `11.3.0` and chassis-go-addons `1.2.10`.
+- Removed obsolete junk generated during the overhaul and refreshed vendored dependencies.
+- Added the DB `RequireMajor` compatibility gate and corrected admin `Timeout`/`Logging` middleware order.
+- Fixed Gemini filestore calls to resolve the lazy `call.Client`, preserving retry/circuit-breaker behavior for GETs and POSTs, with body-rewind regression coverage.
+- Added final bug-note metadata and ran full non-masking verification, including the Docker-backed DB test guard against skipped database tests.
+
+Agent: Codex:gpt-5.5
+
+## [1.10.0] - 2026-07-04
+
+### Changed — Complete schema overhaul (breaking)
+- **Relational baseline migration**: Replaced the entire prior migration history (`001_initial_schema.sql` … `009_solstice_*.sql`) with a single `migrations/001_baseline.sql` covering the tenant registry, a `chats`/`chat_messages` conversation tree (parent-linked branches, head-of-branch tracking), a debug side-table, files, and a models registry.
+- **Row-Level Security, enforced correctly**: All tenant-scoped tables use `FORCE ROW LEVEL SECURITY` keyed off a transaction-local GUC (`airborne.tenant_id`) set per-request via tenant-aware tx helpers — `FORCE` closes the table-owner/superuser bypass hole that plain `ENABLE ROW LEVEL SECURITY` leaves open. Requires the app to connect as a dedicated non-superuser, non-owner role (documented in README).
+- **Registry-backed tenant validation**: Hardcoded `ValidTenantIDs` removed; tenant existence/status is now looked up against the `airborne_tenants` table with a stale-tolerant cache.
+- **Atomic `PersistTurn`**: conversation turns are written keyed by the chat's primary key in a single transaction, replacing prior multi-step persistence.
+- **Admin dashboard** rebuilt over the new relational tables (cross-tenant reads, SQL-side tenant filter, capped history load) with the existing wire contract preserved for the dashboard frontend.
+- **Model-alias registry resolution** (`applyModelRegistry`) applied uniformly on both the primary and failover generation paths.
+- **A9**: `external_ref` correlation — requests can be tagged and later retrieved by an external reference id.
+- **A10**: Idempotent `GenerateReply` keyed by `idempotency_key` (proto fields 22/23), backed by tenant-namespaced Redis replay to dedupe retried requests.
+- **testcontainers RLS suite** (`internal/db`): real-Postgres tests for tenant isolation, cross-tenant read/write denial, suspended-tenant lock-out, and panic-safe transaction cleanup.
+- **Fix**: failover-success turns are now persisted through the same flow as the primary path (previously silently dropped — see `_bugs_fixed/2026-07-04-failover-turns-not-persisted.md`).
+- **Docs**: README now documents the required non-superuser app role (deploy-time prerequisite for RLS to actually apply) and the local Docker-based RLS test gate pending CI repair.
+
+Agent: Claude Code (Claude:Fable-5)
+
 ## [1.9.5] - 2026-06-15
 - Bump Go toolchain to 1.26 (Dockerfile `golang:1.26-alpine`, `go.mod` go 1.26.2, README prerequisites). Verified `go build ./...`.
 - Agent: Claude:Opus 4.8 (1M context)

@@ -29,6 +29,9 @@
       "AdminToken": "",
       "AuthMode": "static"
     },
+    "Idempotency": {
+      "CompletedResponseRetention": 172800000000000
+    },
     "RateLimits": {
       "DefaultRPM": 60,
       "DefaultRPD": 10000,

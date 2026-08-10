@@ -2,7 +2,9 @@ package redis
 
 import (
 	"context"
+	"sort"
 	"testing"
+	"time"
 
 	"github.com/ai8future/chassis-go-addons/rediskit"
 	"github.com/alicebob/miniredis/v2"
@@ -60,6 +62,114 @@ func TestClient(t *testing.T) {
 	_, err = client.Get(ctx, "key")
 	if !IsNil(err) {
 		t.Errorf("expected nil error after Del, got %v", err)
+	}
+}
+
+func TestClientExtendedCommands(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client, err := NewClient(Config{Addr: mr.Addr()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	ctx := context.Background()
+
+	if err := client.Ping(ctx); err != nil {
+		t.Fatalf("Ping: %v", err)
+	}
+	if set, err := client.SetNX(ctx, "once", "first", 0); err != nil || !set {
+		t.Fatalf("first SetNX = %v, %v; want true, nil", set, err)
+	}
+	if set, err := client.SetNX(ctx, "once", "second", 0); err != nil || set {
+		t.Fatalf("second SetNX = %v, %v; want false, nil", set, err)
+	}
+	if got, err := client.Incr(ctx, "counter"); err != nil || got != 1 {
+		t.Fatalf("Incr = %d, %v", got, err)
+	}
+	if got, err := client.IncrBy(ctx, "counter", 4); err != nil || got != 5 {
+		t.Fatalf("IncrBy = %d, %v", got, err)
+	}
+	if err := client.Expire(ctx, "counter", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if ttl, err := client.TTL(ctx, "counter"); err != nil || ttl <= 0 {
+		t.Fatalf("TTL = %v, %v", ttl, err)
+	}
+	if got, err := client.Eval(ctx, "return ARGV[1]", nil, "script-result"); err != nil || got != "script-result" {
+		t.Fatalf("Eval = %#v, %v", got, err)
+	}
+
+	if err := client.HSet(ctx, "hash", "first", "one", "second", "two"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := client.HGet(ctx, "hash", "first"); err != nil || got != "one" {
+		t.Fatalf("HGet = %q, %v", got, err)
+	}
+	if got, err := client.HGetAll(ctx, "hash"); err != nil || got["second"] != "two" {
+		t.Fatalf("HGetAll = %#v, %v", got, err)
+	}
+	if err := client.HDel(ctx, "hash", "first"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.HGet(ctx, "hash", "first"); !IsNil(err) {
+		t.Fatalf("HGet deleted field error = %v, want redis nil", err)
+	}
+
+	if err := client.Set(ctx, "prefix:a", "a", 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Set(ctx, "prefix:b", "b", 0); err != nil {
+		t.Fatal(err)
+	}
+	keys, err := client.Scan(ctx, "prefix:*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(keys)
+	if len(keys) != 2 || keys[0] != "prefix:a" || keys[1] != "prefix:b" {
+		t.Fatalf("Scan = %#v", keys)
+	}
+}
+
+func TestClientCompareAndSetAndDeleteAreOwnerSafe(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client, err := NewClient(Config{Addr: mr.Addr()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	ctx := context.Background()
+
+	if err := client.Set(ctx, "lease", "owner-two", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := client.CompareAndSet(ctx, "lease", "owner-one", []byte("stale-completion"), 2*time.Hour); err != nil || changed {
+		t.Fatalf("stale CompareAndSet = %v, %v; want false, nil", changed, err)
+	}
+	if got, err := client.Get(ctx, "lease"); err != nil || got != "owner-two" {
+		t.Fatalf("value after stale CompareAndSet = %q, %v", got, err)
+	}
+	if deleted, err := client.CompareAndDelete(ctx, "lease", "owner-one"); err != nil || deleted {
+		t.Fatalf("stale CompareAndDelete = %v, %v; want false, nil", deleted, err)
+	}
+	if got, err := client.Get(ctx, "lease"); err != nil || got != "owner-two" {
+		t.Fatalf("value after stale CompareAndDelete = %q, %v", got, err)
+	}
+
+	if changed, err := client.CompareAndSet(ctx, "lease", "owner-two", []byte("completed"), 2*time.Hour); err != nil || !changed {
+		t.Fatalf("owned CompareAndSet = %v, %v; want true, nil", changed, err)
+	}
+	if got, err := client.Get(ctx, "lease"); err != nil || got != "completed" {
+		t.Fatalf("value after owned CompareAndSet = %q, %v", got, err)
+	}
+	if got := mr.TTL("lease"); got != 2*time.Hour {
+		t.Fatalf("completed TTL = %v, want %v", got, 2*time.Hour)
+	}
+	if deleted, err := client.CompareAndDelete(ctx, "lease", "completed"); err != nil || !deleted {
+		t.Fatalf("owned CompareAndDelete = %v, %v; want true, nil", deleted, err)
+	}
+	if mr.Exists("lease") {
+		t.Fatal("owned CompareAndDelete retained the key")
 	}
 }
 

@@ -11,6 +11,9 @@ import (
 )
 
 func TestNewOllamaEmbedder_Defaults(t *testing.T) {
+	if defaultOllamaTimeout != 120*time.Second {
+		t.Fatalf("default timeout = %s, want 120s", defaultOllamaTimeout)
+	}
 	emb := NewOllamaEmbedder(OllamaConfig{})
 
 	if emb.baseURL != "http://localhost:11434" {
@@ -26,12 +29,12 @@ func TestNewOllamaEmbedder_Defaults(t *testing.T) {
 
 func TestNewOllamaEmbedder_CustomConfig(t *testing.T) {
 	emb := NewOllamaEmbedder(OllamaConfig{
-		BaseURL: "http://custom:1234",
+		BaseURL: "http://localhost:1234",
 		Model:   "bge-m3",
 		Timeout: 60 * time.Second,
 	})
 
-	if emb.baseURL != "http://custom:1234" {
+	if emb.baseURL != "http://localhost:1234" {
 		t.Errorf("expected custom baseURL, got %s", emb.baseURL)
 	}
 	if emb.model != "bge-m3" {
@@ -39,6 +42,14 @@ func TestNewOllamaEmbedder_CustomConfig(t *testing.T) {
 	}
 	if emb.dimensions != 1024 {
 		t.Errorf("expected bge-m3 dimensions=1024, got %d", emb.dimensions)
+	}
+}
+
+func TestNewOllamaEmbedder_InvalidBaseURLFallsBack(t *testing.T) {
+	emb := NewOllamaEmbedder(OllamaConfig{BaseURL: "file:///etc/passwd"})
+
+	if emb.baseURL != "http://localhost:11434" {
+		t.Errorf("expected fallback baseURL, got %s", emb.baseURL)
 	}
 }
 

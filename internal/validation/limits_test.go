@@ -109,6 +109,67 @@ func TestValidateGenerateRequest_BoundaryValues(t *testing.T) {
 	}
 }
 
+func TestValidateHistoryContents(t *testing.T) {
+	tests := []struct {
+		name     string
+		contents []string
+		wantErr  error
+	}{
+		{
+			name:     "nil history passes",
+			contents: nil,
+			wantErr:  nil,
+		},
+		{
+			name:     "single message at limit passes",
+			contents: []string{strings.Repeat("x", MaxHistoryMessageBytes)},
+			wantErr:  nil,
+		},
+		{
+			name:     "single message over limit rejected",
+			contents: []string{strings.Repeat("x", MaxHistoryMessageBytes+1)},
+			wantErr:  ErrHistoryMessageTooLarge,
+		},
+		{
+			name: "aggregate at limit passes",
+			contents: []string{
+				strings.Repeat("a", MaxHistoryMessageBytes),
+				strings.Repeat("b", MaxHistoryMessageBytes),
+				strings.Repeat("c", MaxHistoryMessageBytes),
+				strings.Repeat("d", MaxHistoryMessageBytes),
+				strings.Repeat("e", MaxHistoryMessageBytes),
+				strings.Repeat("f", MaxHistoryTotalBytes-(5*MaxHistoryMessageBytes)),
+			},
+			wantErr: nil,
+		},
+		{
+			name: "aggregate over limit rejected",
+			contents: []string{
+				strings.Repeat("a", MaxHistoryMessageBytes),
+				strings.Repeat("b", MaxHistoryMessageBytes),
+				strings.Repeat("c", MaxHistoryMessageBytes),
+				strings.Repeat("d", MaxHistoryMessageBytes),
+				strings.Repeat("e", MaxHistoryMessageBytes),
+				strings.Repeat("f", MaxHistoryMessageBytes),
+			},
+			wantErr: ErrHistoryContentTooLarge,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateHistoryContents(tt.contents)
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Errorf("expected no error, got %v", err)
+				}
+			} else if !errors.Is(err, tt.wantErr) {
+				t.Errorf("expected error %v, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
 func TestValidateMetadata(t *testing.T) {
 	tests := []struct {
 		name     string

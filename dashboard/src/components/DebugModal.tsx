@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { displayHostname, safeExternalURL } from "@/lib/safeUrl";
 
 interface DebugData {
   message_id: string;
@@ -77,17 +78,32 @@ function CitationsList({ citations }: { citations: Citation[] }) {
           <ol className="list-decimal list-inside space-y-1.5">
             {webCitations.map((citation, idx) => (
               <li key={idx} className="text-sm">
-                <a
-                  href={citation.uri}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:text-blue-800 hover:underline"
-                >
-                  {citation.title || new URL(citation.uri!).hostname}
-                </a>
-                <span className="text-gray-400 text-xs ml-2">
-                  {citation.uri && new URL(citation.uri).hostname}
-                </span>
+                {(() => {
+                  const safe = safeExternalURL(citation.uri);
+                  const hostname = safe?.hostname || displayHostname(citation.uri);
+                  if (!safe) {
+                    return (
+                      <span className="text-gray-700">
+                        {citation.title || hostname || "Blocked unsafe source URL"}
+                      </span>
+                    );
+                  }
+                  return (
+                    <>
+                      <a
+                        href={safe.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        {citation.title || hostname}
+                      </a>
+                      <span className="text-gray-400 text-xs ml-2">
+                        {hostname}
+                      </span>
+                    </>
+                  );
+                })()}
               </li>
             ))}
           </ol>

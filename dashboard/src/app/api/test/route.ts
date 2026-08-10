@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { adminFetchHeaders, requireDashboardAdmin } from "@/lib/adminAuth";
 
 const AIRBORNE_ADMIN_URL = process.env.AIRBORNE_ADMIN_URL || "http://localhost:50054";
 
@@ -19,6 +20,9 @@ interface TestResponse {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = requireDashboardAdmin(request);
+  if (authError) return authError;
+
   try {
     const body: TestRequest = await request.json();
 
@@ -31,9 +35,9 @@ export async function POST(request: NextRequest) {
 
     const response = await fetch(`${AIRBORNE_ADMIN_URL}/admin/test`, {
       method: "POST",
-      headers: {
+      headers: adminFetchHeaders({
         "Content-Type": "application/json",
-      },
+      }),
       body: JSON.stringify({
         prompt: body.prompt,
         tenant_id: body.tenant_id || "",

@@ -3,7 +3,13 @@ modules:
   - path: api/proto
 lint:
   use:
-    - DEFAULT
+    - STANDARD
+  except:
+    # Airborne intentionally shares GenerateReplyRequest between unary and
+    # streaming RPCs to preserve one client request contract.
+    - RPC_REQUEST_RESPONSE_UNIQUE
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
 breaking:
   use:
     - FILE

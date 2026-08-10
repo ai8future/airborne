@@ -3,6 +3,10 @@ package compat
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/openai/openai-go"
@@ -394,5 +398,83 @@ func TestGenerateReplyStream_InvalidBaseURL(t *testing.T) {
 	}
 	if ch != nil {
 		t.Error("expected nil channel on error")
+	}
+}
+
+func TestCompatGenerateReplyAndStreamFixtures(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-key" {
+			t.Errorf("authorization = %q", r.Header.Get("Authorization"))
+		}
+		if strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\ndata: {\"choices\":[],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":3,\"total_tokens\":5}}\n\ndata: [DONE]\n\n"))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"model":"compat-model","choices":[{"message":{"content":"hello"}}],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}`))
+	}))
+	defer srv.Close()
+	client := NewClient(ProviderConfig{Name: "compat", DefaultBaseURL: srv.URL, DefaultModel: "compat-model", SupportsStreaming: true})
+	params := provider.GenerateParams{UserInput: "hi", Config: provider.ProviderConfig{APIKey: "test-key"}}
+	resp, err := client.GenerateReply(context.Background(), params)
+	if err != nil || resp.Text != "hello" || resp.Usage.TotalTokens != 5 {
+		t.Fatalf("reply = %#v, %v", resp, err)
+	}
+	ch, err := client.GenerateReplyStream(context.Background(), params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var chunks []provider.StreamChunk
+	for c := range ch {
+		chunks = append(chunks, c)
+	}
+	if len(chunks) != 1 || chunks[0].Type != provider.ChunkTypeComplete {
+		t.Fatalf("chunks = %#v", chunks)
+	}
+}
+
+func TestCompatGenerateReplyOptionalFields(t *testing.T) {
+	temperature, topP, maxTokens := 0.2, 0.9, 64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{`"temperature":0.2`, `"top_p":0.9`, `"max_tokens":64`} {
+			if !strings.Contains(string(body), want) {
+				t.Errorf("request %s missing %s", body, want)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"model":"compat-model","choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer srv.Close()
+	client := NewClient(ProviderConfig{Name: "compat", DefaultBaseURL: srv.URL, DefaultModel: "compat-model"}, WithDebugLogging(true))
+	_, err := client.GenerateReply(context.Background(), provider.GenerateParams{UserInput: "hi", Config: provider.ProviderConfig{APIKey: "key", Temperature: &temperature, TopP: &topP, MaxOutputTokens: &maxTokens}})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCompatStreamOptionalFields(t *testing.T) {
+	temperature, topP, maxTokens := 0.3, 0.7, 32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		for _, want := range []string{`"temperature":0.3`, `"top_p":0.7`, `"max_tokens":32`} {
+			if !strings.Contains(string(body), want) {
+				t.Errorf("request missing %s: %s", want, body)
+			}
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+	client := NewClient(ProviderConfig{Name: "compat", DefaultBaseURL: srv.URL, DefaultModel: "model", SupportsStreaming: true})
+	ch, err := client.GenerateReplyStream(context.Background(), provider.GenerateParams{Config: provider.ProviderConfig{APIKey: "key", Temperature: &temperature, TopP: &topP, MaxOutputTokens: &maxTokens}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range ch {
 	}
 }

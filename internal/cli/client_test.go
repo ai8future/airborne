@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
 func TestNewClient(t *testing.T) {
+	t.Setenv("AIRBORNE_ADMIN_TOKEN", "")
+
 	c := NewClient("http://localhost:8080")
 	if c == nil {
 		t.Fatal("NewClient returned nil")
@@ -17,6 +20,15 @@ func TestNewClient(t *testing.T) {
 	}
 	if c.HTTPClient == nil {
 		t.Fatal("HTTPClient is nil")
+	}
+}
+
+func TestNewClient_UsesEnvToken(t *testing.T) {
+	t.Setenv("AIRBORNE_ADMIN_TOKEN", "env-secret")
+
+	c := NewClient("http://localhost:8080")
+	if c.AuthToken != "env-secret" {
+		t.Errorf("AuthToken = %q, want env-secret", c.AuthToken)
 	}
 }
 
@@ -99,6 +111,28 @@ func TestClient_Activity_Success(t *testing.T) {
 	}
 }
 
+func TestClient_Activity_SendsAuthAndEscapesQuery(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer secret" {
+			t.Errorf("Authorization = %q, want bearer token", got)
+		}
+		if r.URL.Query().Get("tenant_id") != "ai8&other=bad" {
+			t.Errorf("tenant_id = %q, want literal tenant value", r.URL.Query().Get("tenant_id"))
+		}
+		if r.URL.Query().Get("other") != "" {
+			t.Errorf("query injection succeeded: other=%q", r.URL.Query().Get("other"))
+		}
+		json.NewEncoder(w).Encode(ActivityResponse{Activity: []Activity{}})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	c.AuthToken = "secret"
+	if _, err := c.Activity(5, "ai8&other=bad"); err != nil {
+		t.Fatalf("Activity() error = %v", err)
+	}
+}
+
 func TestClient_Activity_NoTenant(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("tenant_id") != "" {
@@ -137,6 +171,21 @@ func TestClient_Debug_Success(t *testing.T) {
 	}
 	if resp.MessageID != "msg-123" {
 		t.Errorf("MessageID = %q, want %q", resp.MessageID, "msg-123")
+	}
+}
+
+func TestClient_Debug_EscapesPath(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.EscapedPath(), "msg%2F..%2Fsecret") {
+			t.Errorf("EscapedPath = %q, want escaped message id", r.URL.EscapedPath())
+		}
+		json.NewEncoder(w).Encode(DebugResponse{MessageID: "msg/../secret"})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	if _, err := c.Debug("msg/../secret"); err != nil {
+		t.Fatalf("Debug() error = %v", err)
 	}
 }
 
@@ -210,5 +259,32 @@ func TestClient_Test_ServerError(t *testing.T) {
 	_, err := c.Test(TestRequest{Prompt: "Hello"})
 	if err == nil {
 		t.Fatal("expected error for 400 response")
+	}
+}
+
+func TestClient_Test_HTTP200BodyErrorIsReturned(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(TestResponse{Error: "provider unavailable"})
+	}))
+	defer srv.Close()
+
+	resp, err := NewClient(srv.URL).Test(TestRequest{Prompt: "Hello"})
+	if err == nil || !strings.Contains(err.Error(), "provider unavailable") {
+		t.Fatalf("Test() error = %v, want body error", err)
+	}
+	if resp != nil {
+		t.Fatalf("Test() response = %#v, want nil on body error", resp)
+	}
+}
+
+func TestClient_Test_EmptyBodyErrorRemainsSuccessful(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(TestResponse{Reply: "ok", Error: ""})
+	}))
+	defer srv.Close()
+
+	resp, err := NewClient(srv.URL).Test(TestRequest{Prompt: "Hello"})
+	if err != nil || resp == nil || resp.Reply != "ok" {
+		t.Fatalf("Test() = %#v, %v; want successful response", resp, err)
 	}
 }

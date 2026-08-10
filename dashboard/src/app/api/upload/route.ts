@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { adminFetchHeaders, requireDashboardAdmin } from "@/lib/adminAuth";
 
 const AIRBORNE_ADMIN_URL = process.env.AIRBORNE_ADMIN_URL || "http://localhost:50054";
+const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
 interface UploadResponse {
   file_uri?: string;
@@ -10,7 +12,18 @@ interface UploadResponse {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = requireDashboardAdmin(request);
+  if (authError) return authError;
+
   try {
+    const contentLength = Number.parseInt(request.headers.get("content-length") || "0", 10);
+    if (contentLength > MAX_UPLOAD_BYTES) {
+      return NextResponse.json(
+        { error: `file exceeds maximum upload size of ${MAX_UPLOAD_BYTES} bytes` },
+        { status: 413 }
+      );
+    }
+
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     const tenantId = formData.get("tenant_id") as string | null;
@@ -19,6 +32,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "file is required" },
         { status: 400 }
+      );
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return NextResponse.json(
+        { error: `file exceeds maximum upload size of ${MAX_UPLOAD_BYTES} bytes` },
+        { status: 413 }
       );
     }
 
@@ -31,6 +50,7 @@ export async function POST(request: NextRequest) {
 
     const uploadResponse = await fetch(`${AIRBORNE_ADMIN_URL}/admin/upload`, {
       method: "POST",
+      headers: adminFetchHeaders(),
       body: backendFormData,
     });
 

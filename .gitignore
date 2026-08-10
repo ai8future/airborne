@@ -61,3 +61,11 @@ tmp/
 
 # Docker build artifacts (copied from sibling directory during docker-build)
 pricing_db/
+chassis_suite/
+
+e2e/artifacts/
+
+# Dashboard test artifacts (generated locally and in CI)
+dashboard/coverage/
+dashboard/playwright-report/
+dashboard/test-results/

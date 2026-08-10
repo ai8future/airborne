@@ -27,6 +27,7 @@ func main() {
 
 	// Global flags
 	rootCmd.PersistentFlags().StringP("url", "u", "", "Admin API URL (default: http://localhost:50054 or AIRBORNE_ADMIN_URL)")
+	rootCmd.PersistentFlags().String("token", "", "Admin bearer token (default: AIRBORNE_ADMIN_TOKEN)")
 	rootCmd.PersistentFlags().StringP("tenant", "t", "ai8", "Tenant ID")
 	rootCmd.PersistentFlags().Bool("json", false, "Output as JSON")
 
@@ -39,7 +40,11 @@ func main() {
 		if url == "" {
 			url = "http://localhost:50054"
 		}
-		return cli.NewClient(url)
+		client := cli.NewClient(url)
+		if token, _ := cmd.Flags().GetString("token"); token != "" {
+			client.AuthToken = token
+		}
+		return client
 	}
 
 	// Add commands

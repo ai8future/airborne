@@ -11,17 +11,17 @@ import (
 	_ "image/png" // Register PNG decoder
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/ai8future/airborne/internal/provider"
 )
 
+var geminiImageEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent"
+
 const (
-	geminiImageEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent"
-	defaultGeminiModel  = "gemini-2.5-flash-image"
-	geminiTimeout       = 90 * time.Second
-	jpegQuality         = 85
-	maxResponseSize     = 50 * 1024 * 1024 // 50MB
+	defaultGeminiModel = "gemini-2.5-flash-image"
+	geminiTimeout      = defaultImageGenerationTimeout
+	jpegQuality        = 85
+	maxResponseSize    = 50 * 1024 * 1024 // 50MB
 )
 
 type geminiRequest struct {

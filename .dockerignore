@@ -1,0 +1,33 @@
+.git
+.gitignore
+.omx
+.omc
+bin
+coverage.out
+coverage.html
+*.test
+*.prof
+.DS_Store
+
+# Local secrets must never enter Docker build contexts or intermediate layers.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.npmrc
+
+# Local dependency/cache/build output not needed in Docker context
+vendor
+node_modules
+dashboard/node_modules
+dashboard/.next
+dashboard/out
+
+# Scratch and audit artifacts not required in production images
+_studies
+_proposals
+_rcodegen
+_bugs_open
+_bugs_fixed
+.planning

@@ -3,12 +3,28 @@ package redis
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
 
 	"github.com/ai8future/chassis-go-addons/rediskit"
 )
+
+const compareAndSetScript = `
+if redis.call("GET", KEYS[1]) ~= ARGV[1] then
+	return 0
+end
+redis.call("PSETEX", KEYS[1], ARGV[3], ARGV[2])
+return 1
+`
+
+const compareAndDeleteScript = `
+if redis.call("GET", KEYS[1]) ~= ARGV[1] then
+	return 0
+end
+return redis.call("DEL", KEYS[1])
+`
 
 // Client wraps the Redis client with Airborne-specific operations
 type Client struct {
@@ -92,6 +108,47 @@ func (c *Client) Expire(ctx context.Context, key string, expiration time.Duratio
 // Eval executes a Lua script
 func (c *Client) Eval(ctx context.Context, script string, keys []string, args ...interface{}) (interface{}, error) {
 	return c.kit.Raw().Eval(ctx, script, keys, args...).Result()
+}
+
+// CompareAndSet atomically replaces key only when its current value equals
+// expected, and applies expiration to the replacement. The comparison and
+// replacement execute in one Redis Lua operation.
+func (c *Client) CompareAndSet(ctx context.Context, key, expected string, value interface{}, expiration time.Duration) (bool, error) {
+	expirationMillis := expiration.Milliseconds()
+	if expirationMillis <= 0 {
+		return false, fmt.Errorf("compare-and-set expiration must be positive")
+	}
+	result, err := c.Eval(ctx, compareAndSetScript, []string{key}, expected, value, expirationMillis)
+	if err != nil {
+		return false, err
+	}
+	return redisLuaBoolean(result)
+}
+
+// CompareAndDelete atomically deletes key only when its current value equals
+// expected. It is safe for releasing leased markers because a stale owner
+// cannot delete a replacement value.
+func (c *Client) CompareAndDelete(ctx context.Context, key, expected string) (bool, error) {
+	result, err := c.Eval(ctx, compareAndDeleteScript, []string{key}, expected)
+	if err != nil {
+		return false, err
+	}
+	return redisLuaBoolean(result)
+}
+
+func redisLuaBoolean(result interface{}) (bool, error) {
+	value, ok := result.(int64)
+	if !ok {
+		return false, fmt.Errorf("unexpected Redis Lua result type %T", result)
+	}
+	switch value {
+	case 0:
+		return false, nil
+	case 1:
+		return true, nil
+	default:
+		return false, fmt.Errorf("unexpected Redis Lua result value %d", value)
+	}
 }
 
 // TTL gets the remaining time to live for a key

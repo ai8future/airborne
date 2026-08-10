@@ -7,71 +7,171 @@ import (
 	"github.com/google/uuid"
 )
 
-// Thread represents a conversation container (tenant isolation is at table level).
-type Thread struct {
-	ID           uuid.UUID  `json:"id"`
-	UserID       string     `json:"user_id"`
-	Provider     *string    `json:"provider,omitempty"`
-	Model        *string    `json:"model,omitempty"`
-	Status       string     `json:"status"`
-	MessageCount int        `json:"message_count"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
-	Metadata     *string    `json:"metadata,omitempty"` // JSONB stored as string
-}
-
-// ThreadStatus constants
-const (
-	ThreadStatusActive   = "active"
-	ThreadStatusArchived = "archived"
-	ThreadStatusDeleted  = "deleted"
-)
-
-// Message represents a conversation message (user, assistant, or system).
-type Message struct {
-	ID               uuid.UUID  `json:"id"`
-	ThreadID         uuid.UUID  `json:"thread_id"`
-	Role             string     `json:"role"` // user, assistant, system
-	Content          string     `json:"content"`
-	Provider         *string    `json:"provider,omitempty"`
-	Model            *string    `json:"model,omitempty"`
-	ResponseID       *string    `json:"response_id,omitempty"` // OpenAI previousResponseID
-	InputTokens      *int       `json:"input_tokens,omitempty"`
-	OutputTokens     *int       `json:"output_tokens,omitempty"`
-	TotalTokens      *int       `json:"total_tokens,omitempty"`
-	CostUSD          *float64   `json:"cost_usd,omitempty"`
-	GroundingQueries *int       `json:"grounding_queries,omitempty"` // Web search queries for grounding cost
-	GroundingCostUSD *float64   `json:"grounding_cost_usd,omitempty"`
-	ProcessingTimeMs *int       `json:"processing_time_ms,omitempty"`
-	Citations        *string    `json:"citations,omitempty"` // JSONB stored as string
-	CreatedAt        time.Time  `json:"created_at"`
-	Metadata         *string    `json:"metadata,omitempty"` // JSONB stored as string
-
-	// Debug fields (for request/response inspection)
-	SystemPrompt    *string `json:"system_prompt,omitempty"`
-	RawRequestJSON  *string `json:"raw_request_json,omitempty"`
-	RawResponseJSON *string `json:"raw_response_json,omitempty"`
-	RenderedHTML    *string `json:"rendered_html,omitempty"` // HTML from markdown_svc (TOAST-compressed by PostgreSQL)
-}
-
-// MessageRole constants
+// MessageRole constants. These role strings are shared by the relational
+// ChatMessage.Role column (valid_role CHECK) and by admin/service callers.
 const (
 	RoleUser      = "user"
 	RoleAssistant = "assistant"
 	RoleSystem    = "system"
+	RoleTool      = "tool"
 )
+
+// ============================================================================
+// Relational chat/chat_message models (migrations/001_baseline.sql).
+//
+// Chat is the conversation container (airborne_chats); ChatMessage is the
+// sole source of truth for conversation content and forms a branchable tree
+// via ParentID (airborne_chat_messages). Model is the per-tenant model
+// registry row (airborne_models). These are additive alongside the legacy
+// Thread/Message structs above, which repository.go still depends on until
+// Task 5's rewrite.
+// ============================================================================
+
+// ChatStatus constants (airborne_chats.status CHECK).
+const (
+	ChatStatusActive   = "active"
+	ChatStatusArchived = "archived"
+	ChatStatusDeleted  = "deleted"
+)
+
+// ChatMessageStatus constants (airborne_chat_messages.status CHECK).
+const (
+	ChatMessageStatusPending   = "pending"
+	ChatMessageStatusStreaming = "streaming"
+	ChatMessageStatusComplete  = "complete"
+	ChatMessageStatusError     = "error"
+)
+
+// Chat represents a conversation container. Tenant isolation is enforced at
+// the row level via RLS (see migrations/001_baseline.sql), keyed by TenantID.
+type Chat struct {
+	ID               string          `json:"id"`
+	TenantID         string          `json:"tenant_id"`
+	UserID           string          `json:"user_id"`
+	Title            string          `json:"title,omitempty"`
+	ModelID          string          `json:"model_id,omitempty"` // last-used model
+	Provider         string          `json:"provider,omitempty"` // last-used provider
+	Status           string          `json:"status"`
+	CurrentMessageID *string         `json:"current_message_id,omitempty"` // head of the active branch (leaf)
+	Pinned           bool            `json:"pinned"`
+	ExternalRef      string          `json:"external_ref,omitempty"` // opaque caller correlation id (addendum A9); empty = not set
+	Metadata         json.RawMessage `json:"metadata,omitempty"`     // nullable JSONB; nil is fine (column has no NOT NULL constraint)
+	CreatedAt        time.Time       `json:"created_at"`
+	UpdatedAt        time.Time       `json:"updated_at"`
+}
+
+// ChatMessage represents a single node in a chat's branchable message tree.
+// It is the sole source of truth for conversation content
+// (airborne_chat_messages) — sibling branches share a ParentID and are
+// ordered by (SiblingSeq, CreatedAt, ID).
+type ChatMessage struct {
+	ID       string  `json:"id"`
+	TenantID string  `json:"tenant_id"`
+	ChatID   string  `json:"chat_id"`
+	ParentID *string `json:"parent_id,omitempty"` // nil = root message (tree edge; omitted, not null, when unset)
+
+	SiblingSeq int    `json:"sibling_seq"`
+	UserID     string `json:"user_id"`
+	Role       string `json:"role"` // user, assistant, system, tool
+
+	// Content is NOT NULL in the schema (string or list of content blocks).
+	// Always populate via TextContent(s) for plain-text legacy callers, or
+	// with a pre-built content-block JSON value — never leave this nil.
+	Content json.RawMessage `json:"content"`
+
+	ModelID    *string `json:"model_id,omitempty"`
+	Provider   *string `json:"provider,omitempty"`
+	ResponseID *string `json:"response_id,omitempty"` // provider continuity id
+
+	Status        string          `json:"status"`
+	StatusHistory json.RawMessage `json:"status_history,omitempty"` // ordered generation-event timeline; nullable
+
+	InputTokens      *int     `json:"input_tokens,omitempty"`
+	OutputTokens     *int     `json:"output_tokens,omitempty"`
+	TotalTokens      *int     `json:"total_tokens,omitempty"`
+	CostUSD          *float64 `json:"cost_usd,omitempty"`
+	GroundingQueries *int     `json:"grounding_queries,omitempty"`
+	GroundingCostUSD *float64 `json:"grounding_cost_usd,omitempty"`
+	ProcessingTimeMs *int     `json:"processing_time_ms,omitempty"`
+
+	Usage   json.RawMessage `json:"usage,omitempty"`   // raw provider usage (catch-all)
+	Sources json.RawMessage `json:"sources,omitempty"` // citations: [{source:{id,name,type}, document:[...], metadata:[...]}]
+	Embeds  json.RawMessage `json:"embeds,omitempty"`  // inline artifacts/media rendered in the message
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// Model is a per-tenant model-registry row (airborne_models): named
+// presets/aliases with default params and soft-disable, per Open WebUI's
+// base_model_id + params + is_active pattern.
+type Model struct {
+	ID       string `json:"id"`
+	TenantID string `json:"tenant_id"`
+
+	BaseModelID *string `json:"base_model_id,omitempty"` // upstream real model for an alias; nil = itself
+	Name        *string `json:"name,omitempty"`
+	Provider    *string `json:"provider,omitempty"`
+
+	// Params and Meta are NOT NULL in the schema. Route both through
+	// NormalizeJSONB before an INSERT/UPDATE so a zero-value json.RawMessage
+	// (nil) never marshals to SQL NULL — a column DEFAULT does not apply
+	// when NULL is explicitly passed.
+	Params json.RawMessage `json:"params"`
+	Meta   json.RawMessage `json:"meta"`
+
+	IsActive  bool      `json:"is_active"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// TextContent wraps a plain string as the JSON content form stored in
+// airborne_chat_messages.content, e.g. TextContent("hi") -> {"text":"hi"}.
+// content is NOT NULL, so callers with a legacy plain-string message body
+// must go through this (or an equivalent non-nil content-block value) —
+// never assign a nil json.RawMessage to ChatMessage.Content.
+func TextContent(s string) json.RawMessage {
+	data, err := json.Marshal(struct {
+		Text string `json:"text"`
+	}{Text: s})
+	if err != nil {
+		// json.Marshal of a plain string field cannot fail in practice
+		// (invalid UTF-8 is replaced, not rejected); this is a defensive
+		// fallback so we still never return nil for a NOT NULL column.
+		return json.RawMessage(`{"text":""}`)
+	}
+	return json.RawMessage(data)
+}
+
+// NormalizeJSONB returns b unchanged if it holds any bytes, otherwise a
+// non-nil empty JSON object. Use this to guard NOT NULL JSONB columns
+// (airborne_models.params, airborne_models.meta) before INSERT/UPDATE: a nil
+// or zero-length json.RawMessage marshals to SQL NULL, and a column DEFAULT
+// does not apply when NULL is explicitly passed in the statement.
+func NormalizeJSONB(b json.RawMessage) json.RawMessage {
+	if len(b) == 0 {
+		return json.RawMessage("{}")
+	}
+	return b
+}
 
 // ActivityEntry represents a single entry in the activity feed.
 // This is the denormalized view for the admin dashboard.
+//
+// NOTE: ChatID and ModelID are renamed from the pre-Task-4 ThreadID/Model
+// Go field names to match the new Chat/ChatMessage model naming, but every
+// json tag is preserved byte-for-byte (ChatID keeps `json:"thread_id"`,
+// ModelID keeps `json:"model"`) — the admin dashboard's JSON wire contract
+// does not change.
 type ActivityEntry struct {
 	ID               uuid.UUID `json:"id"`
-	ThreadID         uuid.UUID `json:"thread_id"`
+	ChatID           uuid.UUID `json:"thread_id"`
 	TenantID         string    `json:"tenant"`
 	UserID           string    `json:"user_id"`
 	Content          string    `json:"content"`
 	FullContent      string    `json:"full_content,omitempty"`
 	Provider         string    `json:"provider"`
-	Model            string    `json:"model"`
+	ModelID          string    `json:"model"`
 	InputTokens      int       `json:"input_tokens"`
 	OutputTokens     int       `json:"output_tokens"`
 	TotalTokens      int       `json:"tokens_used"`
@@ -86,10 +186,17 @@ type ActivityEntry struct {
 
 // DebugData contains the complete request/response data for a conversation turn.
 // Used by the admin dashboard debug inspector modal.
+//
+// NOTE: ChatID is renamed from the pre-Task-4 ThreadID Go field name; the
+// json tag is preserved byte-for-byte (`json:"thread_id"`) — the debug
+// inspector modal's JSON wire contract does not change. This struct still
+// mixes fields sourced from airborne_chat_messages (tokens, cost, etc.) and
+// airborne_chat_message_debug (system_prompt, raw_request_json,
+// raw_response_json, rendered_html) — Tasks 5/7 join both to populate it.
 type DebugData struct {
 	// Metadata
 	MessageID uuid.UUID `json:"message_id"`
-	ThreadID  uuid.UUID `json:"thread_id"`
+	ChatID    uuid.UUID `json:"thread_id"`
 	TenantID  string    `json:"tenant_id"`
 	UserID    string    `json:"user_id"`
 	Timestamp time.Time `json:"timestamp"`
@@ -160,52 +267,14 @@ func CitationsToJSON(citations []Citation) (*string, error) {
 	return &s, nil
 }
 
-// NewThread creates a new thread with default values.
-// Tenant isolation is at the table level, not row level.
-func NewThread(userID string) *Thread {
-	now := time.Now()
-	return &Thread{
-		ID:           uuid.New(),
-		UserID:       userID,
-		Status:       ThreadStatusActive,
-		MessageCount: 0,
-		CreatedAt:    now,
-		UpdatedAt:    now,
-	}
-}
-
-// NewMessage creates a new message.
-func NewMessage(threadID uuid.UUID, role, content string) *Message {
-	return &Message{
-		ID:        uuid.New(),
-		ThreadID:  threadID,
-		Role:      role,
-		Content:   content,
-		CreatedAt: time.Now(),
-	}
-}
-
-// SetAssistantMetrics sets provider metrics on an assistant message.
-func (m *Message) SetAssistantMetrics(provider, model string, inputTokens, outputTokens, processingTimeMs int, costUSD float64, responseID string) {
-	m.Provider = &provider
-	m.Model = &model
-	m.InputTokens = &inputTokens
-	m.OutputTokens = &outputTokens
-	total := inputTokens + outputTokens
-	m.TotalTokens = &total
-	m.CostUSD = &costUSD
-	m.ProcessingTimeMs = &processingTimeMs
-	if responseID != "" {
-		m.ResponseID = &responseID
-	}
-}
-
-// TruncateContent returns truncated content for preview display.
-func (m *Message) TruncateContent(maxLen int) string {
-	if len(m.Content) <= maxLen {
-		return m.Content
-	}
-	return m.Content[:maxLen] + "..."
+// DebugInfo carries the cold request/response debug blob a caller wants stored
+// alongside a message (persisted via Repository.SaveMessageDebug into
+// airborne_chat_message_debug).
+type DebugInfo struct {
+	SystemPrompt    string
+	RawRequestJSON  string
+	RawResponseJSON string
+	RenderedHTML    string
 }
 
 // ConversationMessage represents a message in the conversation view.
@@ -221,12 +290,17 @@ type ConversationMessage struct {
 }
 
 // ThreadConversation contains full thread data with all messages.
+//
+// NOTE: ChatID and ModelID are renamed from the pre-Task-4 ThreadID/Model Go
+// field names; every json tag is preserved byte-for-byte (ChatID keeps
+// `json:"thread_id"`, ModelID keeps `json:"model,omitempty"`) — the
+// conversation view's JSON wire contract does not change.
 type ThreadConversation struct {
-	ThreadID     uuid.UUID             `json:"thread_id"`
+	ChatID       uuid.UUID             `json:"thread_id"`
 	TenantID     string                `json:"tenant_id"`
 	UserID       string                `json:"user_id"`
 	Provider     string                `json:"provider,omitempty"`
-	Model        string                `json:"model,omitempty"`
+	ModelID      string                `json:"model,omitempty"`
 	MessageCount int                   `json:"message_count"`
 	Messages     []ConversationMessage `json:"messages"`
 	CreatedAt    time.Time             `json:"created_at"`
@@ -235,17 +309,18 @@ type ThreadConversation struct {
 
 // File represents an uploaded file for RAG and attachments.
 type File struct {
-	ID        uuid.UUID  `json:"id"`
-	UserID    string     `json:"user_id"`
-	Filename  string     `json:"filename"`
-	MimeType  *string    `json:"mime_type,omitempty"`
-	SizeBytes *int64     `json:"size_bytes,omitempty"`
-	StoreID   *string    `json:"store_id,omitempty"`   // Vector store ID for RAG
-	FileID    *string    `json:"file_id,omitempty"`    // Provider file ID
-	Provider  *string    `json:"provider,omitempty"`   // Provider that owns the file
-	Status    string     `json:"status"`               // uploaded, processing, ready, failed
-	CreatedAt time.Time  `json:"created_at"`
-	Metadata  *string    `json:"metadata,omitempty"`   // JSONB stored as string
+	ID        uuid.UUID `json:"id"`
+	UserID    string    `json:"user_id"`
+	Filename  string    `json:"filename"`
+	MimeType  *string   `json:"mime_type,omitempty"`
+	SizeBytes *int64    `json:"size_bytes,omitempty"`
+	StoreID   *string   `json:"store_id,omitempty"` // Vector store ID for RAG
+	FileID    *string   `json:"file_id,omitempty"`  // Provider file ID
+	Provider  *string   `json:"provider,omitempty"` // Provider that owns the file
+	Status    string    `json:"status"`             // uploaded, processing, ready, failed
+	Hash      *string   `json:"hash,omitempty"`     // content hash for dedup (OWUI file.hash)
+	CreatedAt time.Time `json:"created_at"`
+	Metadata  *string   `json:"metadata,omitempty"` // JSONB stored as string
 }
 
 // FileStatus constants
@@ -260,10 +335,10 @@ const (
 type FileProviderUpload struct {
 	ID              uuid.UUID  `json:"id"`
 	FileID          uuid.UUID  `json:"file_id"`
-	Provider        string     `json:"provider"`           // openai, gemini, etc.
+	Provider        string     `json:"provider"` // openai, gemini, etc.
 	ProviderFileID  *string    `json:"provider_file_id,omitempty"`
 	ProviderStoreID *string    `json:"provider_store_id,omitempty"`
-	Status          string     `json:"status"`             // pending, uploading, ready, failed
+	Status          string     `json:"status"` // pending, uploading, ready, failed
 	CreatedAt       time.Time  `json:"created_at"`
 	UploadedAt      *time.Time `json:"uploaded_at,omitempty"`
 }
@@ -281,7 +356,7 @@ type ThreadVectorStore struct {
 	ID        uuid.UUID `json:"id"`
 	ThreadID  uuid.UUID `json:"thread_id"`
 	StoreID   string    `json:"store_id"`
-	Provider  string    `json:"provider"`   // openai, qdrant, etc.
+	Provider  string    `json:"provider"` // openai, qdrant, etc.
 	Enabled   bool      `json:"enabled"`
 	CreatedAt time.Time `json:"created_at"`
 }

@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"io"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -139,5 +142,78 @@ func TestFormatStatus(t *testing.T) {
 
 	if successOut == failedOut {
 		t.Error("FormatStatus should produce different output for success vs failure")
+	}
+}
+
+func TestPrintOutputContracts(t *testing.T) {
+	activity := Activity{ID: "a1", ThreadID: "thread-1", Tenant: "ai8", Model: "model", Provider: "provider", InputTokens: 10, OutputTokens: 20, CostUSD: .1, GroundingCostUSD: .02, ProcessingTimeMs: 50, Status: "success", Timestamp: "2026-01-01T00:00:00Z", FullContent: "full content"}
+	debug := &DebugResponse{MessageID: "m1", ThreadID: "thread-1", TenantID: "ai8", Timestamp: activity.Timestamp, RequestProvider: "provider", ResponseModel: "model", TokensIn: 10, TokensOut: 20, CostUSD: .1, GroundingQueries: 1, GroundingCostUSD: .02, DurationMs: 50, SystemPrompt: "system", UserInput: "input", ResponseText: "reply", Status: "success"}
+	testResult := &TestResponse{Model: "model", Provider: "provider", InputTokens: 10, OutputTokens: 20, ProcessingMs: 50, Reply: "reply"}
+
+	output := captureStdout(t, func() {
+		PrintActivityTable([]Activity{activity})
+		PrintActivityDetail(activity)
+		PrintDebugInfo(debug)
+		PrintThreadMessages([]ThreadMessage{{Role: "user", Timestamp: activity.Timestamp, Model: "model", Content: "message"}, {Role: "assistant", Timestamp: activity.Timestamp, Content: "answer"}})
+		PrintTestResult(testResult)
+	})
+	for _, want := range []string{"TIME", "thread-1", "Grounding:", "system", "message", "answer", "reply"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("output does not contain %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestPrintDebugInfoOmitsGroundingWhenUnused(t *testing.T) {
+	output := captureStdout(t, func() {
+		PrintDebugInfo(&DebugResponse{Timestamp: "invalid", Status: "failed"})
+	})
+	if strings.Contains(output, "Grounding:") {
+		t.Fatalf("unexpected grounding section:\n%s", output)
+	}
+}
+
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	previous := os.Stdout
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = write
+	defer func() { os.Stdout = previous }()
+
+	fn()
+	if err := write.Close(); err != nil {
+		t.Fatal(err)
+	}
+	output, err := io.ReadAll(read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(output)
+}
+
+func TestAllOutputPrinters(t *testing.T) {
+	capture := func(fn func()) string {
+		old := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+		fn()
+		w.Close()
+		os.Stdout = old
+		b, _ := io.ReadAll(r)
+		return string(b)
+	}
+	a := Activity{ID: "id", ThreadID: "thread", Tenant: "tenant", Model: "very-long-model-name-for-output", Provider: "p", InputTokens: 1200, OutputTokens: 2, CostUSD: 1, GroundingCostUSD: .2, ProcessingTimeMs: 1500, Status: "success", Timestamp: "2026-01-01T00:00:00Z", FullContent: "body"}
+	d := DebugResponse{MessageID: "m", ThreadID: "t", TenantID: "tenant", Timestamp: "bad", Status: "failed", ResponseModel: "model", RequestProvider: "p", TokensIn: 1, TokensOut: 2, CostUSD: 1, GroundingQueries: 1, GroundingCostUSD: .1, DurationMs: 2, SystemPrompt: "system", UserInput: "input", ResponseText: "output"}
+	if out := capture(func() {
+		PrintActivityTable([]Activity{a})
+		PrintActivityDetail(a)
+		PrintDebugInfo(&d)
+		PrintThreadMessages([]ThreadMessage{{Role: "user", Timestamp: "bad", Content: "x"}, {Role: "assistant", Timestamp: "bad", Content: "y", Model: "m"}})
+		PrintTestResult(&TestResponse{Model: "m", Provider: "p", Reply: "r", ProcessingMs: 1})
+	}); !strings.Contains(out, "tenant") {
+		t.Fatalf("missing output: %q", out)
 	}
 }

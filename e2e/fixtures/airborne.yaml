@@ -1,0 +1,27 @@
+server:
+  grpc_port: 50612
+  host: "0.0.0.0"
+tls: { enabled: false }
+redis: { addr: "redis:6379" }
+database:
+  enabled: true
+  url: "postgres://airborne:airborne-e2e@postgres:5432/airborne?sslmode=disable"
+  max_connections: 5
+admin:
+  enabled: true
+  port: 8473
+  allowed_origins: ["http://localhost:3000"]
+auth:
+  admin_token: "ENV=AIRBORNE_ADMIN_TOKEN"
+providers:
+  openai:
+    enabled: true
+    default_model: "e2e-model"
+    base_url: "https://provider-stub:8443/v1"
+  gemini: { enabled: false }
+  anthropic: { enabled: false }
+failover:
+  enabled: false
+logging: { level: "warn", format: "json" }
+startup_mode: development
+rag: { enabled: false }

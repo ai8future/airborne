@@ -183,3 +183,31 @@ func TestStaticUnaryInterceptorWithValidAuth(t *testing.T) {
 		t.Fatal("expected ClientKey with admin ID in context")
 	}
 }
+
+func TestStaticStreamInterceptorWithValidAuth(t *testing.T) {
+	auth := NewStaticAuthenticator("secret")
+	ss := &mockServerStream{ctx: metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-api-key", "secret"))}
+	called := false
+	err := auth.StreamInterceptor()(nil, ss, &grpc.StreamServerInfo{FullMethod: "/airborne.v1.ChatService/Stream"}, func(_ interface{}, stream grpc.ServerStream) error {
+		called = ClientFromContext(stream.Context()) != nil
+		return nil
+	})
+	if err != nil || !called {
+		t.Fatalf("stream auth = %v, called=%v", err, called)
+	}
+}
+
+func TestStaticStreamInterceptorSkipsHealth(t *testing.T) {
+	called := false
+	err := NewStaticAuthenticator("secret").StreamInterceptor()(nil, &mockServerStream{ctx: context.Background()}, &grpc.StreamServerInfo{FullMethod: "/airborne.v1.AdminService/Health"}, func(interface{}, grpc.ServerStream) error { called = true; return nil })
+	if err != nil || !called {
+		t.Fatalf("health stream = %v, called=%v", err, called)
+	}
+}
+
+func TestStaticStreamInterceptorRejectsMissingAuth(t *testing.T) {
+	err := NewStaticAuthenticator("secret").StreamInterceptor()(nil, &mockServerStream{ctx: context.Background()}, &grpc.StreamServerInfo{FullMethod: "/airborne.v1.ChatService/Stream"}, func(interface{}, grpc.ServerStream) error { return nil })
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("stream error = %v", err)
+	}
+}

@@ -3,137 +3,7 @@ package db
 import (
 	"encoding/json"
 	"testing"
-	"time"
-
-	"github.com/google/uuid"
 )
-
-func TestNewThread(t *testing.T) {
-	userID := "test-user"
-	thread := NewThread(userID)
-
-	if thread == nil {
-		t.Fatal("NewThread() returned nil")
-	}
-	if thread.UserID != userID {
-		t.Errorf("UserID = %q, want %q", thread.UserID, userID)
-	}
-	if thread.Status != ThreadStatusActive {
-		t.Errorf("Status = %q, want %q", thread.Status, ThreadStatusActive)
-	}
-	if thread.MessageCount != 0 {
-		t.Errorf("MessageCount = %d, want 0", thread.MessageCount)
-	}
-	if thread.ID == uuid.Nil {
-		t.Error("expected non-nil UUID")
-	}
-	if thread.CreatedAt.IsZero() {
-		t.Error("CreatedAt should not be zero")
-	}
-	if !thread.CreatedAt.Equal(thread.UpdatedAt) {
-		t.Errorf("CreatedAt (%v) != UpdatedAt (%v)", thread.CreatedAt, thread.UpdatedAt)
-	}
-}
-
-func TestNewMessage(t *testing.T) {
-	threadID := uuid.New()
-	role := RoleUser
-	content := "Hello, world!"
-
-	msg := NewMessage(threadID, role, content)
-
-	if msg == nil {
-		t.Fatal("NewMessage() returned nil")
-	}
-	if msg.ThreadID != threadID {
-		t.Errorf("ThreadID = %v, want %v", msg.ThreadID, threadID)
-	}
-	if msg.Role != role {
-		t.Errorf("Role = %q, want %q", msg.Role, role)
-	}
-	if msg.Content != content {
-		t.Errorf("Content = %q, want %q", msg.Content, content)
-	}
-	if msg.ID == uuid.Nil {
-		t.Error("expected non-nil UUID")
-	}
-	if time.Since(msg.CreatedAt) > time.Second {
-		t.Errorf("CreatedAt too old: %v", msg.CreatedAt)
-	}
-}
-
-func TestMessage_SetAssistantMetrics(t *testing.T) {
-	msg := NewMessage(uuid.New(), RoleAssistant, "Response")
-
-	provider := "gemini"
-	model := "gemini-pro"
-	inputTokens := 100
-	outputTokens := 50
-	processingTimeMs := 500
-	costUSD := 0.001
-	responseID := "resp-123"
-
-	msg.SetAssistantMetrics(provider, model, inputTokens, outputTokens, processingTimeMs, costUSD, responseID)
-
-	if *msg.Provider != provider {
-		t.Errorf("Provider = %q, want %q", *msg.Provider, provider)
-	}
-	if *msg.Model != model {
-		t.Errorf("Model = %q, want %q", *msg.Model, model)
-	}
-	if *msg.InputTokens != inputTokens {
-		t.Errorf("InputTokens = %d, want %d", *msg.InputTokens, inputTokens)
-	}
-	if *msg.OutputTokens != outputTokens {
-		t.Errorf("OutputTokens = %d, want %d", *msg.OutputTokens, outputTokens)
-	}
-	if *msg.TotalTokens != inputTokens+outputTokens {
-		t.Errorf("TotalTokens = %d, want %d", *msg.TotalTokens, inputTokens+outputTokens)
-	}
-	if *msg.CostUSD != costUSD {
-		t.Errorf("CostUSD = %f, want %f", *msg.CostUSD, costUSD)
-	}
-	if *msg.ProcessingTimeMs != processingTimeMs {
-		t.Errorf("ProcessingTimeMs = %d, want %d", *msg.ProcessingTimeMs, processingTimeMs)
-	}
-	if *msg.ResponseID != responseID {
-		t.Errorf("ResponseID = %q, want %q", *msg.ResponseID, responseID)
-	}
-}
-
-func TestMessage_SetAssistantMetrics_EmptyResponseID(t *testing.T) {
-	msg := NewMessage(uuid.New(), RoleAssistant, "Response")
-	msg.SetAssistantMetrics("gemini", "gemini-pro", 100, 50, 500, 0.001, "")
-
-	if msg.ResponseID != nil {
-		t.Error("ResponseID should be nil for empty responseID")
-	}
-}
-
-func TestMessage_TruncateContent(t *testing.T) {
-	tests := []struct {
-		name    string
-		content string
-		maxLen  int
-		want    string
-	}{
-		{"short content", "Hello", 10, "Hello"},
-		{"exact length", "HelloWorld", 10, "HelloWorld"},
-		{"needs truncation", "Hello World!", 5, "Hello..."},
-		{"empty content", "", 10, ""},
-		{"single char max", "Hello", 1, "H..."},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			msg := &Message{Content: tt.content}
-			got := msg.TruncateContent(tt.maxLen)
-			if got != tt.want {
-				t.Errorf("TruncateContent(%d) = %q, want %q", tt.maxLen, got, tt.want)
-			}
-		})
-	}
-}
 
 func TestParseCitations(t *testing.T) {
 	tests := []struct {
@@ -226,3 +96,132 @@ func TestCitationsRoundTrip(t *testing.T) {
 }
 
 func strPtr(s string) *string { return &s }
+
+// --- New Chat/ChatMessage model tests (Task 4) ---
+
+func TestTextContent_RoundTrip(t *testing.T) {
+	raw := TextContent("hi")
+	if raw == nil {
+		t.Fatal("TextContent() returned nil json.RawMessage; content is NOT NULL in the schema")
+	}
+
+	var decoded struct {
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("TextContent() produced invalid JSON: %v (raw=%s)", err, raw)
+	}
+	if decoded.Text != "hi" {
+		t.Errorf("decoded.Text = %q, want %q", decoded.Text, "hi")
+	}
+}
+
+func TestTextContent_EscapesSpecialCharacters(t *testing.T) {
+	input := "line1\nline2 \"quoted\" \\ backslash"
+	raw := TextContent(input)
+
+	var decoded struct {
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("TextContent() produced invalid JSON: %v (raw=%s)", err, raw)
+	}
+	if decoded.Text != input {
+		t.Errorf("decoded.Text = %q, want %q", decoded.Text, input)
+	}
+}
+
+func TestTextContent_NeverNil(t *testing.T) {
+	// Even the empty string must round-trip to a valid, non-nil JSON object,
+	// since airborne_chat_messages.content is NOT NULL.
+	raw := TextContent("")
+	if raw == nil {
+		t.Fatal("TextContent(\"\") returned nil")
+	}
+	if string(raw) != `{"text":""}` {
+		t.Errorf("TextContent(\"\") = %s, want %s", raw, `{"text":""}`)
+	}
+}
+
+func TestChatMessage_NilParentIDMarshalsAsRoot(t *testing.T) {
+	msg := ChatMessage{
+		ID:       "msg-1",
+		TenantID: "ai8",
+		ChatID:   "chat-1",
+		ParentID: nil, // root message: no parent
+		UserID:   "user-1",
+		Role:     RoleUser,
+		Content:  TextContent("hello"),
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatalf("json.Marshal(ChatMessage) error = %v", err)
+	}
+
+	var asMap map[string]interface{}
+	if err := json.Unmarshal(data, &asMap); err != nil {
+		t.Fatalf("json.Unmarshal into map error = %v", err)
+	}
+
+	// ChatMessage.ParentID is tagged `omitempty`: a nil ParentID (root message)
+	// is explicitly OMITTED from the marshaled JSON rather than emitted as `null`.
+	if _, present := asMap["parent_id"]; present {
+		t.Errorf("expected \"parent_id\" to be omitted for a root message (nil ParentID), got present in %s", data)
+	}
+}
+
+func TestChatMessage_NonNilParentIDIsPresent(t *testing.T) {
+	parent := "parent-msg-1"
+	msg := ChatMessage{
+		ID:       "msg-2",
+		TenantID: "ai8",
+		ChatID:   "chat-1",
+		ParentID: &parent,
+		UserID:   "user-1",
+		Role:     RoleAssistant,
+		Content:  TextContent("reply"),
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatalf("json.Marshal(ChatMessage) error = %v", err)
+	}
+
+	var asMap map[string]interface{}
+	if err := json.Unmarshal(data, &asMap); err != nil {
+		t.Fatalf("json.Unmarshal into map error = %v", err)
+	}
+
+	got, present := asMap["parent_id"]
+	if !present {
+		t.Fatalf("expected \"parent_id\" to be present when ParentID is non-nil, got %s", data)
+	}
+	if got != parent {
+		t.Errorf("parent_id = %v, want %q", got, parent)
+	}
+}
+
+func TestNormalizeJSONB(t *testing.T) {
+	tests := []struct {
+		name string
+		in   json.RawMessage
+		want string
+	}{
+		{"nil defaults to empty object", nil, "{}"},
+		{"empty slice defaults to empty object", json.RawMessage{}, "{}"},
+		{"non-empty passes through unchanged", json.RawMessage(`{"temperature":0.7}`), `{"temperature":0.7}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := NormalizeJSONB(tt.in)
+			if got == nil {
+				t.Fatal("NormalizeJSONB() returned nil; params/meta are NOT NULL")
+			}
+			if string(got) != tt.want {
+				t.Errorf("NormalizeJSONB(%s) = %s, want %s", tt.in, got, tt.want)
+			}
+		})
+	}
+}

@@ -4,6 +4,10 @@ import (
 	"context"
 	"testing"
 
+	airborneredis "github.com/ai8future/airborne/internal/redis"
+	"github.com/alicebob/miniredis/v2"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -75,13 +79,59 @@ func TestExtractAPIKey(t *testing.T) {
 	}
 }
 
+func TestAuthenticatorRateLimitHasTypedPreDispatchDetail(t *testing.T) {
+	mr := miniredis.RunT(t)
+	redisClient, err := airborneredis.NewClient(airborneredis.Config{Addr: mr.Addr()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = redisClient.Close() })
+
+	keyStore := NewKeyStore(redisClient)
+	rawKey, _, err := keyStore.GenerateAPIKey(context.Background(), "rate-limited-client", "test", []Permission{PermissionChat}, RateLimits{RequestsPerMinute: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authenticator := NewAuthenticator(keyStore, NewRateLimiter(redisClient, RateLimits{}, true))
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer "+rawKey))
+	handlerCalls := 0
+	handler := func(context.Context, any) (any, error) {
+		handlerCalls++
+		return "ok", nil
+	}
+	info := &grpc.UnaryServerInfo{FullMethod: "/airborne.v1.AirborneService/GenerateReply"}
+
+	if _, err := authenticator.UnaryInterceptor()(ctx, nil, info, handler); err != nil {
+		t.Fatalf("first request failed: %v", err)
+	}
+	_, err = authenticator.UnaryInterceptor()(ctx, nil, info, handler)
+	if status.Code(err) != codes.ResourceExhausted {
+		t.Fatalf("rate-limit code = %v, want %v (err=%v)", status.Code(err), codes.ResourceExhausted, err)
+	}
+	var errorInfo *errdetails.ErrorInfo
+	for _, detail := range status.Convert(err).Details() {
+		if info, ok := detail.(*errdetails.ErrorInfo); ok {
+			errorInfo = info
+		}
+	}
+	if errorInfo == nil || errorInfo.Reason != authRateLimitPreDispatchReason {
+		t.Fatalf("rate-limit ErrorInfo = %#v, want reason %q", errorInfo, authRateLimitPreDispatchReason)
+	}
+	if errorInfo.Metadata["dispatch_phase"] != "pre_dispatch" {
+		t.Fatalf("rate-limit dispatch phase = %q, want pre_dispatch", errorInfo.Metadata["dispatch_phase"])
+	}
+	if handlerCalls != 1 {
+		t.Fatalf("handler calls = %d, want 1", handlerCalls)
+	}
+}
+
 func TestRequirePermission(t *testing.T) {
 	tests := []struct {
-		name       string
-		ctx        context.Context
-		perm       Permission
-		wantCode   codes.Code
-		wantErr    bool
+		name     string
+		ctx      context.Context
+		perm     Permission
+		wantCode codes.Code
+		wantErr  bool
 	}{
 		{
 			name:     "no client in context",
@@ -208,4 +258,25 @@ func TestClientFromContext(t *testing.T) {
 			t.Errorf("ClientFromContext() = %v, want nil for wrong type", client)
 		}
 	})
+}
+
+func TestAuthenticatedStreamContext(t *testing.T) {
+	ctx := context.WithValue(context.Background(), ClientContextKey, &ClientKey{ClientID: "stream"})
+	stream := &authenticatedStream{ServerStream: &mockServerStream{ctx: context.Background()}, ctx: ctx}
+	if got := ClientFromContext(stream.Context()); got == nil || got.ClientID != "stream" {
+		t.Fatalf("stream context client = %#v", got)
+	}
+}
+
+func TestAuthenticatorInterceptorBoundaries(t *testing.T) {
+	a := NewAuthenticator(nil, nil)
+	called := false
+	_, err := a.UnaryInterceptor()(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: "/airborne.v1.AdminService/Health"}, func(ctx context.Context, req any) (any, error) { called = true; return "ok", nil })
+	if err != nil || !called {
+		t.Fatalf("health must bypass auth: %v", err)
+	}
+	_, err = a.UnaryInterceptor()(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: "/private"}, func(context.Context, any) (any, error) { return nil, nil })
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("private missing metadata code = %v", status.Code(err))
+	}
 }

@@ -43,6 +43,11 @@ func TestValidateProviderURL(t *testing.T) {
 			url:     "https://generativelanguage.googleapis.com",
 			wantErr: nil,
 		},
+		{
+			name:    "userinfo credentials blocked",
+			url:     "https://user:password@api.openai.com/v1",
+			wantErr: ErrUserInfoNotAllowed,
+		},
 
 		// Localhost HTTP allowed
 		{
@@ -260,10 +265,10 @@ func TestIsBlockedIP(t *testing.T) {
 		{"192.168.255.255", true},
 
 		// Non-private (allowed)
-		{"172.15.0.1", false},  // Just outside 172.16-31
-		{"172.32.0.1", false},  // Just outside 172.16-31
-		{"8.8.8.8", false},     // Public DNS
-		{"1.1.1.1", false},     // Cloudflare DNS
+		{"172.15.0.1", false}, // Just outside 172.16-31
+		{"172.32.0.1", false}, // Just outside 172.16-31
+		{"8.8.8.8", false},    // Public DNS
+		{"1.1.1.1", false},    // Cloudflare DNS
 
 		// Loopback (blocked by ssrfcheck)
 		{"127.0.0.1", true},
@@ -301,6 +306,23 @@ func TestValidateProviderURL_ResolvesPrivateIP(t *testing.T) {
 	err := ValidateProviderURL("https://private.example.test")
 	if !errors.Is(err, ErrPrivateIP) {
 		t.Fatalf("expected ErrPrivateIP, got %v", err)
+	}
+}
+
+func TestValidateProviderURLE2EProviderStubIsNarrowlyOptIn(t *testing.T) {
+	originalLookup := lookupIP
+	lookupIP = func(string) ([]net.IP, error) { return []net.IP{net.ParseIP("192.168.1.10")}, nil }
+	t.Cleanup(func() { lookupIP = originalLookup })
+
+	t.Setenv("AIRBORNE_E2E_ALLOW_PROVIDER_STUB", "true")
+	if err := ValidateProviderURL("https://provider-stub:8443/v1"); err != nil {
+		t.Fatalf("explicit TLS E2E fixture should be allowed: %v", err)
+	}
+	if err := ValidateProviderURL("https://other-service:8443/v1"); !errors.Is(err, ErrPrivateIP) {
+		t.Fatalf("only provider-stub may bypass private DNS check, got %v", err)
+	}
+	if err := ValidateProviderURL("http://provider-stub:8443/v1"); !errors.Is(err, ErrHTTPNotAllowed) {
+		t.Fatalf("E2E fixture must remain HTTPS-only, got %v", err)
 	}
 }
 

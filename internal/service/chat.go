@@ -2,12 +2,15 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"html"
 	"log/slog"
 	"strings"
 	"time"
 
+	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/ai8future/airborne/internal/auth"
 	"github.com/ai8future/airborne/internal/commands"
 	"github.com/ai8future/airborne/internal/db"
@@ -20,9 +23,9 @@ import (
 	"github.com/ai8future/airborne/internal/provider/gemini"
 	"github.com/ai8future/airborne/internal/provider/openai"
 	"github.com/ai8future/airborne/internal/rag"
+	"github.com/ai8future/airborne/internal/redis"
 	"github.com/ai8future/airborne/internal/service/config"
 	"github.com/ai8future/airborne/internal/validation"
-	pb "github.com/ai8future/airborne/gen/go/airborne/v1"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -51,14 +54,30 @@ type ChatService struct {
 	imageGen          *imagegen.Client
 	dbClient          *db.Client // Optional: message persistence
 	configBuilder     *config.Builder
-	eventPublisher    EventPublisher // Optional: event bus publisher
+	eventPublisher    EventPublisher    // Optional: event bus publisher
+	idem              *idempotencyStore // Optional: idempotent GenerateReply replay (A10)
+	validateTenant    func(context.Context, string) (bool, error)
+	persistenceRepo   func(string) (turnPersister, error)
 }
 
 // NewChatService creates a new chat service.
 // The ragService parameter is optional - pass nil to disable self-hosted RAG.
 // The imageGen parameter is optional - pass nil to disable image generation.
 // The dbClient parameter is optional - pass nil to disable message persistence.
-func NewChatService(rateLimiter *auth.RateLimiter, ragService *rag.Service, imageGen *imagegen.Client, dbClient *db.Client) *ChatService {
+// The redisClient parameter is optional for unkeyed requests. Keyed
+// GenerateReply requests fail closed when it is nil. completedRetention may
+// override the 48h default and is validated by the global config loader.
+func NewChatService(rateLimiter *auth.RateLimiter, ragService *rag.Service, imageGen *imagegen.Client, dbClient *db.Client, redisClient *redis.Client, completedRetention ...time.Duration) *ChatService {
+	// Persisting conversations without an idempotency store is the exact gap
+	// addendum A10 closes for email_ai_svc — make the degrade loud, once, at
+	// startup, instead of silently regenerating duplicates.
+	if dbClient != nil && redisClient == nil {
+		slog.Warn("GenerateReply idempotency unavailable: no Redis client; keyed requests will fail closed")
+	}
+	retention := defaultIdemCompletedRetention
+	if len(completedRetention) > 0 && completedRetention[0] > 0 {
+		retention = completedRetention[0]
+	}
 	return &ChatService{
 		openaiProvider:    openai.NewClient(),
 		geminiProvider:    gemini.NewClient(),
@@ -68,6 +87,7 @@ func NewChatService(rateLimiter *auth.RateLimiter, ragService *rag.Service, imag
 		imageGen:          imageGen,
 		dbClient:          dbClient,
 		configBuilder:     config.NewBuilder(),
+		idem:              newIdempotencyStore(redisClient, retention),
 	}
 }
 
@@ -83,10 +103,10 @@ func (s *ChatService) publishInferenceCompleted(ctx context.Context, providerNam
 		return
 	}
 	if err := s.eventPublisher.Publish(ctx, "ai8.ai.airborne.inference.completed", map[string]any{
-		"provider":       providerName,
-		"model":          model,
-		"processing_ms":  processingMs,
-		"total_tokens":   tokenCount,
+		"provider":      providerName,
+		"model":         model,
+		"processing_ms": processingMs,
+		"total_tokens":  tokenCount,
 	}); err != nil {
 		slog.Warn("failed to publish inference event", "error", err, "subject", "ai8.ai.airborne.inference.completed")
 	}
@@ -123,6 +143,9 @@ func (s *ChatService) prepareRequest(ctx context.Context, req *pb.GenerateReplyR
 		req.Instructions,
 		len(req.ConversationHistory),
 	); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if err := validation.ValidateHistoryContents(conversationHistoryContents(req.ConversationHistory)); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
@@ -168,6 +191,11 @@ func (s *ChatService) prepareRequest(ctx context.Context, req *pb.GenerateReplyR
 
 	// Build provider config (from tenant + request overrides)
 	providerCfg := s.buildProviderConfig(ctx, req, selectedProvider.Name())
+
+	// Resolve model-registry aliases before calling the provider: a registered
+	// alias substitutes its base model and merges its default params (request/
+	// tenant values already on providerCfg win). Unregistered ids pass through.
+	providerCfg = s.applyModelRegistry(ctx, providerCfg)
 
 	// Retrieve RAG context for non-OpenAI providers
 	var ragChunks []rag.RetrieveResult
@@ -250,13 +278,86 @@ func validateCustomBaseURLs(req *pb.GenerateReplyRequest) error {
 	return nil
 }
 
-// GenerateReply generates a completion.
+func conversationHistoryContents(msgs []*pb.Message) []string {
+	contents := make([]string, 0, len(msgs))
+	for _, msg := range msgs {
+		if msg == nil {
+			contents = append(contents, "")
+			continue
+		}
+		contents = append(contents, msg.Content)
+	}
+	return contents
+}
+
+// GenerateReply generates a completion. When the request carries an
+// idempotency key (first-class field or metadata["idempotency_key"]), a
+// duplicate call replays the byte-identical prior response instead of
+// regenerating (addendum A10). The check runs BEFORE provider dispatch; only
+// successful responses are cached before success is returned; provider errors
+// release the in-flight marker so retries regenerate; storage uncertainty
+// fails closed before dispatch or becomes a post-dispatch quarantine error.
 func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRequest) (*pb.GenerateReplyResponse, error) {
 	// Check permission
 	if err := auth.RequirePermission(ctx, auth.PermissionChat); err != nil {
 		return nil, err
 	}
 
+	key := idempotencyKeyFromRequest(req)
+	if key == "" {
+		return s.generateReply(ctx, req)
+	}
+	if err := validateIdempotencyKey(key); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if s.idem == nil {
+		slog.Warn("rejecting keyed GenerateReply without idempotency storage")
+		return nil, idempotencyUnavailableError()
+	}
+
+	tenantID := auth.TenantIDFromContext(ctx)
+	cached, state, claim, beginErr := s.idem.Begin(ctx, tenantID, key)
+	if beginErr != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, status.FromContextError(ctxErr).Err()
+		}
+		if stderrors.Is(beginErr, errIdempotencyOwnerTokenGeneration) {
+			slog.Error("rejecting keyed GenerateReply because ownership initialization failed", "error", beginErr, "tenant_id", tenantID)
+			return nil, status.Error(codes.Internal, "failed to initialize idempotency ownership")
+		}
+		slog.Warn("rejecting keyed GenerateReply because idempotency begin failed", "error", beginErr, "tenant_id", tenantID)
+		return nil, idempotencyUnavailableError()
+	}
+	switch state {
+	case idemHit:
+		slog.Info("replaying cached idempotent response", "tenant_id", tenantID)
+		return cached, nil
+	case idemInFlight:
+		// Mirror the admin path's 409 Conflict: a duplicate arriving while the
+		// first is still generating is rejected rather than double-generating.
+		return nil, status.Error(codes.Aborted, "request with this idempotency_key is already in progress")
+	}
+
+	// idemAcquired: we own the in-flight marker — cache on success, release on
+	// any error (validation or provider failures are never cached).
+	generationCtx, cancel := context.WithTimeout(ctx, maximumKeyedGenerationDuration)
+	defer cancel()
+	resp, err := s.generateReply(generationCtx, req)
+	if err != nil {
+		s.idem.Release(ctx, claim)
+		return nil, err
+	}
+	if err := s.idem.Put(ctx, claim, resp); err != nil {
+		slog.Error("idempotency completion is ambiguous; retaining in-flight marker", "error", err, "tenant_id", tenantID)
+		return nil, idempotencyCompletionAmbiguousError()
+	}
+	return resp, nil
+}
+
+// generateReply is the uncached generation path: validation, provider
+// dispatch, and persistence. Split from GenerateReply so the idempotency
+// wrapper above can replay or cache whole responses.
+func (s *ChatService) generateReply(ctx context.Context, req *pb.GenerateReplyRequest) (*pb.GenerateReplyResponse, error) {
 	// Prepare request (validation, provider selection, RAG retrieval, params building)
 	prepared, err := s.prepareRequest(ctx, req)
 	if err != nil {
@@ -307,7 +408,14 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 					"error", err,
 				)
 
-				prepared.params.Config = s.buildProviderConfig(ctx, req, fallbackProvider.Name())
+				// Rebuild the fallback provider's config with the SAME alias
+				// resolution the primary path applies (buildProviderConfig then
+				// applyModelRegistry): request/tenant values win, registry
+				// defaults fill the rest, and a registered alias resolves to its
+				// base model. Skipping applyModelRegistry here would send the raw
+				// alias id upstream on the failover path only.
+				fallbackCfg := s.applyModelRegistry(ctx, s.buildProviderConfig(ctx, req, fallbackProvider.Name()))
+				prepared.params.Config = fallbackCfg
 				fallbackResult, fallbackErr := fallbackProvider.GenerateReply(ctx, prepared.params)
 				if fallbackErr == nil {
 					// Render HTML for fallback result if markdown_svc is enabled
@@ -320,6 +428,18 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 							slog.Warn("markdown_svc render failed for fallback", "error", renderErr)
 						}
 					}
+
+					// Persist the failed-over turn through the SAME flow as the
+					// primary path. Without this a failover success is never
+					// persisted, and an external_ref-correlated conversation
+					// silently loses the turn for later reload-by-ref (A10).
+					// tokens/cost/debug come from the fallback result; the
+					// correlation ref and async semantics match the main path.
+					if s.dbClient != nil && fallbackResult.Usage != nil {
+						processingTimeMs := int(time.Since(startTime).Milliseconds())
+						s.persistConversation(ctx, req, fallbackResult, fallbackProvider.Name(), fallbackCfg.Model, fallbackHTML, processingTimeMs, externalRefFromRequest(req))
+					}
+
 					return s.buildResponse(fallbackResult, fallbackProvider.Name(), true, prepared.provider.Name(), sanitize.SanitizeForClient(err), fallbackHTML), nil
 				}
 				// Return original error if fallback also fails
@@ -373,9 +493,10 @@ func (s *ChatService) GenerateReply(ctx context.Context, req *pb.GenerateReplyRe
 	}
 	s.publishInferenceCompleted(ctx, prepared.provider.Name(), prepared.providerCfg.Model, processingTimeMs, tokenCount)
 
-	// Persist conversation asynchronously (if database client is configured)
+	// Persist conversation asynchronously (if database client is configured).
+	// A caller-supplied external_ref lands the turn on its correlated chat (A10).
 	if s.dbClient != nil && result.Usage != nil {
-		s.persistConversation(ctx, req, result, prepared.provider.Name(), prepared.providerCfg.Model, htmlContent, processingTimeMs)
+		s.persistConversation(ctx, req, result, prepared.provider.Name(), prepared.providerCfg.Model, htmlContent, processingTimeMs, externalRefFromRequest(req))
 	}
 
 	return s.buildResponse(result, prepared.provider.Name(), false, "", "", htmlContent), nil
@@ -471,7 +592,7 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 				Chunk: &pb.GenerateReplyChunk_TextDelta{
 					TextDelta: &pb.TextDelta{
 						Text:  chunk.Text,
-						Index: int32(chunk.Index),
+						Index: nonNegativeIntToInt32Clamped(chunk.Index),
 					},
 				},
 			}
@@ -548,7 +669,9 @@ func (s *ChatService) GenerateReplyStream(req *pb.GenerateReplyRequest, stream p
 					ResponseJSON:     chunk.ResponseJSON,
 				}
 				processingTimeMs := int(time.Since(startTime).Milliseconds())
-				s.persistConversation(ctx, req, streamResult, prepared.provider.Name(), chunk.Model, htmlContent, processingTimeMs)
+				// external_ref is intentionally not honored on the streaming
+				// path yet — addendum A10 scopes it to the unary handler.
+				s.persistConversation(ctx, req, streamResult, prepared.provider.Name(), chunk.Model, htmlContent, processingTimeMs, "")
 			}
 
 			complete := &pb.StreamComplete{
@@ -657,6 +780,78 @@ func (s *ChatService) buildProviderConfig(ctx context.Context, req *pb.GenerateR
 	requestCfg := req.ProviderConfigs[providerName]
 	return s.configBuilder.Build(providerName, tenantCfg, requestCfg)
 }
+
+// applyModelRegistry resolves a tenant model-registry alias for cfg.Model. If
+// cfg.Model is a registered active alias, its base_model_id is substituted as
+// the real upstream model and its params are merged as defaults — values
+// already set on cfg (from the request/tenant config) take precedence over the
+// registry defaults. Unregistered ids pass through unchanged. Best-effort: when
+// there is no DB, no tenant, or the lookup fails, cfg is returned untouched.
+func (s *ChatService) applyModelRegistry(ctx context.Context, cfg provider.ProviderConfig) provider.ProviderConfig {
+	if s.dbClient == nil || strings.TrimSpace(cfg.Model) == "" {
+		return cfg
+	}
+	tenantID := auth.TenantIDFromContext(ctx)
+	if tenantID == "" {
+		return cfg
+	}
+	repo, err := s.dbClient.TenantRepository(tenantID)
+	if err != nil {
+		return cfg
+	}
+	model, err := repo.ResolveModel(ctx, cfg.Model)
+	if err != nil {
+		slog.Warn("model registry lookup failed, using requested model", "error", err, "model", cfg.Model)
+		return cfg
+	}
+	return mergeRegistryParams(cfg, model)
+}
+
+// mergeRegistryParams merges a resolved model-registry row into cfg: the
+// alias's base_model_id substitutes cfg.Model, and its params fill ONLY the
+// fields cfg does not already set — request/tenant values always win over
+// registry defaults. A nil model (unregistered id) passes cfg through
+// unchanged. Pure function, extracted from applyModelRegistry for testability.
+func mergeRegistryParams(cfg provider.ProviderConfig, model *db.Model) provider.ProviderConfig {
+	if model == nil {
+		return cfg // unregistered id: pass through unchanged
+	}
+
+	// Substitute the alias's upstream base model (the resolved model id).
+	if model.BaseModelID != nil && *model.BaseModelID != "" {
+		cfg.Model = *model.BaseModelID
+	}
+
+	// Merge registry params as defaults (request/tenant values on cfg win).
+	if len(model.Params) > 0 {
+		var rp struct {
+			Temperature     *float64 `json:"temperature"`
+			TopP            *float64 `json:"top_p"`
+			MaxOutputTokens *int     `json:"max_output_tokens"`
+			MaxTokens       *int     `json:"max_tokens"`
+		}
+		if err := json.Unmarshal(model.Params, &rp); err == nil {
+			if cfg.Temperature == nil && rp.Temperature != nil {
+				cfg.Temperature = rp.Temperature
+			}
+			if cfg.TopP == nil && rp.TopP != nil {
+				cfg.TopP = rp.TopP
+			}
+			if cfg.MaxOutputTokens == nil {
+				if rp.MaxOutputTokens != nil {
+					cfg.MaxOutputTokens = rp.MaxOutputTokens
+				} else if rp.MaxTokens != nil {
+					cfg.MaxOutputTokens = rp.MaxTokens
+				}
+			}
+		}
+	}
+	return cfg
+}
+
+// ptrTo returns a pointer to v, for populating db.ChatMessage's nullable
+// pointer columns from plain values.
+func ptrTo[T any](v T) *T { return &v }
 
 // selectProviderWithTenant selects provider using tenant config for validation.
 func (s *ChatService) selectProviderWithTenant(ctx context.Context, req *pb.GenerateReplyRequest) (provider.Provider, error) {
@@ -799,7 +994,7 @@ func (s *ChatService) buildResponse(result provider.GenerateResult, providerName
 
 	// Add grounding cost tracking
 	if result.GroundingQueries > 0 {
-		resp.GroundingQueries = int32(result.GroundingQueries)
+		resp.GroundingQueries = nonNegativeIntToInt32Clamped(result.GroundingQueries)
 
 		// For Gemini with structured usage data, use CalculateGeminiCost for accurate grounding cost
 		if providerName == "gemini" && result.Usage != nil {
@@ -938,8 +1133,8 @@ func convertCitation(c provider.Citation) *pb.Citation {
 		FileId:     c.FileID,
 		Filename:   c.Filename,
 		Snippet:    c.Snippet,
-		StartIndex: int32(c.StartIndex),
-		EndIndex:   int32(c.EndIndex),
+		StartIndex: nonNegativeIntToInt32Clamped(c.StartIndex),
+		EndIndex:   nonNegativeIntToInt32Clamped(c.EndIndex),
 		BrokenLink: c.BrokenLink,
 	}
 }
@@ -1002,7 +1197,7 @@ func convertCodeExecution(ce provider.CodeExecutionResult) *pb.CodeExecutionResu
 		Language: ce.Language,
 		Stdout:   ce.Stdout,
 		Stderr:   ce.Stderr,
-		ExitCode: int32(ce.ExitCode),
+		ExitCode: intToInt32Clamped(ce.ExitCode),
 	}
 	for _, f := range ce.Files {
 		result.Files = append(result.Files, &pb.GeneratedFile{
@@ -1020,8 +1215,8 @@ func convertGeneratedImage(img provider.GeneratedImage) *pb.GeneratedImage {
 		MimeType:  img.MIMEType,
 		Prompt:    img.Prompt,
 		AltText:   img.AltText,
-		Width:     int32(img.Width),
-		Height:    int32(img.Height),
+		Width:     nonNegativeIntToInt32Clamped(img.Width),
+		Height:    nonNegativeIntToInt32Clamped(img.Height),
 		ContentId: img.ContentID,
 	}
 }
@@ -1051,8 +1246,15 @@ func convertStructuredMetadata(m *provider.StructuredMetadata) *pb.StructuredMet
 }
 
 // persistConversation saves the conversation turn to the database asynchronously.
-// This runs in a goroutine to avoid blocking the response.
-func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateReplyRequest, result provider.GenerateResult, providerName, model, renderedHTML string, processingTimeMs int) {
+// This runs in a goroutine to avoid blocking the response. A non-empty
+// externalRef (the caller's opaque correlation id, A9/A10) lands the turn on
+// the chat owning that ref — reused if it exists, created with the ref if not;
+// an empty externalRef keeps today's PK-keyed behavior.
+func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateReplyRequest, result provider.GenerateResult, providerName, model, renderedHTML string, processingTimeMs int, externalRef string) {
+	if s.dbClient == nil {
+		return
+	}
+
 	// Extract tenant and user info from context
 	tenantID := auth.TenantIDFromContext(ctx)
 	if tenantID == "" {
@@ -1060,8 +1262,18 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 		return
 	}
 
-	// Validate tenant ID is in our allowed list
-	if !db.ValidTenantIDs[tenantID] {
+	// Validate tenant ID against the registry (source of truth for which
+	// tenants exist). dbClient is guaranteed non-nil here (callers guard on it).
+	validate := s.validateTenant
+	if validate == nil {
+		validate = s.dbClient.IsValidTenant
+	}
+	valid, err := validate(ctx, tenantID)
+	if err != nil {
+		slog.Warn("tenant validation failed, skipping persistence", "error", err, "tenant_id", tenantID)
+		return
+	}
+	if !valid {
 		slog.Warn("invalid tenant ID, skipping persistence", "tenant_id", tenantID)
 		return
 	}
@@ -1129,13 +1341,19 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 	}
 
 	// Build debug info from captured JSON and rendered HTML (if available)
-	var debugInfo *db.DebugInfo
+	var turnDebug *db.TurnDebug
 	if len(result.RequestJSON) > 0 || len(result.ResponseJSON) > 0 || renderedHTML != "" {
-		debugInfo = &db.DebugInfo{
-			SystemPrompt:    req.Instructions,
-			RawRequestJSON:  string(result.RequestJSON),
-			RawResponseJSON: string(result.ResponseJSON),
-			RenderedHTML:    renderedHTML,
+		turnDebug = &db.TurnDebug{
+			SystemPrompt: req.Instructions,
+			RenderedHTML: renderedHTML,
+		}
+		// Only attach non-empty payloads: an empty non-nil json.RawMessage is
+		// not valid JSONB; nil stays SQL NULL.
+		if len(result.RequestJSON) > 0 {
+			turnDebug.RawRequestJSON = json.RawMessage(result.RequestJSON)
+		}
+		if len(result.ResponseJSON) > 0 {
+			turnDebug.RawResponseJSON = json.RawMessage(result.ResponseJSON)
 		}
 	}
 
@@ -1148,11 +1366,15 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 	// Run persistence in background goroutine
 	go func() {
 		// Create a new context with timeout for the background operation
-		persistCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cancel()
 
 		// Get tenant-specific repository
-		repo, err := s.dbClient.TenantRepository(tenantID)
+		getRepo := s.persistenceRepo
+		if getRepo == nil {
+			getRepo = func(id string) (turnPersister, error) { return s.dbClient.TenantRepository(id) }
+		}
+		repo, err := getRepo(tenantID)
 		if err != nil {
 			slog.Error("failed to get tenant repository",
 				"error", err,
@@ -1161,7 +1383,7 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 			return
 		}
 
-		// Convert provider citations to db citations
+		// Convert provider citations to db citations, then to the sources JSONB.
 		var dbCitations []db.Citation
 		for _, c := range result.Citations {
 			citationType := "unknown"
@@ -1180,30 +1402,64 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 				Snippet:  c.Snippet,
 			})
 		}
+		var sources json.RawMessage
+		if len(dbCitations) > 0 {
+			if data, mErr := json.Marshal(dbCitations); mErr == nil {
+				sources = data
+			}
+		}
 
-		err = repo.PersistConversationTurnWithDebug(
-			persistCtx,
-			threadID,
-			userID,
-			req.UserInput,
-			result.Text,
-			providerName,
-			model,
-			result.ResponseID,
-			inputTokens,
-			outputTokens,
-			processingTimeMs,
-			costUSD,
-			groundingQueries,
-			groundingCostUSD,
-			debugInfo,
-			dbCitations,
-		)
+		// Persist the whole turn atomically: get-or-create the chat (keyed by
+		// primary key, or by the caller's external_ref when one was supplied),
+		// the user message, the assistant reply as its child, and the optional
+		// debug blob, all in one transaction.
+		chatID := threadID.String()
+		userMsg := &db.ChatMessage{
+			ID:       uuid.New().String(),
+			TenantID: tenantID,
+			ChatID:   chatID,
+			UserID:   userID,
+			Role:     db.RoleUser,
+			Content:  db.TextContent(req.UserInput),
+			Status:   db.ChatMessageStatusComplete,
+		}
+		asstMsg := &db.ChatMessage{
+			ID:               uuid.New().String(),
+			TenantID:         tenantID,
+			ChatID:           chatID,
+			UserID:           userID,
+			Role:             db.RoleAssistant,
+			Content:          db.TextContent(result.Text),
+			ModelID:          ptrTo(model),
+			Provider:         ptrTo(providerName),
+			Status:           db.ChatMessageStatusComplete,
+			InputTokens:      ptrTo(inputTokens),
+			OutputTokens:     ptrTo(outputTokens),
+			TotalTokens:      ptrTo(inputTokens + outputTokens),
+			CostUSD:          ptrTo(costUSD),
+			GroundingQueries: ptrTo(groundingQueries),
+			GroundingCostUSD: ptrTo(groundingCostUSD),
+			ProcessingTimeMs: ptrTo(processingTimeMs),
+			Sources:          sources,
+		}
+		if result.ResponseID != "" {
+			asstMsg.ResponseID = ptrTo(result.ResponseID)
+		}
+
+		err = persistTurnWithRef(persistCtx, repo, externalRef, &db.Chat{
+			ID:       chatID,
+			TenantID: tenantID,
+			UserID:   userID,
+			Provider: providerName,
+			ModelID:  model,
+			Status:   db.ChatStatusActive,
+		}, userMsg, asstMsg, turnDebug)
 		if err != nil {
 			slog.Error("failed to persist conversation",
 				"error", err,
 				"thread_id", threadID,
 				"tenant_id", tenantID,
+				"external_ref", externalRef,
 			)
 		}
 	}()
@@ -1211,6 +1467,10 @@ func (s *ChatService) persistConversation(ctx context.Context, req *pb.GenerateR
 
 // persistFailedRequest stores a failed request in the database for activity tracking.
 func (s *ChatService) persistFailedRequest(ctx context.Context, req *pb.GenerateReplyRequest, providerName, model string, errorMsg string, processingTimeMs int) {
+	if s.dbClient == nil {
+		return
+	}
+
 	// Extract tenant and user info from context
 	tenantID := auth.TenantIDFromContext(ctx)
 	if tenantID == "" {
@@ -1218,13 +1478,18 @@ func (s *ChatService) persistFailedRequest(ctx context.Context, req *pb.Generate
 		return
 	}
 
-	// Validate tenant ID is in our allowed list
-	if !db.ValidTenantIDs[tenantID] {
-		slog.Warn("invalid tenant ID, skipping failed request persistence", "tenant_id", tenantID)
+	// Validate tenant ID against the registry (source of truth).
+	validate := s.validateTenant
+	if validate == nil {
+		validate = s.dbClient.IsValidTenant
+	}
+	valid, err := validate(ctx, tenantID)
+	if err != nil {
+		slog.Warn("tenant validation failed, skipping failed request persistence", "error", err, "tenant_id", tenantID)
 		return
 	}
-
-	if s.dbClient == nil {
+	if !valid {
+		slog.Warn("invalid tenant ID, skipping failed request persistence", "tenant_id", tenantID)
 		return
 	}
 
@@ -1245,11 +1510,6 @@ func (s *ChatService) persistFailedRequest(ctx context.Context, req *pb.Generate
 		threadID = uuid.New()
 	}
 
-	// Build debug info with error
-	debugInfo := &db.DebugInfo{
-		SystemPrompt: req.Instructions,
-	}
-
 	// Check if context is already cancelled to avoid unnecessary work
 	if ctx.Err() != nil {
 		slog.Debug("skipping persistence, context cancelled")
@@ -1258,10 +1518,14 @@ func (s *ChatService) persistFailedRequest(ctx context.Context, req *pb.Generate
 
 	// Run persistence in background goroutine
 	go func() {
-		persistCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cancel()
 
-		repo, err := s.dbClient.TenantRepository(tenantID)
+		getRepo := s.persistenceRepo
+		if getRepo == nil {
+			getRepo = func(id string) (turnPersister, error) { return s.dbClient.TenantRepository(id) }
+		}
+		repo, err := getRepo(tenantID)
 		if err != nil {
 			slog.Error("failed to get tenant repository for failed request",
 				"error", err,
@@ -1270,37 +1534,51 @@ func (s *ChatService) persistFailedRequest(ctx context.Context, req *pb.Generate
 			return
 		}
 
-		// Store as a failed message with error content
-		err = repo.PersistConversationTurnWithDebug(
-			persistCtx,
-			threadID,
-			userID,
-			req.UserInput,
-			"[FAILED] "+errorMsg, // Mark content as failed
-			providerName,
-			model,
-			"",  // No response ID for failed requests
-			0,   // No input tokens
-			0,   // No output tokens
-			processingTimeMs,
-			0,   // No cost
-			0,   // No grounding queries
-			0,   // No grounding cost
-			debugInfo,
-			nil, // No citations
-		)
-		if err != nil {
-			slog.Error("failed to persist failed request",
-				"error", err,
-				"thread_id", threadID,
-				"tenant_id", tenantID,
-			)
-		} else {
-			slog.Debug("persisted failed request",
-				"thread_id", threadID,
-				"tenant_id", tenantID,
-				"error", errorMsg,
-			)
+		// Persist the whole failed turn atomically (chat get-or-create by
+		// primary key, user turn, failed assistant reply, system-prompt-only
+		// debug blob) in one transaction. The failure is signaled by the
+		// message status ("error"; the admin views map this to "failed")
+		// rather than the old "[FAILED] " content prefix. external_ref stays
+		// empty — it is reserved for caller correlation ids.
+		chatID := threadID.String()
+		userMsg := &db.ChatMessage{
+			ID:       uuid.New().String(),
+			TenantID: tenantID,
+			ChatID:   chatID,
+			UserID:   userID,
+			Role:     db.RoleUser,
+			Content:  db.TextContent(req.UserInput),
+			Status:   db.ChatMessageStatusComplete,
 		}
+		asstMsg := &db.ChatMessage{
+			ID:               uuid.New().String(),
+			TenantID:         tenantID,
+			ChatID:           chatID,
+			UserID:           userID,
+			Role:             db.RoleAssistant,
+			Content:          db.TextContent(errorMsg),
+			ModelID:          ptrTo(model),
+			Provider:         ptrTo(providerName),
+			Status:           db.ChatMessageStatusError,
+			ProcessingTimeMs: ptrTo(processingTimeMs),
+		}
+
+		err = repo.PersistTurn(persistCtx, &db.Chat{
+			ID:       chatID,
+			TenantID: tenantID,
+			UserID:   userID,
+			Provider: providerName,
+			ModelID:  model,
+			Status:   db.ChatStatusActive,
+		}, userMsg, asstMsg, &db.TurnDebug{SystemPrompt: req.Instructions})
+		if err != nil {
+			slog.Error("failed to persist failed request", "error", err, "thread_id", threadID, "tenant_id", tenantID)
+			return
+		}
+		slog.Debug("persisted failed request",
+			"thread_id", threadID,
+			"tenant_id", tenantID,
+			"error", errorMsg,
+		)
 	}()
 }

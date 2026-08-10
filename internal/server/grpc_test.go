@@ -69,6 +69,61 @@ func TestNewGRPCServer_FailsWithoutTokenInStaticAuthMode(t *testing.T) {
 	}
 }
 
+func TestNewGRPCServer_InitializesOptionalRAGLifecycle(t *testing.T) {
+	cfg := &config.Config{
+		Auth: config.AuthConfig{AuthMode: "static", AdminToken: "test-token"},
+		RAG: config.RAGConfig{
+			Enabled:        true,
+			OllamaURL:      "http://127.0.0.1:1",
+			EmbeddingModel: "test-embedding",
+			QdrantURL:      "http://127.0.0.1:1",
+			DocboxURL:      "http://127.0.0.1:1",
+			ChunkSize:      32,
+			ChunkOverlap:   4,
+			RetrievalTopK:  2,
+		},
+	}
+
+	server, components, err := NewGRPCServer(cfg, VersionInfo{Version: "test-rag"})
+	if err != nil {
+		t.Fatalf("NewGRPCServer() error = %v", err)
+	}
+	t.Cleanup(server.Stop)
+	if components.ChatService == nil {
+		t.Fatal("ChatService was not initialized")
+	}
+	if len(components.HealthChecks) != 2 || components.HealthChecks["qdrant"] == nil || components.HealthChecks["ollama"] == nil {
+		t.Fatalf("RAG health checks = %#v, want qdrant and ollama", components.HealthChecks)
+	}
+	components.Close()
+}
+
+func TestNewGRPCServer_RejectsUnreadableTLSFiles(t *testing.T) {
+	cfg := &config.Config{
+		Auth: config.AuthConfig{AuthMode: "static", AdminToken: "test-token"},
+		TLS:  config.TLSConfig{Enabled: true, CertFile: "missing-cert.pem", KeyFile: "missing-key.pem"},
+	}
+	server, components, err := NewGRPCServer(cfg, VersionInfo{Version: "test-tls"})
+	if err == nil || server != nil || components != nil {
+		t.Fatalf("NewGRPCServer() = (%v, %v, %v), want TLS setup failure", server, components, err)
+	}
+}
+
+func TestNewGRPCServer_ContinuesWhenOptionalDatabaseIsUnavailable(t *testing.T) {
+	cfg := &config.Config{
+		Auth:     config.AuthConfig{AuthMode: "static", AdminToken: "test-token"},
+		Database: config.DatabaseConfig{Enabled: true, URL: "postgres://127.0.0.1:1/unavailable", MaxConnections: 1},
+	}
+	server, components, err := NewGRPCServer(cfg, VersionInfo{Version: "test-db"})
+	if err != nil {
+		t.Fatalf("NewGRPCServer() error = %v", err)
+	}
+	t.Cleanup(server.Stop)
+	if components.DBClient != nil {
+		t.Fatal("unreachable optional database should not produce a client")
+	}
+}
+
 func TestDevelopmentAuthInterceptor_NoAdminPermission(t *testing.T) {
 	interceptor := developmentAuthInterceptor()
 
@@ -156,4 +211,29 @@ type mockServerStream struct {
 
 func (m *mockServerStream) Context() context.Context {
 	return m.ctx
+}
+
+func TestServerComponentsCloseAndHealthLogging(t *testing.T) {
+	// Nil components are a valid lifecycle state when optional dependencies are disabled.
+	(&ServerComponents{}).Close()
+
+	called := false
+	inner := func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		called = true
+		return handler(ctx, req)
+	}
+	wrapped := skipHealthLogging(inner)
+	for _, tc := range []struct {
+		method    string
+		wantInner bool
+	}{
+		{"/grpc.health.v1.Health/Check", false},
+		{"/airborne.v1.Airborne/GenerateReply", true},
+	} {
+		called = false
+		_, err := wrapped(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: tc.method}, func(context.Context, any) (any, error) { return "ok", nil })
+		if err != nil || called != tc.wantInner {
+			t.Fatalf("wrapped %s = called=%v err=%v", tc.method, called, err)
+		}
+	}
 }

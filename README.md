@@ -1,20 +1,17 @@
 # Airborne
 
-A multi-provider AI gateway that exposes a unified gRPC API for routing LLM requests across 20+ providers. Handles multi-tenancy, authentication, rate limiting, RAG, image generation, conversation persistence, and automatic failover — so consumers talk to one API regardless of the underlying model or vendor.
+A multi-provider AI gateway that exposes a unified gRPC API for chat generation, provider selection, admin health checks, and RAG file-store operations. The runtime chat path currently routes generation requests to OpenAI, Gemini, and Anthropic; the repo also contains OpenAI-compatible provider client packages and proto enum values for planned expansion. Airborne handles multi-tenancy, authentication, rate limiting, RAG, image generation, conversation persistence, and automatic failover for the providers wired into the runtime path.
 
-## Supported Providers
+## Provider Status
 
-| Tier | Providers |
-|------|-----------|
-| **Core** | OpenAI, Gemini, Anthropic |
-| **Tier 1** | DeepSeek, Grok/xAI, Mistral, Perplexity |
-| **Tier 2** | Cohere, Bedrock*, Watsonx*, Databricks* |
-| **Tier 3** | Together AI, Fireworks AI, OpenRouter, DeepInfra, Hyperbolic |
-| **Tier 4** | Nebius, Cerebras, Upstage, HuggingFace*, MiniMax* |
+| Status | Providers | Current behavior |
+|--------|-----------|------------------|
+| **Runtime chat providers** | OpenAI, Gemini, Anthropic | Wired into `AirborneService.GenerateReply`, streaming, tenant config, and failover. |
+| **Runtime file-store providers** | Internal/Qdrant, OpenAI Vector Stores, Gemini FileSearchStore | Exposed by `FileService` only when `RAG_ENABLED=true`. |
+| **Implemented client packages, not chat-routed yet** | DeepSeek, Grok/xAI, Mistral, Perplexity, Cohere, Together AI, Fireworks AI, OpenRouter, DeepInfra, Hyperbolic, Nebius, Cerebras, Upstage | Implement `provider.Provider` through the shared OpenAI-compatible client layer, but are not selected by `ChatService` today. |
+| **Proto placeholders without runtime clients** | Bedrock, Watsonx, Databricks, Baseten, HuggingFace, Predibase, Parasail, MiniMax | Reserved enum values; selecting them for `GenerateReply` is unsupported until a runtime client is wired in. |
 
-*Providers marked with \* are defined in the proto schema but not yet implemented.*
-
-Core providers use native SDKs. Most others use a shared OpenAI-compatible client layer, making it trivial to add new providers that expose an OpenAI-style API.
+Selecting anything other than OpenAI, Gemini, or Anthropic for `GenerateReply` currently returns an unknown-provider error.
 
 ## Architecture
 
@@ -25,32 +22,34 @@ Core providers use native SDKs. Most others use a shared OpenAI-compatible clien
   Clients ──gRPC──►  │  Recovery → Tracing → Metrics →      │
                      │  Logging → TenantInterceptor → Auth  │
                      │                                      │
-                     │  ┌─────────────┐ ┌───────────────┐   │
-                     │  │AirborneService│ │ AdminService  │   │
-                     │  │  GenerateReply│ │ Health/Ready  │   │
-                     │  │  Stream      │ │ Version       │   │
-                     │  │  SelectProvider│└───────────────┘   │
-                     │  └──────┬──────┘ ┌───────────────┐   │
-                     │         │        │ FileService    │   │
-                     │         ▼        │ (RAG stores)   │   │
-                     │  ┌─────────────┐ └───────────────┘   │
-                     │  │Provider Router│                    │
-                     │  └──────┬──────┘                     │
-                     └─────────┼────────────────────────────┘
-                               │
-          ┌────────────────────┼────────────────────┐
-          ▼                    ▼                     ▼
-   ┌────────────┐    ┌──────────────┐     ┌──────────────┐
-   │  OpenAI    │    │   Gemini     │     │  Anthropic   │
-   │  (native)  │    │  (native)    │     │  (native)    │
-   └────────────┘    └──────────────┘     └──────────────┘
-          ▼
-   ┌────────────────────────────────────────────────────┐
-   │      OpenAI-Compatible Layer (compat.Client)       │
-   │  DeepSeek, Grok, Mistral, Perplexity, Together,   │
-   │  Fireworks, OpenRouter, DeepInfra, Cohere,         │
-   │  Hyperbolic, Nebius, Cerebras, Upstage             │
-   └────────────────────────────────────────────────────┘
+                     │  ┌───────────────┐ ┌───────────────┐ │
+                     │  │AirborneService│ │ AdminService  │ │
+                     │  │Generate/Stream│ │ Health/Ready  │ │
+                     │  │SelectProvider │ │ Version       │ │
+                     │  └───────┬───────┘ └───────────────┘ │
+                     │          │       ┌─────────────────┐ │
+                     │          │       │ FileService     │ │
+                     │          │       │ RAG stores only │ │
+                     │          │       │ when RAG is on  │ │
+                     │          ▼       └─────────────────┘ │
+                     │  ┌───────────────────────────────┐   │
+                     │  │ChatService provider selection │   │
+                     │  └──────────────┬────────────────┘   │
+                     └─────────────────┼────────────────────┘
+                                       │
+          ┌────────────────────────────┼────────────────────────────┐
+          ▼                            ▼                            ▼
+   ┌────────────┐              ┌──────────────┐             ┌──────────────┐
+   │  OpenAI    │              │   Gemini     │             │  Anthropic   │
+   │  (native)  │              │  (native)    │             │  (native)    │
+   └────────────┘              └──────────────┘             └──────────────┘
+
+   ┌────────────────────────────────────────────────────────────────────┐
+   │ Provider client packages for future routing: compat.Client-based   │
+   │ DeepSeek, Grok, Mistral, Perplexity, Together, Fireworks,          │
+   │ OpenRouter, DeepInfra, Cohere, Hyperbolic, Nebius, Cerebras,       │
+   │ and Upstage clients.                                               │
+   └────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Supporting Services
@@ -75,17 +74,17 @@ Core providers use native SDKs. Most others use a shared OpenAI-compatible clien
 | `GenerateReplyStream` | Server-stream | Send a prompt, receive response tokens as they arrive |
 | `SelectProvider` | Unary | Determine which provider will handle a request based on content triggers, continuity, and user tier |
 
-Requests support: provider/model override, system prompts, conversation history, file search (RAG), web search, code execution, tool calling, structured output (JSON schema), inline images, temperature/top-p/max-tokens tuning.
+Requests support: provider/model override for the runtime chat providers, system prompts, conversation history, file search (RAG), web search, code execution, tool calling, structured output (JSON schema), inline images, and temperature/top-p/max-tokens tuning. Advanced feature support is provider-dependent; OpenAI and Gemini carry most of the feature-specific paths.
 
 ### AdminService
 
 | RPC | Description |
 |-----|-------------|
 | `Health` | Liveness check (no auth required) |
-| `Ready` | Dependency readiness (Redis, Qdrant, Ollama) |
+| `Ready` | Admin-gated dependency readiness; currently reports Redis when configured. Standard gRPC health and HTTP `/admin/healthz` cover database/RAG checks. |
 | `Version` | Build version, git commit, build time, Go version |
 
-### FileService (requires RAG)
+### FileService (registered only when RAG is enabled)
 
 | RPC | Description |
 |-----|-------------|
@@ -98,6 +97,12 @@ Requests support: provider/model override, system prompts, conversation history,
 
 Endpoints: `/admin/activity`, `/admin/debug/{id}`, `/admin/thread/{id}`, `/admin/health`, `/admin/healthz`, `/admin/version`, `/admin/test`, `/admin/chat`, `/admin/upload`
 
+Security boundary: `/admin/health`, `/admin/healthz`, and CORS preflight requests are public for
+load balancers and probes. Every other HTTP admin endpoint requires the configured admin token as
+`Authorization: Bearer $AIRBORNE_ADMIN_TOKEN` or `X-API-Key: $AIRBORNE_ADMIN_TOKEN`. If no token is
+configured, protected admin HTTP routes fail closed. Browser CORS is restricted to explicit origins
+from `ADMIN_ALLOWED_ORIGINS` (wildcard origins are rejected/ignored).
+
 ## Multi-Tenancy
 
 Each tenant gets isolated configuration:
@@ -105,7 +110,7 @@ Each tenant gets isolated configuration:
 - **Provider API keys and models** with per-provider temperature, system prompts, and failover order
 - **Rate limits** (requests/min, requests/day, tokens/min)
 - **Image generation** settings (provider, triggers, models)
-- **Database isolation** via tenant-prefixed tables (e.g. `ai8_airborne_threads`)
+- **Database isolation** via PostgreSQL Row-Level Security: shared tables (`airborne_chats`, `airborne_chat_messages`, `airborne_files`, etc.) carry a `tenant_id` column, and every transaction sets the `airborne.tenant_id` GUC; RLS policies (`FORCE ROW LEVEL SECURITY`) scope all reads/writes to that tenant. Tenant existence/status is registry-backed (`airborne_tenants` table), not a hardcoded list.
 
 Tenant configs load from YAML/JSON files, Doppler API, or a frozen config snapshot.
 
@@ -121,7 +126,7 @@ Two modes controlled by `AIRBORNE_AUTH_MODE`:
 
 ### Prerequisites
 
-- Go 1.26+
+- Go 1.26.5+
 - At least one provider API key (e.g. `OPENAI_API_KEY`)
 - [buf](https://buf.build) (for proto generation, optional)
 
@@ -150,8 +155,42 @@ The gRPC server starts on port **50612** by default.
 ```bash
 # Set env vars in your shell or .env file
 make docker-build
+# Uses the pinned, Makefile-built airborne:latest image.
 docker compose up
 ```
+
+### Database Setup — Required Non-Superuser App Role
+
+**This is the highest-severity operational risk in the deployment: if the app connects as a
+superuser (or as the table owner), Row-Level Security is silently bypassed.** PostgreSQL never
+enforces RLS for the table owner or for roles with `BYPASSRLS`/`SUPERUSER`, even when
+`FORCE ROW LEVEL SECURITY` is set — the policies simply do nothing and every tenant can read and
+write every other tenant's rows with no error.
+
+Migrations (`migrations/001_baseline.sql`) must run as the owner/admin role (e.g. the default
+`postgres` superuser or a dedicated migration role), but the **application's `DATABASE_URL` must
+authenticate as a separate, restricted role** that is neither a superuser nor the table owner:
+
+```sql
+CREATE ROLE airborne_app LOGIN PASSWORD '...' NOSUPERUSER NOBYPASSRLS;
+GRANT USAGE ON SCHEMA public TO airborne_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO airborne_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO airborne_app;
+```
+
+Run this once per database, then point the app's `DATABASE_URL` at `airborne_app` (the migration
+tooling/admin connection can keep using the owner/superuser role — only the app's runtime
+connection needs to be restricted).
+
+**Post-deploy verification (run this against the app's actual `DATABASE_URL`, not the admin
+connection):**
+
+```sql
+SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user;
+```
+
+Both `rolsuper` and `rolbypassrls` **must be `false`**. If either is `true`, tenant isolation is
+not being enforced and this must be fixed before serving traffic.
 
 ### Configuration
 
@@ -171,11 +210,49 @@ Key environment variables:
 | `DATABASE_ENABLED` | `false` | Enable PostgreSQL persistence |
 | `DATABASE_URL` | — | PostgreSQL connection string |
 | `REDIS_ADDR` | — | Redis address for auth/rate limiting |
+| `IDEMPOTENCY_COMPLETED_RESPONSE_RETENTION` | `48h` | Completed keyed `GenerateReply` replay retention; values below 48h are rejected |
 | `RAG_ENABLED` | `false` | Enable RAG (requires Ollama + Qdrant) |
 | `ADMIN_ENABLED` | `false` | Enable HTTP admin server |
 | `ADMIN_PORT` | `8473` | HTTP admin port |
+| `ADMIN_ALLOWED_ORIGINS` | localhost dashboard origins | Comma-separated explicit CORS origins for HTTP admin; `*` is not allowed |
+| `AIRBORNE_ADMIN_URL` | CLI/dashboard dependent | HTTP admin server URL for CLI/dashboard proxy calls |
+| `DASHBOARD_ADMIN_TOKEN` | `AIRBORNE_ADMIN_TOKEN` | Token accepted by the Next.js dashboard API routes; set explicitly when dashboard auth should differ from backend admin auth |
 
 Provider keys: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `GROK_API_KEY`, `MISTRAL_API_KEY`, etc.
+
+#### Keyed GenerateReply deployment contract
+
+`GenerateReplyRequest.idempotency_key` is a fail-closed contract for callers such as
+`email_ai_svc`, not a best-effort cache hint. In the current server wiring, Redis is created when
+`AIRBORNE_AUTH_MODE=redis`; static-auth deployments (including the root `docker-compose.yml`) can
+continue serving unkeyed requests, but keyed requests return gRPC `Unavailable` with an
+`ErrorInfo` reason of `idempotency_unavailable` before provider dispatch.
+
+When present, the key must be 1–255 bytes of visible ASCII (`!` through `~`), which includes
+`email_ai_svc`'s `eai1_...` keys. Invalid keys return `InvalidArgument` before Redis or provider
+dispatch, and raw caller keys are not logged. Redis uses a fixed-size versioned hash over
+length-prefixed tenant and key components, so delimiter-bearing values cannot collide. Each
+acquisition also has a cryptographically random owner token; completion and release use atomic
+compare-and-set/delete Lua operations, so a stale request cannot modify a replacement marker.
+
+Production Redis for keyed requests must retain completed entries for at least 48 hours, have
+enough memory for that window, use a non-evicting policy for idempotency keys, and enable the
+deployment's required Redis persistence/replication guarantees. Set
+`idempotency.completed_response_retention` in YAML or
+`IDEMPOTENCY_COMPLETED_RESPONSE_RETENTION`; Airborne rejects shorter durations. Probe Redis through
+the authenticated `AdminService.Ready` response (or the admin `/admin/healthz` dependency check),
+not basic liveness alone.
+
+Callers must inspect `google.rpc.ErrorInfo` rather than treating every status with the same gRPC
+code as retry-safe:
+
+- `Unavailable` + `idempotency_unavailable`: proven pre-dispatch; retry only after storage recovers.
+- `DataLoss` + `idempotency_completion_ambiguous`: provider generation completed but caching did
+  not, including when marker ownership can no longer be proven; quarantine the key and do not
+  automatically regenerate.
+- `ResourceExhausted` + `auth_rate_limit_pre_dispatch`: rejected by the auth interceptor before
+  provider dispatch. Generic provider exhaustion does not carry this detail and is not safe to
+  classify as pre-dispatch.
 
 ### Frozen Config
 
@@ -183,22 +260,82 @@ For production deployments that shouldn't fetch secrets at runtime:
 
 ```bash
 # Resolve all secrets and write a static config snapshot
-./airborne-freeze
+./airborne-freeze              # tracked convenience binary
+# or, from source:
+go run ./cmd/airborne-freeze
 
 # Start with frozen config
 AIRBORNE_USE_FROZEN=true ./bin/airborne
 ```
 
-## CLI Tool
+### Testing
 
-`airborne-cli` provides admin and debugging commands:
+`make test` runs `go test -v -race ./...`, which includes the tenant-isolation (RLS) suite in
+`internal/db` — but that suite requires Docker (it spins up a real Postgres via testcontainers)
+and silently **skips** (not fails) when Docker is unavailable, which is exactly the case in CI
+today (see below). Until CI is repaired, run it locally with Docker before shipping any schema or
+RLS change and confirm it actually ran (not skipped):
 
 ```bash
-airborne-cli health          # check server health
-airborne-cli activity        # recent activity feed
-airborne-cli test            # send a test generation request
-airborne-cli debug <msg-id>  # inspect full request/response for a message
-airborne-cli watch           # live activity monitoring
+go test -mod=mod -count=1 ./internal/db/
+```
+
+This is currently the **only** verification that tenant data is actually isolated by
+Row-Level Security — treat a failure here as a release blocker.
+
+**CI/build note:** the Docker workflow and `make docker-build` stage pinned snapshots of every
+local `replace` target (`pricing_db`, `chassis-go`, and `chassis-go-addons`) into the Docker build
+context before image builds, then copy them to the absolute paths that satisfy the `go.mod`
+replacements inside the builder image. Keep those context-staging refs aligned with any future
+`replace` directive or dependency release.
+
+## Admin Dashboard
+
+The Next.js dashboard under `dashboard/` is an operator UI and admin proxy. Its API routes are
+protected separately from the Go admin server:
+
+- Accepted client credentials: `Authorization: Bearer <token>`, `X-API-Key: <token>`, or an
+  `airborne_admin_token` cookie.
+- Expected dashboard token: `DASHBOARD_ADMIN_TOKEN`, falling back to `AIRBORNE_ADMIN_TOKEN`.
+- Backend forwarding token: `AIRBORNE_ADMIN_TOKEN`, falling back to `DASHBOARD_ADMIN_TOKEN`.
+- Cookie auth on state-changing requests requires same-origin `Origin`/`Referer` headers to reduce
+  CSRF exposure.
+
+Run locally:
+
+```bash
+cd dashboard
+AIRBORNE_ADMIN_URL=http://localhost:8473 \
+AIRBORNE_ADMIN_TOKEN="$AIRBORNE_ADMIN_TOKEN" \
+DASHBOARD_ADMIN_TOKEN="$AIRBORNE_ADMIN_TOKEN" \
+npm run dev
+```
+
+If you put the dashboard behind an auth gateway, configure that gateway to inject one of the
+accepted credentials into calls to `/api/*`, or set the `airborne_admin_token` cookie from a
+trusted same-origin login flow. The dashboard intentionally does not expose a built-in token entry
+screen.
+
+## CLI Tool
+
+`airborne-cli` provides admin and debugging commands. `make build` only builds the server binary,
+so build or run the CLI explicitly. The CLI default URL is `http://localhost:50054`; with the
+checked-in server config, pass `--url http://localhost:8473` or set `AIRBORNE_ADMIN_URL`. Except
+for `health`, commands call protected admin endpoints and need `AIRBORNE_ADMIN_TOKEN` or `--token`.
+
+```bash
+go build -o bin/airborne-cli ./cmd/airborne-cli
+
+export AIRBORNE_ADMIN_TOKEN="your-token"
+
+bin/airborne-cli --url http://localhost:8473 health          # public health check
+bin/airborne-cli --url http://localhost:8473 activity        # recent activity feed
+bin/airborne-cli --url http://localhost:8473 test            # send a test generation request
+bin/airborne-cli --url http://localhost:8473 debug <msg-id>  # inspect full request/response
+bin/airborne-cli --url http://localhost:8473 watch           # live activity monitoring
+
+# Or pass the token explicitly:
+bin/airborne-cli --url http://localhost:8473 --token "$AIRBORNE_ADMIN_TOKEN" activity
 ```
 
 ## Observability
@@ -211,10 +348,12 @@ airborne-cli watch           # live activity monitoring
 ## Security
 
 - gRPC interceptor chain: panic recovery, tracing, metrics, logging, tenant resolution, auth
-- HTTP admin: CORS, request timeouts (30s), body size limits (2MB/100MB), JSON security validation (rejects dangerous keys, excessive nesting)
+- HTTP admin: explicit bearer/API-key auth on protected routes, explicit-origin CORS, request timeouts (120s default; 4m for chat/test and 2m for upload), body size limits (2MB JSON / 100MB upload), JSON security validation (rejects dangerous keys, excessive nesting)
+- Dashboard API proxy: bearer/API-key/cookie auth, same-origin CSRF guard for cookie writes, no raw AI-rendered HTML injection, and safe `http`/`https` citation links only
 - API key secrets stored as bcrypt hashes
 - Rate limiting via atomic Redis Lua scripts
-- SSRF protection on custom provider base URLs (requires admin permission)
+- SSRF protection on custom provider base URLs; FileService external store overrides require admin permission and reject credentials/userinfo in URLs
+- Request, history, upload, provider-error, Docbox, and HTTP-capture body reads are bounded to reduce memory-exhaustion and log-leak risk
 - TLS support for gRPC transport
 - Non-root Docker container
 
@@ -229,8 +368,8 @@ api/proto/            Protobuf definitions
 gen/go/               Generated gRPC/proto code
 internal/
   server/             gRPC server construction
-  service/            Service implementations (chat, admin, files)
-  provider/           Provider interface + 16 implementations
+  service/            Service implementations (chat, admin, files, idempotency)
+  provider/           Provider interface, runtime clients, and compat-based client packages
   auth/               Authentication, API keys, rate limiting
   tenant/             Multi-tenant config loading
   config/             Global configuration
@@ -244,20 +383,21 @@ internal/
 configs/              YAML config and frozen snapshots
 migrations/           PostgreSQL schema migrations
 dashboard/            Next.js admin dashboard
-deployments/          Docker and systemd templates
-pkg/client/           Public Go client library
+Dockerfile            Production container build
+docker-compose.yml    Local compose wiring for Airborne and dependencies
+deploy/               Chassis deploy metadata
 ```
 
 ## Tech Stack
 
 | Component | Technology |
 |-----------|-----------|
-| Language | Go 1.26 |
+| Language | Go 1.26.5 |
 | API | gRPC + Protocol Buffers |
-| Dashboard | Next.js 16 / React 19 / TypeScript |
+| Dashboard | Next.js 16.3 canary / React 19 / TypeScript |
 | Database | PostgreSQL (via pgx) |
 | Cache/Auth Store | Redis |
 | Tracing/Metrics | OpenTelemetry (OTLP export) |
 | Secrets | Doppler |
 | Proto Tooling | buf |
-| Shared Library | chassis-go v10 |
+| Shared Library | chassis-go/v11 v11.3.0 + chassis-go-addons v1.2.10 |

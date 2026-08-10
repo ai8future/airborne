@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "scope": "cmd and internal production packages; generated protobuf and vendored modules excluded",
+  "packages": [],
+  "missing_direct_evidence": []
+}

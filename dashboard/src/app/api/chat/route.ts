@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { adminFetchHeaders, requireDashboardAdmin } from "@/lib/adminAuth";
 
 const AIRBORNE_ADMIN_URL = process.env.AIRBORNE_ADMIN_URL || "http://localhost:50054";
+const AIRBORNE_DEFAULT_PROVIDER = process.env.AIRBORNE_DEFAULT_PROVIDER || "gemini";
 
 interface ChatRequest {
   thread_id: string;
@@ -74,6 +76,9 @@ async function fetchWithRetry(
 }
 
 export async function POST(request: NextRequest) {
+  const authError = requireDashboardAdmin(request);
+  if (authError) return authError;
+
   try {
     const body: ChatRequest = await request.json();
 
@@ -97,14 +102,14 @@ export async function POST(request: NextRequest) {
         `${AIRBORNE_ADMIN_URL}/admin/chat`,
         {
           method: "POST",
-          headers: {
+          headers: adminFetchHeaders({
             "Content-Type": "application/json",
-          },
+          }),
           body: JSON.stringify({
             thread_id: body.thread_id,
             message: body.message,
             tenant_id: body.tenant_id || "",
-            provider: body.provider || "",
+            provider: body.provider || AIRBORNE_DEFAULT_PROVIDER,
             system_prompt: body.system_prompt || "",
             file_uri: body.file_uri || "",
             file_mime_type: body.file_mime_type || "",
@@ -127,13 +132,13 @@ export async function POST(request: NextRequest) {
           `${AIRBORNE_ADMIN_URL}/admin/test`,
           {
             method: "POST",
-            headers: {
+            headers: adminFetchHeaders({
               "Content-Type": "application/json",
-            },
+            }),
             body: JSON.stringify({
               prompt: body.message,
               tenant_id: body.tenant_id || "",
-              provider: body.provider || "gemini",
+              provider: body.provider || AIRBORNE_DEFAULT_PROVIDER,
             }),
           }
         );
