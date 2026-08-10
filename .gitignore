@@ -69,3 +69,9 @@ e2e/artifacts/
 dashboard/coverage/
 dashboard/playwright-report/
 dashboard/test-results/
+
+# Agent state (OMC/OMX) -- operational artifacts, not source.
+# Use the .omc/* form (not .omc/) so the skills negation can take effect.
+.omc/*
+!.omc/skills/
+.omx/
