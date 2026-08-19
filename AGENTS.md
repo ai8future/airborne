@@ -12,3 +12,5 @@
 - Before building or debugging, verify vendor/ is current: run go mod vendor if using local replace directives.
 
 - Before building or debugging, verify vendor/ is current: run go mod vendor if using local replace directives.
+
+- At the beginning of a session, always assume your local .git could be out of date with the remote. Run `git fetch` and check status against the upstream branch before you branch, commit, or reason about what the current code looks like. Once per session is enough — no need to re-check before every operation.
